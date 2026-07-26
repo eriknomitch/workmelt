@@ -27,10 +27,20 @@ npm run dev:mp       # client (:5173) + relay (:8787) together
 
 Open the URL — a `?room=CODE` is added automatically, so the address bar is
 always a shareable **invite link**. Copy it (top-bar button) and send it to a
-friend; anyone who opens it joins your match. **Tab** shows the scoreboard. To
-put it online so friends can join over the internet, `npm run serve` and deploy
-anywhere that runs Node + WebSockets — blueprints for Render, Fly and Docker are
-included. Full details in [MULTIPLAYER.md](MULTIPLAYER.md).
+friend; anyone who opens it joins your match. **Tab** shows the scoreboard.
+
+To put it online so friends can join over the internet, the easiest path is
+**Cloudflare** (one command, free plan, global edge):
+
+```bash
+npx wrangler login && npm run cf:deploy
+```
+
+That prints a `*.workers.dev` URL to share. It runs the client and the
+multiplayer relay (a Durable Object per room) from one Worker — see
+[CLOUDFLARE.md](CLOUDFLARE.md). Prefer a Node host? `npm run serve` plus the
+included Render / Fly / Docker configs. Full details in
+[MULTIPLAYER.md](MULTIPLAYER.md).
 
 ## What's in it
 

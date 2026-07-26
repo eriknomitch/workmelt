@@ -83,9 +83,34 @@ non-capture run (disable with `?mp=0`). It:
 
 ## Deploying so friends can join over the internet
 
-The server hosts the client and the WebSocket on **one port**, so any host that
-supports Node + WebSockets works. Build first (`npm run build`), then run
-`node server/index.mjs`. `npm run serve` does both.
+### Cloudflare (recommended — one command, free plan) ⭐
+
+Cloudflare hosts the whole thing at the edge: the static client on Workers'
+Static Assets, and the relay as a **Durable Object per room** (`worker/`). Same
+origin, global, free `*.workers.dev` URL (or your own domain), no servers to keep
+alive. See [CLOUDFLARE.md](CLOUDFLARE.md) for the 3-minute version.
+
+```bash
+npm install
+npx wrangler login          # once
+npm run cf:deploy           # = npm run build && wrangler deploy
+```
+
+That prints a URL like `https://claude-of-duty.<you>.workers.dev`. Open it, copy
+the invite link, done. Local edge test: `npm run cf:dev` (runs the Worker + DO in
+workerd on :8788).
+
+How it works: `worker/index.js` routes `/ws?room=CODE` to the Room Durable Object
+named `CODE` (so everyone in a room shares one instance) and serves everything
+else from `./dist`. `worker/room.js` is the same relay as the Node server, ported
+to a DO. `wrangler.toml` wires the assets binding and the DO migration
+(`new_sqlite_classes`, which is what makes it free-plan eligible).
+
+### Node hosts (Render / Fly / Railway / a box)
+
+The Node server (`server/index.mjs`) hosts the client and the WebSocket on **one
+port**, so anything that runs Node + WebSockets works. Build first
+(`npm run build`), then `node server/index.mjs`. `npm run serve` does both.
 
 - **Render** — `render.yaml` blueprint included. New + → Blueprint → point at the
   repo. WebSockets work on the same port; free tier is fine for a few friends.
@@ -95,8 +120,10 @@ supports Node + WebSockets works. Build first (`npm run build`), then run
 - **A single box** — `npm run serve` and share `http://<your-ip>:8787`.
 
 The client picks its server automatically: same-origin `wss://…/ws` in a
-production build, `ws://<host>:8787/ws` in dev. Override with `?server=wss://…`
-if you host the relay separately from the static client.
+production build (works for both Cloudflare and Node hosts), `ws://<host>:8787/ws`
+in dev. Override with `?server=wss://…` if you host the relay separately from the
+static client. The room is also sent as `?room=CODE` on the socket URL so
+Cloudflare can route to the right Durable Object before the first message.
 
 ## Tuning / flags
 

@@ -14,3 +14,7 @@ demo/
 .tmp-demo/
 .tmp-rend/
 revcrops/
+
+# Cloudflare Wrangler local state
+.wrangler/
+.dev.vars

@@ -117,7 +117,12 @@ export class NetSystem {
     if (this._ws) return;
     let ws;
     try {
-      ws = new WebSocket(this.serverUrl);
+      // Put the room in the URL as well as the join message: on Cloudflare the
+      // Worker routes the socket to the room's Durable Object by this query
+      // param before any message is read. The Node relay ignores it and reads
+      // the room from `join` instead, so one client works against both.
+      const sep = this.serverUrl.includes('?') ? '&' : '?';
+      ws = new WebSocket(`${this.serverUrl}${sep}room=${encodeURIComponent(this.room)}`);
     } catch (err) {
       console.warn('[net] connect failed', err);
       this._scheduleReconnect();

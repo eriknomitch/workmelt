@@ -1,0 +1,208 @@
+/**
+ * Room — a Durable Object that is one multiplayer room.
+ *
+ * This is the Cloudflare-native port of the relay in `server/index.mjs`: the
+ * Worker (worker/index.js) routes every `/ws?room=CODE` connection to the DO
+ * whose name is CODE, so all players in a room share one instance and one bit of
+ * state. The logic is identical — join / state / fire / hit / kill / chat and a
+ * ~20 Hz snapshot broadcast — it just lives at the edge instead of on a Node
+ * box, and it holds no persistent storage (a room is ephemeral by design).
+ */
+
+export class Room {
+  constructor(state, env) {
+    this.state = state;
+    this.env = env;
+    this.tickHz = Number(env.TICK_HZ ?? 20);
+    this.maxRoom = Number(env.MAX_ROOM ?? 12);
+
+    /** ws -> peer */
+    this.sessions = new Map();
+    this.nextId = 1;
+    this.tickHandle = null;
+  }
+
+  async fetch(req) {
+    if (req.headers.get('Upgrade') !== 'websocket') {
+      return new Response('expected websocket', { status: 426 });
+    }
+    const pair = new WebSocketPair();
+    const client = pair[0];
+    const server = pair[1];
+    server.accept();
+
+    const peer = {
+      id: this.nextId++,
+      ws: server,
+      name: 'Operator',
+      kills: 0,
+      deaths: 0,
+      pstate: null,
+      alive: true,
+      lastSeen: Date.now(),
+    };
+    this.sessions.set(server, peer);
+
+    server.addEventListener('message', (evt) => {
+      let msg;
+      try {
+        msg = JSON.parse(typeof evt.data === 'string' ? evt.data : '');
+      } catch {
+        return;
+      }
+      peer.lastSeen = Date.now();
+      this._handle(peer, msg);
+    });
+    const bye = () => this._leave(peer);
+    server.addEventListener('close', bye);
+    server.addEventListener('error', bye);
+
+    this._send(peer, { t: 'hello', id: peer.id });
+    this._ensureTick();
+
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  /* ---- relay logic (mirrors server/index.mjs) ---- */
+
+  _handle(peer, msg) {
+    switch (msg.t) {
+      case 'join': {
+        peer.name = String(msg.name ?? 'Operator').slice(0, 20) || 'Operator';
+        if (this.sessions.size > this.maxRoom) {
+          this._send(peer, { t: 'full', max: this.maxRoom });
+          try {
+            peer.ws.close(1013, 'room full');
+          } catch {}
+          this.sessions.delete(peer.ws);
+          return;
+        }
+        peer.joined = true;
+        this._send(peer, {
+          t: 'welcome',
+          id: peer.id,
+          room: msg.room ?? '',
+          tickHz: this.tickHz,
+          peers: this._roster().filter((p) => p.id !== peer.id),
+        });
+        this._broadcast({ t: 'peer_join', id: peer.id, name: peer.name }, peer.id);
+        break;
+      }
+      case 'state': {
+        peer.pstate = msg.s ?? null;
+        if (peer.pstate && typeof peer.pstate.hp === 'number') peer.alive = peer.pstate.hp > 0;
+        break;
+      }
+      case 'fire': {
+        this._broadcast({ t: 'fire', id: peer.id, o: msg.o, d: msg.d, w: msg.w, seed: msg.seed }, peer.id);
+        break;
+      }
+      case 'hit': {
+        const victim = this._peerById(msg.target);
+        if (!victim) return;
+        this._send(victim, {
+          t: 'hit',
+          from: peer.id,
+          fromName: peer.name,
+          dmg: Math.max(0, Math.min(200, Number(msg.dmg) || 0)),
+          part: msg.part ?? 'body',
+          o: msg.o ?? null,
+          w: msg.w ?? null,
+        });
+        break;
+      }
+      case 'kill': {
+        peer.deaths++;
+        const killer = this._peerById(msg.by);
+        if (killer && killer.id !== peer.id) killer.kills++;
+        this._broadcast({
+          t: 'kill',
+          by: msg.by,
+          byName: killer?.name ?? '???',
+          victim: peer.id,
+          victimName: peer.name,
+          headshot: !!msg.headshot,
+        });
+        this._broadcast({ t: 'score', roster: this._roster() });
+        break;
+      }
+      case 'respawn':
+        peer.alive = true;
+        break;
+      case 'chat': {
+        const text = String(msg.text ?? '').slice(0, 200);
+        if (text) this._broadcast({ t: 'chat', id: peer.id, name: peer.name, text });
+        break;
+      }
+      case 'name': {
+        peer.name = String(msg.name ?? peer.name).slice(0, 20) || peer.name;
+        this._broadcast({ t: 'score', roster: this._roster() });
+        break;
+      }
+      case 'ping':
+        this._send(peer, { t: 'pong', ts: msg.ts });
+        break;
+    }
+  }
+
+  _leave(peer) {
+    if (!this.sessions.has(peer.ws)) return;
+    this.sessions.delete(peer.ws);
+    try {
+      peer.ws.close();
+    } catch {}
+    this._broadcast({ t: 'peer_leave', id: peer.id });
+    this._broadcast({ t: 'score', roster: this._roster() });
+    if (this.sessions.size === 0 && this.tickHandle) {
+      clearInterval(this.tickHandle);
+      this.tickHandle = null;
+    }
+  }
+
+  /* ---- snapshot tick ---- */
+
+  _ensureTick() {
+    if (this.tickHandle) return;
+    this.tickHandle = setInterval(() => this._tick(), 1000 / this.tickHz);
+  }
+
+  _tick() {
+    const states = [];
+    for (const peer of this.sessions.values()) {
+      if (!peer.pstate) continue;
+      states.push({ id: peer.id, name: peer.name, s: peer.pstate });
+    }
+    if (states.length) this._broadcast({ t: 'snapshot', states });
+  }
+
+  /* ---- helpers ---- */
+
+  _roster() {
+    const out = [];
+    for (const p of this.sessions.values()) {
+      out.push({ id: p.id, name: p.name, kills: p.kills, deaths: p.deaths, hp: p.pstate?.hp ?? 100 });
+    }
+    return out;
+  }
+
+  _peerById(id) {
+    for (const p of this.sessions.values()) if (p.id === id) return p;
+    return null;
+  }
+
+  _send(peer, obj) {
+    try {
+      peer.ws.send(JSON.stringify(obj));
+    } catch {}
+  }
+
+  _broadcast(obj, exceptId = null) {
+    const msg = JSON.stringify(obj);
+    for (const peer of this.sessions.values()) {
+      if (peer.id === exceptId) continue;
+      try {
+        peer.ws.send(msg);
+      } catch {}
+    }
+  }
+}

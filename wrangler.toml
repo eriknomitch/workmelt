@@ -1,0 +1,35 @@
+# Cloudflare Workers config — hosts the built client + the multiplayer relay.
+#
+#   npm run build            # produces ./dist (the static client)
+#   npx wrangler deploy      # publishes the Worker + assets + Durable Object
+#
+# The relay is a Durable Object (one instance per room). SQLite-class DOs run on
+# the Workers free plan, so this deploys without a paid plan.
+
+name = "claude-of-duty"
+main = "worker/index.js"
+compatibility_date = "2025-06-01"
+
+# Serve the built client. Non-asset paths fall through to the Worker (which
+# handles /ws and /healthz); unknown asset paths fall back to index.html so
+# ?room=… deep links always load.
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+# One Durable Object per room holds that room's WebSocket connections.
+[[durable_objects.bindings]]
+name = "ROOM"
+class_name = "Room"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Room"]
+
+[vars]
+TICK_HZ = "20"
+MAX_ROOM = "12"
+
+[observability]
+enabled = true
