@@ -695,7 +695,7 @@ const CSS = `
    the opacity fade so it stays readable with the pause menu open. */
 .ow-perf {
   position:absolute; pointer-events:none;
-  width: calc(180px * var(--k));
+  width: calc(212px * var(--k));
   padding: calc(5px * var(--k)) calc(7px * var(--k)) calc(6px * var(--k));
   background: rgba(6,10,14,.62);
   border:1px solid rgba(255,255,255,.10);
@@ -706,6 +706,10 @@ const CSS = `
   color: var(--ink-2);
   font-variant-numeric: tabular-nums;
   text-shadow: 0 1px 1px rgba(0,0,0,.9);
+  /* The HUD uppercases everything (line 83). Here that costs ~15% width in a
+     panel that is already dense enough to wrap, and turns "1% low" into
+     "1% LOW" — so this one widget opts out. */
+  text-transform: none;
 }
 /* Default slot: under the minimap (top var(--pad) + 178px), the only corner no
    other HUD element claims. */
@@ -740,17 +744,18 @@ const CSS = `
 }
 .ow-perf-body { margin-top: calc(1px * var(--k)); }
 .ow-perf-row { display:flex; align-items:center; gap: calc(3px * var(--k)); }
-.ow-perf-label { width: calc(30px * var(--k)); color: var(--ink-3); letter-spacing:.08em; flex:none; }
-.ow-perf-value { width: calc(42px * var(--k)); text-align:right; color: var(--ink); flex:none; }
+/* nowrap on both: a wrapped value pushes the bar onto its own line and the row
+   stops reading as a row. */
+.ow-perf-label { width: calc(36px * var(--k)); color: var(--ink-3); letter-spacing:.06em; flex:none; white-space:nowrap; }
+.ow-perf-value { width: calc(50px * var(--k)); text-align:right; color: var(--ink); flex:none; white-space:nowrap; }
 .ow-perf-track {
   flex:1; height: calc(3px * var(--k));
   background: rgba(255,255,255,.09); border-radius: calc(2px * var(--k)); overflow:hidden;
 }
 .ow-perf-bar { display:block; height:100%; width:0%; background: var(--cyan); }
-.ow-perf-line {
-  font-size: calc(8.5px * var(--k)); color: var(--ink-3);
-  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-}
+/* Wraps rather than ellipsising: truncation here would hide the program count,
+   which is the number that identifies a mid-frame shader compile. */
+.ow-perf-line { font-size: calc(8.5px * var(--k)); color: var(--ink-3); white-space:normal; }
 .ow-perf-alert { color: var(--amber); }
 .ow-perf-hint {
   margin-top: calc(2px * var(--k));

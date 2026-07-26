@@ -470,7 +470,10 @@ export class Perf {
       f: this.count,
       dt: +b.dt[i].toFixed(3),
       cpu: +b.cpu[i].toFixed(3),
-      gpu: Number.isFinite(b.gpu[i]) ? +b.gpu[i].toFixed(3) : null,
+      // null, not 0, when the extension is absent: the ring buffer stores 0 to
+      // keep the percentile sort clean, but a 0 in an exported row would read as
+      // "the GPU took no time" rather than "not measured".
+      gpu: this.gpuAvailable ? +b.gpu[i].toFixed(3) : null,
       fixed: +b.fixed[i].toFixed(3),
       update: +b.update[i].toFixed(3),
       late: +b.late[i].toFixed(3),

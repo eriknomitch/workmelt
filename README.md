@@ -154,6 +154,41 @@ The interesting part of this repo is arguably the harness, not the game.
 | `tools/imagediff.mjs` | Per-pixel gate. Exits non-zero if any pixel moved |
 | `tools/profile.mjs` | Isolated gameplay profiler at real device pixel ratio. Frame-time *distribution*, engine timings, and an optional `--target=FPS` exit-code gate |
 | `tools/playtest.mjs` | Scripted movement/fire smoke test |
+| `tools/attach-shot.mjs` | Screenshot a browser that is **already running**, over CDP — HUD included |
+| `tools/contactsheet.mjs` | Build a reviewable HTML sheet of collected shots, each with the frame cost that produced it |
+
+### Screenshots from a running session
+
+Every other capture tool launches its own headless Chromium and boots the game
+from scratch, which is the right thing for a reproducible frame and useless for
+"I'm playing right now and something looks wrong". Two ways to grab the session
+you're actually in:
+
+```bash
+npm run dev                  # then press F2 in the game
+__SHOT__('reload-clip')      # or from the console; __SHOT__.burst(8, 250) for a transient
+```
+
+The PNG is POSTed to the dev server and written to `artifacts/shots/` with a JSON
+sidecar holding the camera pose, quality preset and a `__PERF__.stats()` reading —
+so a before/after pair is evidence, not two pictures. (In a production build there
+is no sink, so it falls back to a browser download.)
+
+This path captures the **canvas only**: the DOM HUD isn't part of the WebGL
+surface and compositing it in would need a DOM rasterizer, i.e. a new dependency.
+When you need the HUD in the frame, drive the same running browser over CDP:
+
+```bash
+chromium --remote-debugging-port=9222 --user-data-dir=/tmp/cod-profile
+# then open the game in it
+node tools/attach-shot.mjs                        # the game tab, HUD included
+node tools/attach-shot.mjs --selector='#game'     # clip to the canvas
+node tools/attach-shot.mjs --count=10 --every=500 # a 5 s sequence
+node tools/attach-shot.mjs --list                 # what's attachable
+node tools/contactsheet.mjs --open                # review everything collected
+```
+
+`artifacts/` is gitignored.
 
 Two findings worth recording, because both invalidated earlier measurements:
 

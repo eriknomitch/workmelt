@@ -15,7 +15,9 @@
     "sfx": "node tools/encode-sfx.mjs",
     "cf:dev": "wrangler dev",
     "cf:deploy": "npm run build && wrangler deploy",
-    "shot": "node tools/capture.mjs"
+    "shot": "node tools/capture.mjs",
+    "shot:attach": "node tools/attach-shot.mjs",
+    "shot:sheet": "node tools/contactsheet.mjs"
   },
   "author": "",
   "license": "ISC",

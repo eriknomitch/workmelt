@@ -42,7 +42,8 @@ import { el, setText, setStyle, setClass } from './util.js';
 
 /** Frames of history in the graph — ~2.8 s at 60 fps. */
 const GRAPH_SAMPLES = 168;
-const GRAPH_W = 172;
+/** Fills the panel's content box: 212px wide less 7px padding either side. */
+const GRAPH_W = 198;
 const GRAPH_H = 34;
 
 /** Display modes, cycled by F3. */
@@ -83,8 +84,12 @@ export class PerfHud {
       gpu: this._row('GPU', true),
       other: this._row('OTHER', true),
     };
+    // Four deliberately short lines rather than three long ones: at this width
+    // the long form wraps, and a ragged two-line row is harder to read at a
+    // glance than four that each fit.
     this.phaseNode = el('div', 'ow-perf-line', this.body, '');
     this.countNode = el('div', 'ow-perf-line', this.body, '');
+    this.memNode = el('div', 'ow-perf-line', this.body, '');
     this.hitchNode = el('div', 'ow-perf-line', this.body, '');
     this.hintNode = el('div', 'ow-perf-hint', this.root, 'F3');
 
@@ -193,14 +198,14 @@ export class PerfHud {
       this._setRow(this.rows.other, `${live.otherMs.toFixed(1)} ms`, live.otherMs / budget);
 
       const p = s.phasesMs;
-      setText(this.phaseNode, `fix ${p.fixed} upd ${p.update} late ${p.late} rnd ${p.render}`);
+      setText(this.phaseNode, `fix ${p.fixed} upd ${p.update} late ${p.late} rnd ${p.render} · x${live.substeps}`);
+      setText(this.countNode, `${live.calls} calls · ${(live.tris / 1e6).toFixed(2)}M tris`);
       setText(
-        this.countNode,
-        `${live.calls} calls · ${(live.tris / 1e6).toFixed(2)}M tris · ${live.progs} prog` +
-          (live.heapMb ? ` · ${live.heapMb.toFixed(0)} MB` : '')
+        this.memNode,
+        `${live.progs} prog · ${live.texs} tex` + (live.heapMb ? ` · ${live.heapMb.toFixed(0)} MB` : '')
       );
       const h = s.hitches;
-      setText(this.hitchNode, `hitch ${h.count} (${h.pctOfFrames}%) worst ${h.worstMs} ms · x${live.substeps} sub`);
+      setText(this.hitchNode, `hitch ${h.count} (${h.pctOfFrames.toFixed(1)}%) · worst ${h.worstMs} ms`);
       setClass(this.hitchNode, 'ow-perf-alert', h.count > 0);
 
       this._drawGraph(perf, s);

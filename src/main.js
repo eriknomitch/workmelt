@@ -25,6 +25,7 @@ import { NetSystem } from './net/index.js';
 import { MatchSystem } from './match/index.js';
 
 import { installShotApi } from './dev/shots.js';
+import { installScreenshotApi } from './dev/screenshot.js';
 import { prewarm } from './core/prewarm.js';
 
 const params = new URLSearchParams(location.search);
@@ -118,6 +119,11 @@ BOOT FAILURE\n\n${err.stack ?? err.message}</pre>`
 }
 
 const shotApi = installShotApi(engine, { capture, lockstep });
+
+// F2 / `__SHOT__()` — screenshot the session you are actually playing, written to
+// artifacts/shots/ by the dev server. Skipped in capture mode, which owns the
+// frame loop itself. See src/dev/screenshot.js.
+installScreenshotApi(engine, { capture });
 
 // Compile every shader permutation before the frame loop starts. Measured: without
 // this, 86 programs compile lazily during play, up to 30 on one frame, producing
