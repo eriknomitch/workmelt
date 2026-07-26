@@ -1,0 +1,20 @@
+# Render.com blueprint — one web service that builds the client and runs the
+# relay + host. WebSockets work on the same port out of the box.
+#
+# Deploy: push this repo to GitHub, then in Render choose
+# "New +" → "Blueprint" and point it at the repo. Or use the Docker path.
+services:
+  - type: web
+    name: claude-of-duty
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: node server/index.mjs
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: TICK_HZ
+        value: "20"
+      - key: MAX_ROOM
+        value: "12"

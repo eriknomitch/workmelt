@@ -1,0 +1,25 @@
+# Fly.io config — builds from the Dockerfile and serves the relay + host.
+# Deploy:  fly launch --copy-config --now   (or `fly deploy` after `fly launch`)
+app = "claude-of-duty"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[http_service]
+  internal_port = 8787
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[http_service.checks]]
+  method = "GET"
+  path = "/healthz"
+  interval = "30s"
+  timeout = "5s"
+
+[env]
+  PORT = "8787"
+  TICK_HZ = "20"
+  MAX_ROOM = "12"

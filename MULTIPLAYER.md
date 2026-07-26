@@ -1,0 +1,109 @@
+# Multiplayer
+
+Claude of Duty now has web multiplayer: a room-based free-for-all you invite
+friends to with a link. No accounts, no matchmaking — open the game, copy the
+URL, send it to a friend, and you're in the same match.
+
+```bash
+npm install
+npm run dev:mp        # runs the client (:5173) + relay (:8787) together
+# open http://localhost:5173 — a ?room=CODE is added to the URL automatically
+# copy the invite link (top bar) and open it in another tab or send it to a friend
+```
+
+## How to play together
+
+- Every load joins a room. If the URL has no `?room=`, one is generated and
+  written into the address bar, so **the current URL is always a valid invite
+  link**.
+- The **Copy invite link** button (top bar) copies that URL.
+- Anyone who opens the link joins the same room. Up to 12 players per room.
+- **Tab** shows the scoreboard (kills / deaths / K-D). Edit your callsign in the
+  top-bar field; it's remembered per browser.
+
+Controls are the same as single-player (WASD, mouse, LMB fire, RMB ADS, R reload,
+Shift sprint, Ctrl crouch, Space jump). The garrison AI is still there, so it's
+players **and** bots.
+
+## Architecture
+
+Two pieces, one process in production.
+
+### Relay + host — `server/index.mjs`
+
+A small Node server (`http` + [`ws`](https://github.com/websockets/ws)) that:
+
+- **serves the built client** from `dist/`, so the game and the netcode share an
+  origin and the invite link "just works"; and
+- **relays** messages between players grouped into rooms.
+
+It is a *relay*, not an authoritative simulation. Each client owns its own
+player and reports transform + events at 20 Hz; the server fans the latest state
+of every player out to the room as one snapshot per tick. That keeps it cheap
+(a few KB/s per player) — the right trade for a friends-only game — and the
+transport is agnostic to how hits are decided, so a server-authoritative model
+could be dropped in later without touching the client protocol.
+
+Environment: `PORT` (default 8787), `TICK_HZ` (20), `MAX_ROOM` (12).
+
+### Client subsystem — `src/net/`
+
+A normal engine subsystem (`id: 'net'`), added in `src/main.js` for every
+non-capture run (disable with `?mp=0`). It:
+
+- resolves the room / server / name from the URL (`src/net/config.js`);
+- broadcasts the local player's transform each tick and renders every other
+  player as a **reused AI soldier body** — `ai.createPuppet()` (`src/ai/puppet.js`)
+  builds the exact skinned soldier the AI ships, minus the brain and physics, and
+  the `net` system drives it with transforms **interpolated ~110 ms in the past**
+  so movement stays smooth under jitter;
+- replicates shots as muzzle flash + tracers through `fx`, and settles PvP hits
+  with a **trust-the-shooter** model: the shooter ray-tests remote bodies locally
+  and the victim applies the damage the shooter claims (headshots included);
+- drives the overlay (`src/net/ui.js`): invite bar, live scoreboard, kill / join
+  toasts, connection status.
+
+`net` reads `player`/`weapons` state and feeds `ai`/`fx`/`ui` entirely through
+`ctx`, so nothing else in the engine needs to know multiplayer exists.
+
+### Protocol (JSON over WebSocket)
+
+| dir | message | meaning |
+|---|---|---|
+| C→S | `join {room, name}` | enter a room |
+| C→S | `state {s:{p,y,pt,sp,cr,ad,hp,dead,v}}` | transform snapshot (20 Hz) |
+| C→S | `fire {o,d,w,seed}` | a shot (origin, dir) |
+| C→S | `hit {target,dmg,part,o,w}` | shooter's damage claim |
+| C→S | `kill {by,headshot}` | victim confirms its own death |
+| C→S | `name` / `chat` / `respawn` / `ping` | misc |
+| S→C | `welcome {id,room,peers}` | you joined; who's here |
+| S→C | `peer_join` / `peer_leave` | roster changes |
+| S→C | `snapshot {states:[…]}` | everyone's latest transform |
+| S→C | `fire` / `hit` / `kill` / `score` / `chat` | relayed events + scoreboard |
+
+## Deploying so friends can join over the internet
+
+The server hosts the client and the WebSocket on **one port**, so any host that
+supports Node + WebSockets works. Build first (`npm run build`), then run
+`node server/index.mjs`. `npm run serve` does both.
+
+- **Render** — `render.yaml` blueprint included. New + → Blueprint → point at the
+  repo. WebSockets work on the same port; free tier is fine for a few friends.
+- **Fly.io** — `fly.toml` + `Dockerfile` included. `fly launch --copy-config --now`.
+- **Railway / any Docker host** — the `Dockerfile` builds and runs everything;
+  set nothing but let the platform inject `PORT`.
+- **A single box** — `npm run serve` and share `http://<your-ip>:8787`.
+
+The client picks its server automatically: same-origin `wss://…/ws` in a
+production build, `ws://<host>:8787/ws` in dev. Override with `?server=wss://…`
+if you host the relay separately from the static client.
+
+## Tuning / flags
+
+| URL param | effect |
+|---|---|
+| `?room=CODE` | join a specific room (auto-generated if absent) |
+| `?name=NAME` | set your callsign |
+| `?server=wss://…` | point at a specific relay |
+| `?mp=0` | disable multiplayer (pure single-player) |
+| `?q=low\|medium\|high\|ultra` | graphics preset |

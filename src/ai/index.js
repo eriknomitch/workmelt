@@ -45,6 +45,7 @@ import { NavGrid, CoverMap } from './nav.js';
 import { Agent, STATE } from './agent.js';
 import { Squad } from './squad.js';
 import { GroundShadows } from './grounding.js';
+import { NetPuppet } from './puppet.js';
 
 export class AiSystem {
   static id = 'ai';
@@ -472,6 +473,20 @@ export class AiSystem {
     const a = new Agent(this, { variant: variantName, position, yaw, ...opts });
     this.agents.push(a);
     return a;
+  }
+
+  /**
+   * A network-driven soldier body (a remote player) — same look as an enemy,
+   * but with no brain, no physics and no perception. `net` owns it and feeds it
+   * transforms; see src/ai/puppet.js. Returns the NetPuppet.
+   */
+  createPuppet(variantName = 'vanguard', position, yaw = 0, opts = {}) {
+    return new NetPuppet(this, { variant: variantName, position, yaw, ...opts });
+  }
+
+  /** Variant names available for remote-player bodies. */
+  get variantNames() {
+    return Object.keys(VARIANTS);
   }
 
   /**

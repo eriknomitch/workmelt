@@ -17,6 +17,21 @@ npm run dev          # http://127.0.0.1:5173
 Click the canvas to lock the cursor. WASD move, mouse aim, LMB fire, RMB ADS,
 R reload, Shift sprint, Ctrl crouch, Space jump, Q/E lean, Esc release.
 
+## Multiplayer
+
+It's also a room-based free-for-all you invite friends to with a link.
+
+```bash
+npm run dev:mp       # client (:5173) + relay (:8787) together
+```
+
+Open the URL — a `?room=CODE` is added automatically, so the address bar is
+always a shareable **invite link**. Copy it (top-bar button) and send it to a
+friend; anyone who opens it joins your match. **Tab** shows the scoreboard. To
+put it online so friends can join over the internet, `npm run serve` and deploy
+anywhere that runs Node + WebSockets — blueprints for Render, Fly and Docker are
+included. Full details in [MULTIPLAYER.md](MULTIPLAYER.md).
+
 ## What's in it
 
 | subsystem | what it does |

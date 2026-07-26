@@ -3,7 +3,11 @@
   "version": "1.0.0",
   "scripts": {
     "dev": "vite",
+    "server": "node server/index.mjs",
+    "dev:mp": "node scripts/dev-mp.mjs",
     "build": "vite build",
+    "start": "node server/index.mjs",
+    "serve": "npm run build && node server/index.mjs",
     "preview": "vite preview --port 4173",
     "shot": "node tools/capture.mjs"
   },
@@ -11,7 +15,8 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
-    "three": "^0.180.0"
+    "three": "^0.180.0",
+    "ws": "^8.21.1"
   },
   "devDependencies": {
     "playwright": "^1.61.1",

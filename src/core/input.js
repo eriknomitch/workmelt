@@ -20,7 +20,7 @@ export const ACTIONS = {
   melee: ['KeyV'],
   leanLeft: ['KeyQ'],
   leanRight: ['KeyE'],
-  swapWeapon: ['Digit1', 'Digit2', 'Tab'],
+  swapWeapon: ['Digit1', 'Digit2'], // Tab is the multiplayer scoreboard
   grenade: ['KeyG'],
   flashlight: ['KeyT'],
   pause: ['Escape'],

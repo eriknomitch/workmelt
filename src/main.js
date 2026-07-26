@@ -12,6 +12,7 @@ import { FxSystem } from './fx/index.js';
 import { AiSystem } from './ai/index.js';
 import { UiSystem } from './ui/index.js';
 import { AudioSystem } from './audio/index.js';
+import { NetSystem } from './net/index.js';
 
 import { installShotApi } from './dev/shots.js';
 import { prewarm } from './core/prewarm.js';
@@ -46,6 +47,12 @@ engine
   .add(AiSystem)
   .add(UiSystem)
   .add(AudioSystem);
+
+// Web multiplayer: on by default, off for capture/deterministic runs or with
+// ?mp=0. Every normal load joins (and, if needed, mints) a room, so the URL in
+// the address bar is always a shareable invite link.
+const multiplayer = !capture && params.get('mp') !== '0';
+if (multiplayer) engine.add(NetSystem);
 
 try {
   await engine.init();
