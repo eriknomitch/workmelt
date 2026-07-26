@@ -61,6 +61,48 @@ included Render / Fly / Docker configs. Full details in
 `ARCHITECTURE.md` is the contract the agents worked against: subsystem interface,
 directory ownership, the cross-subsystem event vocabulary, and shared surface types.
 
+## Performance readout
+
+A live counter is on by default in the upper-left, below the minimap. **F3**
+cycles it: full → compact → off.
+
+It reports more than fps, because fps alone cannot tell you what to fix:
+
+| field | meaning |
+|---|---|
+| `FPS` / `ms` | smoothed wall-clock frame time |
+| `1% low` / `p99` | fps at the p99 frame time — the number that correlates with "it stutters" |
+| `CPU` / `GPU` / `MIX` badge | whether the frame is main-thread bound or waiting on the GPU/vsync |
+| `cpu` / `gpu` / `other` | where wall-clock time goes. `other` is time *not* in our JS: vsync, compositing, GPU back-pressure. High `other` means JS optimization is wasted effort |
+| `fix/upd/late/rnd` | mean ms in each engine phase — points at the subsystem |
+| graph | frame-time history with 60/30 fps rules, so a hitch is visible as a spike |
+| `calls` / `tris` / `prog` | draw calls, triangles, shader programs. A *rising* program count during play is a shader compiling mid-frame — the classic Three.js stall |
+
+`gpu` needs `EXT_disjoint_timer_query_webgl2`, which most stock browsers gate
+behind a flag; the row hides itself when it is unavailable rather than lying.
+
+The same data is readable and loggable, which is the point — it's the baseline
+for an optimization pass:
+
+```js
+__PERF__.stats()                       // percentiles, phase breakdown, bound classification
+__PERF__.log()                         // one-line summary to the console
+__PERF__.startRecording({frames:600})  // begin a benchmark capture
+__PERF__.stopRecording()               // -> { label, frames, stats, rows }
+__PERF__.csv()                         // last recording as CSV
+```
+
+| URL param | effect |
+|---|---|
+| `?fps=off\|mini\|full` | initial display mode |
+| `?fpspos=tl\|tr\|bl\|br` | corner |
+| `?fpstarget=120` | fps the colour ramp treats as "good" |
+| `?perflog=300` | print a summary to the console every 300 frames |
+
+Instrumentation lives in `src/core/perf.js`, timed from `Engine.step()`. It is
+measurement only — it never feeds simulation — and it is suppressed entirely in
+capture mode (`?capture=1`), so the pixel gate stays byte-exact.
+
 ## Tooling
 
 The interesting part of this repo is arguably the harness, not the game.

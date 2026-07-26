@@ -3,6 +3,7 @@ import { Registry, EventBus } from './registry.js';
 import { FIXED_DT, MAX_SUBSTEPS } from './config.js';
 import { Input } from './input.js';
 import { Rng } from './rng.js';
+import { Perf, PHASE_FIXED, PHASE_UPDATE, PHASE_LATE, PHASE_RENDER } from './perf.js';
 
 /**
  * The Engine owns the frame loop and the shared context handed to every
@@ -15,6 +16,11 @@ import { Rng } from './rng.js';
  *   4. lateUpdate(dt)             — anything that must observe final transforms
  *   5. render subsystem draws
  *   6. input.endFrame()
+ *
+ * Each of steps 2-5 is timed into `this.perf` (src/core/perf.js), which is what
+ * feeds the on-screen counter and every benchmark. The instrumentation is pure
+ * measurement — it reads clocks and never writes simulation state — so it stays
+ * on in production and cannot move a pixel.
  */
 export class Engine {
   constructor({ canvas, config }) {
@@ -44,8 +50,12 @@ export class Engine {
       frame: 0,
     };
 
+    /** Frame instrumentation. Always present; see src/core/perf.js. */
+    this.perf = new Perf({ deterministic: !!config.deterministic });
+
     this.ctx = {
       engine: this,
+      perf: this.perf,
       scene: this.scene,
       camera: this.camera,
       viewScene: this.viewScene,
@@ -128,6 +138,12 @@ export class Engine {
 
     this.input.beginFrame();
 
+    // Phase cursor starts here, after input is latched: the gap between the rAF
+    // timestamp and this line is browser scheduling latency, not engine cost,
+    // and charging it to physics would misattribute every frame.
+    const perf = this.perf;
+    perf.beginFrame(rawDt * 1000);
+
     this._accum += t.dt;
     let steps = 0;
     const fixedSystems = this.registry.with('fixedUpdate');
@@ -138,12 +154,25 @@ export class Engine {
     }
     if (steps === MAX_SUBSTEPS) this._accum = 0; // shed backlog rather than spiral
     t.alpha = this._accum / FIXED_DT;
+    perf.mark(PHASE_FIXED);
 
     for (const sys of this.registry.with('update')) sys.update(t.dt, this.ctx);
+    perf.mark(PHASE_UPDATE);
+
     for (const sys of this.registry.with('lateUpdate')) sys.lateUpdate(t.dt, this.ctx);
+    perf.mark(PHASE_LATE);
 
     const renderSystem = this.registry.peek('render');
-    if (typeof renderSystem?.render === 'function') renderSystem.render(this.ctx);
+    if (typeof renderSystem?.render === 'function') {
+      // The GPU timer query brackets the draw only, so `gpuMs` is comparable to
+      // `render` (CPU submit time) rather than to the whole frame.
+      perf.beginGpu(renderSystem);
+      renderSystem.render(this.ctx);
+      perf.endGpu();
+    }
+    perf.mark(PHASE_RENDER);
+
+    perf.endFrame(renderSystem, steps);
 
     this.input.endFrame();
   }
@@ -153,6 +182,7 @@ export class Engine {
     removeEventListener('resize', this._onResize);
     this.input.detach();
     for (const sys of [...this.registry.ordered].reverse()) sys.dispose?.();
+    this.perf.dispose();
     this.events.clear();
   }
 }

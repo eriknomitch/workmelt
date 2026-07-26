@@ -677,6 +677,74 @@ const CSS = `
   letter-spacing:.2em; color: var(--ink-3);
 }
 
+/* ============================================================ perf readout */
+/* Debug overlay, not game chrome: monospace so digits do not reflow, plain dark
+   plate rather than the HUD's outlined type, and it deliberately sits outside
+   the opacity fade so it stays readable with the pause menu open. */
+.ow-perf {
+  position:absolute; pointer-events:none;
+  width: calc(180px * var(--k));
+  padding: calc(5px * var(--k)) calc(7px * var(--k)) calc(6px * var(--k));
+  background: rgba(6,10,14,.62);
+  border:1px solid rgba(255,255,255,.10);
+  border-radius: calc(3px * var(--k));
+  font-family: ${FONT_MONO};
+  font-size: calc(9.5px * var(--k));
+  line-height:1.42;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 1px rgba(0,0,0,.9);
+}
+/* Default slot: under the minimap (top var(--pad) + 178px), the only corner no
+   other HUD element claims. */
+.ow-perf-tl { left:var(--pad); top: calc(var(--pad) + 192px * var(--k)); }
+.ow-perf-tr { right:var(--pad); top: var(--pad); }
+.ow-perf-bl { left:var(--pad); bottom: var(--pad); }
+.ow-perf-br { right:var(--pad); bottom: var(--pad); }
+
+.ow-perf-head { display:flex; align-items:baseline; gap: calc(3px * var(--k)); }
+.ow-perf-fps {
+  font-family: var(--fd);
+  font-size: calc(26px * var(--k)); font-weight:700; line-height:.92;
+  letter-spacing:.01em; color: var(--ink);
+}
+.ow-perf-unit { font-size: calc(8.5px * var(--k)); letter-spacing:.18em; color: var(--ink-3); }
+.ow-perf-bound {
+  margin-left:auto; align-self:center;
+  font-size: calc(8px * var(--k)); letter-spacing:.14em;
+  padding: 0 calc(3px * var(--k));
+  border:1px solid var(--hair); border-radius: calc(2px * var(--k));
+  color: var(--ink-2);
+}
+.ow-perf-good .ow-perf-fps { color: var(--ok); }
+.ow-perf-warn .ow-perf-fps { color: var(--amber); }
+.ow-perf-bad  .ow-perf-fps { color: var(--red); }
+
+.ow-perf-sub { font-size: calc(8.5px * var(--k)); color: var(--ink-3); margin-top: calc(1px * var(--k)); }
+.ow-perf-graph {
+  display:block; margin: calc(4px * var(--k)) 0 calc(3px * var(--k));
+  background: rgba(0,0,0,.30);
+  border-radius: calc(2px * var(--k));
+}
+.ow-perf-body { margin-top: calc(1px * var(--k)); }
+.ow-perf-row { display:flex; align-items:center; gap: calc(3px * var(--k)); }
+.ow-perf-label { width: calc(30px * var(--k)); color: var(--ink-3); letter-spacing:.08em; flex:none; }
+.ow-perf-value { width: calc(42px * var(--k)); text-align:right; color: var(--ink); flex:none; }
+.ow-perf-track {
+  flex:1; height: calc(3px * var(--k));
+  background: rgba(255,255,255,.09); border-radius: calc(2px * var(--k)); overflow:hidden;
+}
+.ow-perf-bar { display:block; height:100%; width:0%; background: var(--cyan); }
+.ow-perf-line {
+  font-size: calc(8.5px * var(--k)); color: var(--ink-3);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.ow-perf-alert { color: var(--amber); }
+.ow-perf-hint {
+  margin-top: calc(2px * var(--k));
+  font-size: calc(7.5px * var(--k)); letter-spacing:.16em; color: rgba(255,255,255,.20);
+}
+
 /* ============================================================== fadeouts */
 .ow-hidden { display:none !important; }
 `;

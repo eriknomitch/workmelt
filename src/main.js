@@ -113,6 +113,21 @@ if (lockstep) {
 
 window.__ENGINE__ = engine;
 
+// Frame instrumentation, exposed for tooling (tools/fpslog.mjs) and for reading
+// straight out of the devtools console:
+//
+//   __PERF__.stats()                      percentiles, phase breakdown, bound
+//   __PERF__.log()                        one-line summary + the object
+//   __PERF__.startRecording({frames:600}) begin a benchmark capture
+//   __PERF__.stopRecording()              -> { label, frames, stats, rows }
+//   __PERF__.csv()                        last recording as CSV
+//
+// `?perflog=N` prints a summary every N frames, which is how a headless run
+// leaves a performance trail in the console log without any driver code.
+window.__PERF__ = engine.perf;
+const perflog = Number(params.get('perflog'));
+if (Number.isFinite(perflog) && perflog > 0) engine.perf.autoLog(perflog);
+
 if (import.meta.hot) {
   import.meta.hot.dispose(() => engine.dispose());
 }
