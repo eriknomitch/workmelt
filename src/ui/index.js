@@ -13,6 +13,7 @@ import { WorldMarkers } from './markers.js';
 import { Prompt, Banner } from './prompts.js';
 import { PauseMenu } from './menu.js';
 import { CombatDemo } from './demo.js';
+import { PerfHud, PERF_MODES } from './perfhud.js';
 
 const MAX_BLIPS = 48;
 
@@ -43,6 +44,7 @@ const MAX_BLIPS = 48;
  *   ui.setHudVisible(bool)              hide everything (cinematics)
  *   ui.pause() / ui.resume() / ui.menu.toggle()
  *   ui.debugState('combat'|'menu'|'clean')
+ *   ui.setPerfMode('full'|'mini'|'off') performance readout (F3 cycles it)
  *
  * ---------------------------------------------------------------------------
  * WHAT THIS SUBSYSTEM READS FROM OTHERS (all optional, all duck-typed)
@@ -90,6 +92,15 @@ export class UiSystem {
     this.ammo = new AmmoPanel(this.chromeLayer);
     this.prompt = new Prompt(this.chromeLayer);
     this.banner = new Banner(this.chromeLayer);
+
+    // Performance readout gets its own layer above the game chrome and outside
+    // the HUD opacity fade — see the rationale in perfhud.js. Suppressed
+    // entirely in capture mode: the pixel gate (tools/imagediff.mjs) compares
+    // frames byte for byte, and a live fps number would change every one of
+    // them. `config.deterministic` is the capture signal (src/main.js).
+    this.perfLayer = el('div', 'ow-layer', this.root);
+    this.perf = ctx.config.deterministic ? null : new PerfHud(this.perfLayer, this._perfOpts());
+
     this.menu = new PauseMenu(this.root, ctx);
 
     this.health.onBeat = (i) => this.sfx('heartbeat', 0.35 + i * 0.5);
@@ -246,6 +257,26 @@ export class UiSystem {
 
   /* ------------------------------------------------------------- helpers -- */
 
+  /**
+   * Performance readout configuration from the URL, so a benchmark run can pin
+   * it without a code change:
+   *   ?fps=off|mini|full   display mode (default full)
+   *   ?fpspos=tl|tr|bl|br  corner (default tl, below the minimap)
+   *   ?fpstarget=120       fps the colour ramp treats as "good" (default 60)
+   */
+  _perfOpts() {
+    const p = new URLSearchParams(location.search);
+    const raw = p.get('fps');
+    const mode = raw === '0' ? 'off' : raw === '1' ? 'full' : PERF_MODES.includes(raw) ? raw : 'full';
+    const pos = p.get('fpspos');
+    const target = Number(p.get('fpstarget'));
+    return {
+      mode,
+      corner: ['tl', 'tr', 'bl', 'br'].includes(pos) ? pos : 'tl',
+      target: Number.isFinite(target) && target > 0 ? target : 60,
+    };
+  }
+
   _weaponState() {
     const w = this.ctx.peek('weapons');
     if (!w) return null;
@@ -368,6 +399,11 @@ export class UiSystem {
     this.menu.close();
   }
 
+  /** 'full' | 'mini' | 'off'. Returns the mode actually applied. */
+  setPerfMode(mode) {
+    return this.perf ? this.perf.setMode(mode) : 'off';
+  }
+
   /* --------------------------------------------------------------- debug -- */
 
   /**
@@ -404,6 +440,14 @@ export class UiSystem {
     this._lastRaw = t.raw;
     const s = this.state;
     s.time = t.elapsed;
+
+    // ---- performance readout ---------------------------------------------
+    // Driven from rawDt, not dt, so the numbers keep refreshing while the game
+    // is paused (time.scale 0) — which is when you most want to read them.
+    if (this.perf) {
+      if (ctx.input.enabled && ctx.input.pressed('F3')) this.perf.cycle();
+      this.perf.update(rawDt, ctx.perf);
+    }
 
     // ---- pause -----------------------------------------------------------
     if (ctx.input.enabled && !ctx.input.frozen) {
@@ -589,6 +633,7 @@ export class UiSystem {
     this.crosshair.setScale(this.k);
     this.compass.setScale(this.k);
     this.minimap.resize(this.k);
+    this.perf?.resize(this.k);
   }
 
   dispose() {
@@ -606,6 +651,7 @@ export class UiSystem {
     this.markers.dispose();
     this.prompt.dispose();
     this.banner.dispose();
+    this.perf?.dispose();
     this.menu.dispose();
     this.root.remove();
     removeStyles();
