@@ -66,6 +66,7 @@ export class MySystem {
 | `ai` | `src/ai/` | enemy characters, navigation, perception, cover selection, combat behaviour |
 | `ui` | `src/ui/` | HUD, crosshair, hitmarkers, damage indicators, ammo, killfeed, menus |
 | `audio` | `src/audio/` | synthesized weapon/foley audio, spatialisation, reverb, occlusion, mix |
+| `quality` | `src/core/quality.js` | per-browser graphics calibration, FPS targeting, dynamic render scale, persisted graphics mode |
 
 Shared, owned by the lead (do not edit): `src/core/`, `src/main.js`,
 `src/dev/`, `tools/`, `vite.config.js`.
@@ -112,6 +113,7 @@ r.requestEnvMap()     // PMREM env map currently in use
 r.screenSize          // { width, height } of the internal render target
 r.depthTexture        // linear depth, for soft particles / SSR
 r.velocityTexture     // motion vectors, for TAA / motion blur
+r.setRenderScale(n)   // resize internal targets at a clamped 0.5..1.0 scale
 ```
 
 Anything drawn into `viewScene` is composited after the world with a cleared

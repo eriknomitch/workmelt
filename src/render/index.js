@@ -71,6 +71,7 @@ const REF_DAYLIGHT = 4.6;
  *   r.renderer                THREE.WebGLRenderer (do not change state mid-frame)
  *   r.screenSize              { width, height } of the internal HDR target
  *   r.displaySize             { width, height } of the canvas backbuffer
+ *   r.setRenderScale(scale)   resize internal targets, clamped to 0.5..1.0
  *   r.depthTexture            R32F linear view depth in METRES (positive)
  *   r.velocityTexture         RG16F screen-space velocity as a UV delta
  *   r.normalTexture           RGBA16F oct-encoded VIEW normal (xy), coverage (z:
@@ -130,6 +131,7 @@ export class RenderSystem {
     const cfg = ctx.config;
     const q = cfg.q;
     this.q = q;
+    this._renderScale = Math.min(1, Math.max(0.5, q.renderScale ?? 1));
     this.qLevel = QUALITY_LEVEL[cfg.quality] ?? 3;
     this.rng = ctx.rng.fork();
     this.frame = 0;
@@ -865,6 +867,20 @@ export class RenderSystem {
   //  sizing
   // ==========================================================================
 
+  setRenderScale(scale) {
+    const next = Math.min(1, Math.max(0.5, Number(scale) || 1));
+    if (Math.abs(next - this._renderScale) < 0.005) return this._renderScale;
+    this._renderScale = next;
+    this.q.renderScale = next;
+    const canvas = this.ctx.canvas;
+    this.resize(canvas.clientWidth || innerWidth, canvas.clientHeight || innerHeight, this.ctx);
+    return this._renderScale;
+  }
+
+  get renderScale() {
+    return this._renderScale;
+  }
+
   resize(w, h, ctx) {
     const pr = Math.min(globalThis.devicePixelRatio || 1, 1.5);
     this.renderer.setPixelRatio(pr);
@@ -872,8 +888,8 @@ export class RenderSystem {
 
     const dw = Math.max(1, Math.floor(w * pr));
     const dh = Math.max(1, Math.floor(h * pr));
-    const rw = Math.max(1, Math.floor(dw * this.q.renderScale));
-    const rh = Math.max(1, Math.floor(dh * this.q.renderScale));
+    const rw = Math.max(1, Math.floor(dw * this._renderScale));
+    const rh = Math.max(1, Math.floor(dh * this._renderScale));
 
     this.displaySize.width = dw;
     this.displaySize.height = dh;

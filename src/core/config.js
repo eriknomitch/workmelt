@@ -83,6 +83,10 @@ export const QUALITY_PRESETS = {
 
 export const DEFAULTS = {
   quality: 'ultra',
+  graphicsMode: 'auto',
+  targetFps: 'display',
+  displayRefreshHz: 120,
+  adaptiveQuality: true,
   fov: 80, // horizontal-ish vertical FOV, CoD default feel
   adsFovScale: 0.72,
   sensitivity: 0.0022,

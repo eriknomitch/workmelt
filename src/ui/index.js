@@ -64,7 +64,7 @@ const MAX_BLIPS = 48;
  */
 export class UiSystem {
   static id = 'ui';
-  static deps = ['render'];
+  static deps = ['render', 'quality'];
 
   async init(ctx) {
     this.ctx = ctx;
@@ -459,6 +459,7 @@ export class UiSystem {
         this.menu.show();
       }
     }
+    if (this.menu.open) this.menu.setQualityStatus(ctx.peek('quality')?.getStatus());
     this.menu.update(rawDt);
 
     // ---- external state --------------------------------------------------

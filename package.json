@@ -9,6 +9,7 @@
     "start": "node server/index.mjs",
     "serve": "npm run build && node server/index.mjs",
     "preview": "vite preview --port 4173",
+    "test:quality": "node src/core/selftest.mjs",
     "cf:dev": "wrangler dev",
     "cf:deploy": "npm run build && wrangler deploy",
     "shot": "node tools/capture.mjs"

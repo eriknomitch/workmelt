@@ -1,5 +1,14 @@
 import { Engine } from './core/engine.js';
 import { createConfig } from './core/config.js';
+import {
+  AdaptiveQualitySystem,
+  detectDeviceSignature,
+  estimateRefreshRate,
+  loadGraphicsSettings,
+  prepareAutoSettings,
+  resolveGraphicsBoot,
+  saveGraphicsSettings,
+} from './core/quality.js';
 
 import { RenderSystem } from './render/index.js';
 import { MaterialSystem } from './materials/index.js';
@@ -25,10 +34,35 @@ const capture = params.get('capture') === '1';
 // free-run. See the long comment in src/dev/shots.js.
 const lockstep = capture && params.get('lockstep') === '1';
 
+const explicitQuality = params.get('q');
+let graphics = loadGraphicsSettings();
+const initialBoot = resolveGraphicsBoot({ capture, explicitQuality, settings: graphics });
+if (initialBoot.enabled && graphics.mode === 'auto') {
+  const signature = detectDeviceSignature();
+  const refreshHz =
+    graphics.targetFps === 'display'
+      ? document.hidden
+        ? graphics.refreshHz ?? 120
+        : await estimateRefreshRate()
+      : graphics.refreshHz;
+  graphics = saveGraphicsSettings(prepareAutoSettings(graphics, { signature, refreshHz }));
+}
+
+const { enabled: adaptiveEnabled, quality: bootQuality } = resolveGraphicsBoot({
+  capture,
+  explicitQuality,
+  settings: graphics,
+});
 const config = createConfig({
-  quality: params.get('q') ?? 'ultra',
+  quality: bootQuality,
+  graphicsMode: graphics.mode,
+  targetFps: graphics.targetFps,
+  displayRefreshHz: graphics.refreshHz ?? 120,
+  adaptiveQuality: adaptiveEnabled,
   deterministic: capture,
 });
+if (adaptiveEnabled && graphics.mode === 'auto' && graphics.calibrated)
+  config.q.renderScale = graphics.renderScale;
 
 const canvas = document.getElementById('game');
 
@@ -37,6 +71,7 @@ const engine = new Engine({ canvas, config });
 // Registration order is irrelevant — Registry topo-sorts on static deps.
 engine
   .add(RenderSystem)
+  .add(AdaptiveQualitySystem, { settings: graphics, enabled: adaptiveEnabled })
   .add(MaterialSystem)
   .add(SkySystem)
   .add(WorldSystem)

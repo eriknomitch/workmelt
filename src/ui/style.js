@@ -643,6 +643,18 @@ const CSS = `
 .ow-seg button:last-child { border-right:1px solid var(--hair); }
 .ow-seg button:hover { color: var(--ink); background: rgba(255,255,255,.07); }
 .ow-seg button.on { color:#0b0d0f; background: var(--ink); }
+.ow-select {
+  appearance:none; min-width: calc(150px * var(--k));
+  border:1px solid var(--hair); background:rgba(8,11,14,.82);
+  color:var(--ink); font-family:var(--fm); font-size:calc(10px * var(--k));
+  letter-spacing:.08em; text-transform:uppercase;
+  padding:calc(var(--u) * 1.5) calc(var(--u) * 2.2); cursor:pointer;
+}
+.ow-quality-status {
+  min-width:calc(235px * var(--k)) !important;
+  font-size:calc(9px * var(--k)) !important;
+  white-space:nowrap;
+}
 .ow-slider { position:relative; width: calc(190px * var(--k)); height: calc(18px * var(--k)); }
 .ow-slider .track {
   position:absolute; left:0; right:0; top:50%; height: calc(2px * var(--k));

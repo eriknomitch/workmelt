@@ -17,6 +17,12 @@ npm run dev          # http://127.0.0.1:5173
 Click the canvas to lock the cursor. WASD move, mouse aim, LMB fire, RMB ADS,
 R reload, Shift sprint, Ctrl crouch, Space jump, Q/E lean, Esc release.
 
+Graphics default to **Auto** per browser profile. On first launch the game
+estimates the active display cadence, calibrates a Low/Medium/High/Ultra
+pipeline, then adjusts internal resolution between 50–100% to pursue stable
+p95 frame pacing. Open the pause menu to choose a fixed preset or a target from
+30–240 FPS; settings are stored locally and never synchronized in multiplayer.
+
 ## Multiplayer
 
 It's also a room-based free-for-all you invite friends to with a link.

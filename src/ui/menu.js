@@ -1,6 +1,7 @@
 import { el, setText, setStyle, clamp, damp, ease } from './util.js';
 
-const PRESETS = ['low', 'medium', 'high', 'ultra'];
+const GRAPHICS_MODES = ['auto', 'low', 'medium', 'high', 'ultra'];
+const FPS_TARGETS = ['display', '30', '60', '90', '120', '144', '165', '240'];
 
 /**
  * Pause / settings menu.
@@ -26,16 +27,30 @@ export class PauseMenu {
 
     this.rows = el('div', null, inner);
 
-    // ---- quality preset --------------------------------------------------
-    this.qBtns = [];
-    const qRow = this._row('Graphics Preset');
+    // ---- adaptive graphics ----------------------------------------------
+    this.graphicsBtns = [];
+    const qRow = this._row('Graphics');
     const seg = el('div', 'ow-seg', qRow);
-    for (const p of PRESETS) {
+    for (const p of GRAPHICS_MODES) {
       const b = el('button', null, seg, p);
       b.type = 'button';
-      b.addEventListener('click', () => this.setQuality(p));
-      this.qBtns.push(b);
+      b.addEventListener('click', () => this.setGraphicsMode(p));
+      this.graphicsBtns.push(b);
     }
+
+    const targetRow = this._row('FPS Target');
+    this.target = el('select', 'ow-select', targetRow);
+    for (const value of FPS_TARGETS) {
+      const option = el('option', null, this.target, value === 'display' ? 'Display' : `${value} FPS`);
+      option.value = value;
+      if (value === 'display') this.displayTargetOption = option;
+    }
+    this.target.addEventListener('change', () =>
+      this.ctx.peek('quality')?.setTarget(this.target.value)
+    );
+
+    const statusRow = this._row('Auto Status');
+    this.qualityStatus = el('div', 'val ow-quality-status', statusRow, '--');
 
     // ---- sensitivity -----------------------------------------------------
     this.sens = this._slider('Mouse Sensitivity', 0.2, 3.0, 0.01, (v) => {
@@ -85,7 +100,7 @@ export class PauseMenu {
       this.sens.set(1);
       this.fov.set(80);
       this.ctx.config.invertY = false;
-      this.setQuality('ultra');
+      this.ctx.peek('quality')?.resetDefaults();
     });
     el('div', 'hint', inner, 'ESC RESUME · WASD MOVE · SHIFT SPRINT · R RELOAD · F USE');
 
@@ -132,23 +147,59 @@ export class PauseMenu {
     return api;
   }
 
-  setQuality(name) {
-    try {
-      this.ctx.config.setQuality(name);
-      this.ctx.events.emit('ui:quality', { quality: name });
-    } catch (err) {
-      console.warn('[ui] quality switch failed', err);
-    }
+  setGraphicsMode(mode) {
+    this.ctx.peek('quality')?.setMode(mode);
     this.syncFromConfig();
   }
 
   syncFromConfig() {
     const cfg = this.ctx.config;
-    for (let i = 0; i < this.qBtns.length; i++)
-      this.qBtns[i].classList.toggle('on', PRESETS[i] === cfg.quality);
+    const status = this.ctx.peek('quality')?.getStatus();
+    const mode = status?.mode ?? cfg.quality;
+    for (let i = 0; i < this.graphicsBtns.length; i++)
+      this.graphicsBtns[i].classList.toggle('on', GRAPHICS_MODES[i] === mode);
+    this.target.value = String(status?.target ?? cfg.targetFps ?? 'display');
+    this.displayTargetOption.textContent = `Display (${cfg.displayRefreshHz ?? 120} Hz est.)`;
+    this.setQualityStatus(status);
     for (const [b, v] of this.invBtns) b.classList.toggle('on', !!cfg.invertY === v);
     this.sens?.set((cfg.sensitivity ?? 0.0022) / 0.0022);
     this.fov?.set(cfg.fov ?? 80);
+  }
+
+  setQualityStatus(status) {
+    if (!status) {
+      setText(this.qualityStatus, '--');
+      return;
+    }
+    const rawState = status.state ?? 'manual';
+    const scale = Math.round((status.renderScale ?? 1) * 100);
+    const achieved = Math.round(status.achievedFps ?? 0);
+    const tier = status.tier ?? status.mode;
+    if (
+      this._qualityState === rawState &&
+      this._qualityMode === status.mode &&
+      this._qualityTier === tier &&
+      this._qualityScale === scale &&
+      this._qualityAchieved === achieved &&
+      this._qualityTarget === status.targetFps
+    )
+      return;
+    this._qualityState = rawState;
+    this._qualityMode = status.mode;
+    this._qualityTier = tier;
+    this._qualityScale = scale;
+    this._qualityAchieved = achieved;
+    this._qualityTarget = status.targetFps;
+    const state = String(rawState).toUpperCase();
+    if (status.mode !== 'auto') {
+      setText(this.qualityStatus, `${String(tier).toUpperCase()} · ${state}`);
+      return;
+    }
+    const fps = achieved ? `${achieved}/${status.targetFps}` : `--/${status.targetFps}`;
+    setText(
+      this.qualityStatus,
+      `${state} · ${String(tier ?? 'ultra').toUpperCase()} · ${scale}% · ${fps} FPS`
+    );
   }
 
   toggle() {
