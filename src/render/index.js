@@ -17,7 +17,7 @@ import { createComposite, createFxaa, createDebug, createViewComposite } from '.
 import { buildFallbackEnvironment } from './env.js';
 import { RenderProbeScene } from './probe.js';
 
-const QUALITY_LEVEL = { low: 0, medium: 1, high: 2, ultra: 3 };
+const QUALITY_LEVEL = { performance: 0, low: 0, medium: 1, high: 2, ultra: 3 };
 
 /**
  * Registration range at or below which a punctual light counts as a room/street
@@ -71,7 +71,8 @@ const REF_DAYLIGHT = 4.6;
  *   r.renderer                THREE.WebGLRenderer (do not change state mid-frame)
  *   r.screenSize              { width, height } of the internal HDR target
  *   r.displaySize             { width, height } of the canvas backbuffer
- *   r.setRenderScale(scale)   resize internal targets, clamped to 0.5..1.0
+ *   r.setRenderScale(scale)   resize internal targets, clamped to the active
+ *                             preset's minimum (0.2 for Auto Performance)
  *   r.depthTexture            R32F linear view depth in METRES (positive)
  *   r.velocityTexture         RG16F screen-space velocity as a UV delta
  *   r.normalTexture           RGBA16F oct-encoded VIEW normal (xy), coverage (z:
@@ -131,7 +132,12 @@ export class RenderSystem {
     const cfg = ctx.config;
     const q = cfg.q;
     this.q = q;
-    this._renderScale = Math.min(1, Math.max(0.5, q.renderScale ?? 1));
+    this._minRenderScale = q.minRenderScale ?? 0.5;
+    this._maxRenderScale = q.maxRenderScale ?? 1;
+    this._renderScale = Math.min(
+      this._maxRenderScale,
+      Math.max(this._minRenderScale, q.renderScale ?? 1)
+    );
     this.qLevel = QUALITY_LEVEL[cfg.quality] ?? 3;
     this.rng = ctx.rng.fork();
     this.frame = 0;
@@ -191,9 +197,10 @@ export class RenderSystem {
       mapSize: q.shadowMapSize,
       maxDistance: q.shadowDistance,
     });
+    this.csm.enabled = q.shadows !== false;
     this.patcher = new MaterialPatcher(this.csm.uniforms, {
       cascades: this.csm.cascades,
-      quality: this.qLevel,
+      quality: q.shadowQuality ?? this.qLevel,
     });
 
     this.gbuffer = new GBuffer();
@@ -455,7 +462,7 @@ export class RenderSystem {
       // key it is ~1.5 stops down, which is about what a sand street returns.
       viewBounceRatio: 0.34,
       viewKeyGamma: 0.65,
-      shadowStrength: 1.0,
+      shadowStrength: q.shadows === false ? 0 : 1.0,
       sunSoftness: 0.024,
     };
     this._applySettings();
@@ -868,7 +875,10 @@ export class RenderSystem {
   // ==========================================================================
 
   setRenderScale(scale) {
-    const next = Math.min(1, Math.max(0.5, Number(scale) || 1));
+    const next = Math.min(
+      this._maxRenderScale,
+      Math.max(this._minRenderScale, Number(scale) || 1)
+    );
     if (Math.abs(next - this._renderScale) < 0.005) return this._renderScale;
     this._renderScale = next;
     this.q.renderScale = next;

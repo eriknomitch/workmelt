@@ -27,6 +27,7 @@ const W = Number(args.w ?? 1512);
 const H = Number(args.h ?? 982);
 const DPR = Number(args.dpr ?? 2);
 const FRAMES = Number(args.frames ?? 900);
+const TARGET_FPS = Number(args.target ?? 0);
 
 const browser = await chromium.launch({
   headless: true,
@@ -126,7 +127,8 @@ const hitches = warm
   });
 
 const first = warm[0], lastS = warm[warm.length - 1];
-console.log(JSON.stringify({
+const enginePerf = await page.evaluate(() => window.__PERF__?.stats?.(240) ?? null);
+const report = {
   bootMs,
   bootMarks,
   internal,
@@ -140,7 +142,13 @@ console.log(JSON.stringify({
   resources: { geosStart: first.geos, geosEnd: lastS.geos, texStart: first.texs, texEnd: lastS.texs },
   heapMb: { start: first.heap, end: lastS.heap, growth: lastS.heap - first.heap },
   drawCalls: { min: Math.min(...warm.map(s=>s.calls)), max: Math.max(...warm.map(s=>s.calls)) },
+  enginePerf,
   errors: errs.slice(0, 6),
-}, null, 2));
+};
+console.log(JSON.stringify(report, null, 2));
 
 await browser.close();
+if (TARGET_FPS > 0 && report.fps.p95 < TARGET_FPS) {
+  console.error(`FAIL: p95 ${report.fps.p95} FPS is below ${TARGET_FPS} FPS`);
+  process.exitCode = 1;
+}

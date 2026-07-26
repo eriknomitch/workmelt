@@ -1,11 +1,14 @@
+import { QUALITY_PRESETS } from './config.js';
+
 const quantizeScale = (value) => Math.round(value * 20) / 20;
 const REFRESH_BUCKETS = [30, 60, 75, 90, 100, 120, 144, 165, 240, 360];
+const LOWER_TIER = { ultra: 'high', high: 'medium', medium: 'low', low: 'performance' };
 export const GRAPHICS_STORAGE_KEY = 'cod_graphics_v1';
 export const GRAPHICS_MODES = ['auto', 'low', 'medium', 'high', 'ultra'];
 export const FPS_TARGETS = [30, 60, 90, 120, 144, 165, 240];
 
 const DEFAULT_GRAPHICS = Object.freeze({
-  version: 1,
+  version: 2,
   mode: 'auto',
   targetFps: 'display',
   tier: null,
@@ -30,7 +33,8 @@ export function loadGraphicsSettings(storage = browserStorage()) {
   } catch {
     return { ...DEFAULT_GRAPHICS };
   }
-  if (!raw || raw.version !== 1) return { ...DEFAULT_GRAPHICS };
+  if (!raw || (raw.version !== 1 && raw.version !== 2)) return { ...DEFAULT_GRAPHICS };
+  const migrated = raw.version === 1;
   const mode = GRAPHICS_MODES.includes(raw.mode) ? raw.mode : 'auto';
   const targetFps =
     raw.targetFps === 'display' || FPS_TARGETS.includes(Number(raw.targetFps))
@@ -38,28 +42,38 @@ export function loadGraphicsSettings(storage = browserStorage()) {
         ? 'display'
         : Number(raw.targetFps)
       : 'display';
-  const tier = ['low', 'medium', 'high', 'ultra'].includes(raw.tier) ? raw.tier : null;
-  const renderScale = Number.isFinite(raw.renderScale)
-    ? quantizeScale(Math.min(1, Math.max(0.5, raw.renderScale)))
+  let tier = ['performance', 'low', 'medium', 'high', 'ultra'].includes(raw.tier)
+    ? raw.tier
+    : null;
+  let renderScale = Number.isFinite(raw.renderScale)
+    ? quantizeScale(Math.min(1, Math.max(0.2, raw.renderScale)))
     : 1;
   const refreshHz =
     Number.isFinite(raw.refreshHz) && raw.refreshHz >= 30 && raw.refreshHz <= 360
       ? Math.round(raw.refreshHz)
       : null;
+  let calibrated = raw.calibrated === undefined ? !!tier : !!raw.calibrated;
+  let signature = typeof raw.signature === 'string' ? raw.signature : null;
+  if (migrated) {
+    tier = mode === 'auto' ? null : mode;
+    renderScale = mode === 'auto' ? 1 : QUALITY_PRESETS[mode]?.renderScale ?? 1;
+    calibrated = mode !== 'auto';
+    signature = null;
+  }
   return {
-    version: 1,
+    version: 2,
     mode,
     targetFps,
     tier,
     renderScale,
     refreshHz,
-    signature: typeof raw.signature === 'string' ? raw.signature : null,
-    calibrated: raw.calibrated === undefined ? !!tier : !!raw.calibrated,
+    signature,
+    calibrated,
   };
 }
 
 export function saveGraphicsSettings(settings, storage = browserStorage()) {
-  const value = { ...DEFAULT_GRAPHICS, ...settings, version: 1 };
+  const value = { ...DEFAULT_GRAPHICS, ...settings, version: 2 };
   try {
     storage?.setItem?.(GRAPHICS_STORAGE_KEY, JSON.stringify(value));
   } catch {
@@ -171,7 +185,8 @@ export function chooseCalibrationTier(p95Fps, targetFps) {
   if (ratio >= 1) return 'ultra';
   if (ratio >= 0.7) return 'high';
   if (ratio >= 0.45) return 'medium';
-  return 'low';
+  if (ratio >= 0.35) return 'low';
+  return 'performance';
 }
 
 /**
@@ -352,6 +367,19 @@ export class AdaptiveQualitySystem {
     this._status.achievedFps = result.achievedFps;
     this._status.renderScale = result.renderScale;
     this._status.state = result.status;
+    if (result.status === 'limited') {
+      const tier = LOWER_TIER[this.settings.tier];
+      if (tier) {
+        const renderScale = QUALITY_PRESETS[tier]?.renderScale ?? result.renderScale;
+        this._persist({ tier, renderScale, calibrated: true });
+        this._status.tier = tier;
+        this._status.renderScale = renderScale;
+        this._status.state = 'reloading';
+        this._reloadPending = true;
+        this.location?.reload?.();
+        return;
+      }
+    }
     if (!result.changed) return;
 
     ctx.get('render').setRenderScale(result.renderScale);
@@ -370,7 +398,11 @@ export class AdaptiveQualitySystem {
     const tier = chooseCalibrationTier(stats.fps.p95, targetFps);
     this._status.achievedFps = stats.fps.p95;
     this._status.tier = tier;
-    this._persist({ tier, calibrated: true, renderScale: 1 });
+    this._persist({
+      tier,
+      calibrated: true,
+      renderScale: QUALITY_PRESETS[tier]?.renderScale ?? 1,
+    });
 
     if (tier !== ctx.config.quality && loadGraphicsSettings(this.storage).tier === tier) {
       this._status.state = 'reloading';
@@ -386,6 +418,8 @@ export class AdaptiveQualitySystem {
     this.policy = new AdaptiveQualityPolicy({
       targetFps,
       initialScale: this.settings.renderScale,
+      minScale: QUALITY_PRESETS[this.settings.tier]?.minRenderScale ?? 0.5,
+      maxScale: QUALITY_PRESETS[this.settings.tier]?.maxRenderScale ?? 1,
     });
     this._adaptiveStartFrame = this.ctx?.perf.count ?? 0;
     this._nextSampleMs = 0;

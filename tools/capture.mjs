@@ -32,6 +32,7 @@ const OUT = resolve(args.out ?? `shots/${SHOT}.png`);
 const TIMEOUT = Number(args.timeout ?? 90000);
 // Frames to render before capture: lets TAA converge, streaming settle, LOD pick.
 const SETTLE = Number(args.settle ?? 90);
+const EXTRA_QUERY = args.query ? `&${args.query}` : '';
 
 const portOpen = (port) =>
   new Promise((res) => {
@@ -87,10 +88,13 @@ page.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}\n${e.stack ?? ''
 
 let failed = null;
 try {
-  await page.goto(`http://127.0.0.1:${PORT}/?capture=1&shot=${encodeURIComponent(SHOT)}`, {
-    waitUntil: 'domcontentloaded',
-    timeout: TIMEOUT,
-  });
+  await page.goto(
+    `http://127.0.0.1:${PORT}/?capture=1&shot=${encodeURIComponent(SHOT)}${EXTRA_QUERY}`,
+    {
+      waitUntil: 'domcontentloaded',
+      timeout: TIMEOUT,
+    }
+  );
 
   // Engine sets window.__READY__ = true once assets are loaded and first frame drawn.
   await page.waitForFunction('window.__READY__ === true', null, { timeout: TIMEOUT });

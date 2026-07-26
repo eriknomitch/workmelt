@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import assert from 'node:assert/strict';
+import { QUALITY_PRESETS } from './config.js';
 import {
   AdaptiveQualityPolicy,
   AdaptiveQualitySystem,
@@ -108,16 +109,38 @@ check('selects a pipeline tier from p95 performance against the target', () => {
   assert.equal(chooseCalibrationTier(120, 120), 'ultra');
   assert.equal(chooseCalibrationTier(90, 120), 'high');
   assert.equal(chooseCalibrationTier(60, 120), 'medium');
-  assert.equal(chooseCalibrationTier(30, 120), 'low');
+  assert.equal(chooseCalibrationTier(48, 120), 'low');
+  assert.equal(chooseCalibrationTier(30, 120), 'performance');
+});
+
+check('performance tier exposes the aggressive Auto pipeline contract', () => {
+  assert.deepEqual(
+    {
+      renderScale: QUALITY_PRESETS.performance.renderScale,
+      maxRenderScale: QUALITY_PRESETS.performance.maxRenderScale,
+      shadows: QUALITY_PRESETS.performance.shadows,
+      shadowQuality: QUALITY_PRESETS.performance.shadowQuality,
+      prepass: QUALITY_PRESETS.performance.prepass,
+      post: QUALITY_PRESETS.performance.post,
+    },
+    {
+      renderScale: 0.3,
+      maxRenderScale: 0.3,
+      shadows: true,
+      shadowQuality: -1,
+      prepass: true,
+      post: true,
+    }
+  );
 });
 
 check('loads versioned per-browser settings and rejects corrupt values', () => {
   const storage = {
     getItem: () =>
-      JSON.stringify({ version: 1, mode: 'auto', targetFps: 144, tier: 'high', renderScale: 0.8 }),
+      JSON.stringify({ version: 2, mode: 'auto', targetFps: 144, tier: 'high', renderScale: 0.8 }),
   };
   assert.deepEqual(loadGraphicsSettings(storage), {
-    version: 1,
+    version: 2,
     mode: 'auto',
     targetFps: 144,
     tier: 'high',
@@ -127,11 +150,22 @@ check('loads versioned per-browser settings and rejects corrupt values', () => {
     calibrated: true,
   });
   assert.equal(loadGraphicsSettings({ getItem: () => '{bad' }).mode, 'auto');
+  assert.equal(
+    loadGraphicsSettings({ getItem: () => JSON.stringify({ version: 1, tier: 'low' }) }).tier,
+    null
+  );
+  const migrated = loadGraphicsSettings({
+    getItem: () => JSON.stringify({ version: 1, mode: 'high', targetFps: 90 }),
+  });
+  assert.equal(migrated.mode, 'high');
+  assert.equal(migrated.targetFps, 90);
+  assert.equal(migrated.tier, 'high');
+  assert.equal(migrated.calibrated, true);
 });
 
 check('invalidates calibration when the device or measured refresh changes', () => {
   const settings = {
-    version: 1,
+    version: 2,
     mode: 'auto',
     targetFps: 'display',
     tier: 'high',
@@ -180,8 +214,8 @@ await checkAsync('calibrates once, persists the tier, and reloads when the pipel
   const perf = {
     count: 0,
     stats: () => ({
-      fps: { p95: 60 },
-      frameMs: { p95: 1000 / 60 },
+      fps: { p95: 30 },
+      frameMs: { p95: 1000 / 30 },
       bound: 'gpu-or-vsync',
     }),
   };
@@ -204,7 +238,8 @@ await checkAsync('calibrates once, persists the tier, and reloads when the pipel
   perf.count = 60;
   system.lateUpdate(0, ctx);
 
-  assert.equal(loadGraphicsSettings(storage).tier, 'medium');
+  assert.equal(loadGraphicsSettings(storage).tier, 'performance');
+  assert.equal(loadGraphicsSettings(storage).renderScale, 0.3);
   assert.equal(reloads, 1);
   assert.equal(location.href, 'http://localhost:5173/?room=ABC123');
 });
@@ -292,6 +327,54 @@ await checkAsync('applies adaptive render scale through the renderer interface',
 
   assert.equal(appliedScale, 0.9);
   assert.equal(system.getStatus().renderScale, 0.9);
+});
+
+await checkAsync('demotes a limited Auto pipeline and reloads at the next tier', async () => {
+  const values = new Map();
+  const storage = {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, value),
+  };
+  let nowMs = 0;
+  let reloads = 0;
+  const perf = {
+    count: 240,
+    stats: () => ({
+      fps: { p95: 62.5 },
+      frameMs: { p95: 16 },
+      bound: 'gpu-or-vsync',
+    }),
+  };
+  const ctx = {
+    perf,
+    time: { scale: 1 },
+    config: { quality: 'low', q: { renderScale: 0.5 } },
+    get: () => ({ setRenderScale() {} }),
+  };
+  const system = new AdaptiveQualitySystem({
+    settings: {
+      mode: 'auto',
+      targetFps: 120,
+      tier: 'low',
+      renderScale: 0.5,
+      calibrated: true,
+    },
+    storage,
+    location: { reload: () => reloads++ },
+    now: () => nowMs,
+  });
+
+  await system.init(ctx);
+  for (nowMs = 0; nowMs <= 10000; nowMs += 2000) {
+    perf.count += 240;
+    system.lateUpdate(0, ctx);
+  }
+
+  const saved = loadGraphicsSettings(storage);
+  assert.equal(saved.tier, 'performance');
+  assert.equal(saved.renderScale, 0.3);
+  assert.equal(system.getStatus().state, 'reloading');
+  assert.equal(reloads, 1);
 });
 
 check('manual graphics selection persists and reloads exactly once', () => {

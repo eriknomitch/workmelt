@@ -113,7 +113,7 @@ r.requestEnvMap()     // PMREM env map currently in use
 r.screenSize          // { width, height } of the internal render target
 r.depthTexture        // linear depth, for soft particles / SSR
 r.velocityTexture     // motion vectors, for TAA / motion blur
-r.setRenderScale(n)   // resize internal targets at a clamped 0.5..1.0 scale
+r.setRenderScale(n)   // resize targets within the active preset's scale range
 ```
 
 Anything drawn into `viewScene` is composited after the world with a cleared
@@ -169,6 +169,12 @@ the post chain. Two traps:
 
 Every visual subsystem is reviewed by an adversarial critic against real CoD
 frames. Non-negotiables:
+
+The Auto-only `performance` tier is the cadence safety valve when Low cannot
+meet the user's FPS target. It may reduce resolution and shadow filtering, but
+must keep a valid depth/velocity prepass, registered gameplay-feedback passes,
+and at least one real sun-shadow sample. Manual Low–Ultra presets retain the
+full requirements below.
 
 - **No flat/untextured surfaces.** Every material needs albedo variation, a
   normal map, roughness variation, and a detail layer visible at 0.5 m.

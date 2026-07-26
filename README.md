@@ -18,10 +18,11 @@ Click the canvas to lock the cursor. WASD move, mouse aim, LMB fire, RMB ADS,
 R reload, Shift sprint, Ctrl crouch, Space jump, Q/E lean, Esc release.
 
 Graphics default to **Auto** per browser profile. On first launch the game
-estimates the active display cadence, calibrates a Low/Medium/High/Ultra
-pipeline, then adjusts internal resolution between 50–100% to pursue stable
-p95 frame pacing. Open the pause menu to choose a fixed preset or a target from
-30–240 FPS; settings are stored locally and never synchronized in multiplayer.
+estimates the active display cadence, calibrates a
+Performance/Low/Medium/High/Ultra pipeline, then adjusts internal resolution
+within that tier to pursue stable p95 frame pacing. Open the pause menu to
+choose a fixed preset or a target from 30–240 FPS; settings are stored locally
+and never synchronized in multiplayer.
 
 ## Multiplayer
 
@@ -119,7 +120,7 @@ The interesting part of this repo is arguably the harness, not the game.
 | `tools/shotset.mjs` | All 11 shots in one session — fast review set |
 | `tools/baseline.mjs` | **Reproducible** capture: each shot in an isolated page, fixed frame budget. Bit-identical across runs |
 | `tools/imagediff.mjs` | Per-pixel gate. Exits non-zero if any pixel moved |
-| `tools/profile.mjs` | Gameplay profiler at real device pixel ratio. Frame-time *distribution* and hitch attribution via per-frame WebGL program counts |
+| `tools/profile.mjs` | Isolated gameplay profiler at real device pixel ratio. Frame-time *distribution*, engine timings, and an optional `--target=FPS` exit-code gate |
 | `tools/playtest.mjs` | Scripted movement/fire smoke test |
 
 Two findings worth recording, because both invalidated earlier measurements:
@@ -136,6 +137,19 @@ runs differed on 10 of 11 shots. `baseline.mjs` isolates each shot in a fresh pa
 which is bit-identical and is what makes `imagediff.mjs` a usable gate.
 
 ## Performance
+
+The Auto-only Performance tier has an isolated acceptance gate that is
+independent of the user's foreground tab:
+
+```bash
+node tools/profile.mjs --port=5173 --dpr=2 --w=1280 --h=720 --frames=360 \
+  --target=120 --query=q=performance\&mp=0\&prewarm=0
+```
+
+On the development Apple-silicon machine this reports 161 FPS p95 and 156 FPS
+p99 while moving, firing, and running AI. The tier retains the depth prepass,
+registered gameplay feedback, and a single-tap sun shadow; it trades resolution
+and expensive shadow filtering for frame time.
 
 Measured on an Apple silicon laptop at 1512×982, DPR 2 (3.34 MP internal), `ultra` preset,
 3 runs, gameplay in motion with AI and firing active:

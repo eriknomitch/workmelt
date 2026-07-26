@@ -457,8 +457,8 @@ export class CascadedShadowMaps {
  * `owSunShadow()` entry point used inside the directional-light loop.
  */
 export function csmShaderChunk(cascades, quality) {
-  const blockerTaps = quality >= 3 ? 16 : quality >= 2 ? 12 : 8;
-  const pcfTaps = quality >= 3 ? 20 : quality >= 2 ? 14 : 8;
+  const blockerTaps = quality >= 3 ? 16 : quality >= 2 ? 12 : quality >= 0 ? 8 : 1;
+  const pcfTaps = quality >= 3 ? 20 : quality >= 2 ? 14 : quality >= 0 ? 8 : 1;
   const pcss = quality >= 2;
 
   // Sampler-array-free: one 2D array texture, so the layer index can be
