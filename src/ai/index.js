@@ -327,6 +327,17 @@ export class AiSystem {
     this._off = [];
     const on = (t, fn) => this._off.push(ctx.events.on(t, fn));
 
+    // The player changed map on the Match Start screen. The nav grid and the
+    // cover map are sampled straight out of the physics BVH, and that BVH now
+    // describes a different level — so throw both away and let update() rebuild
+    // them. `world` only allows the swap before a match is live, so there is no
+    // garrison standing on the old grid to relocate.
+    on('world:rebuilt', () => {
+      this.grid = null;
+      this.cover = null;
+      this._navPending = true;
+    });
+
     on('weapon:fire', (e) => {
       if (!e || !e.origin || e.weapon === 'ai_rifle') return; // ignore our own
       // A gunshot is the loudest thing in the level: everybody hears it, and

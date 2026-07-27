@@ -122,6 +122,13 @@ const REF_DAYLIGHT = 4.6;
  *   userData.owNoShadow  = true   do not cast into the cascades
  *   userData.owMatId     = 0..1   written to the gbuffer alpha for custom fx
  * Transparent materials are excluded from the prepass and shadows automatically.
+ *
+ * A mesh with a material ARRAY is drawn once per geometry group, including in
+ * the override passes where every group emits identical fragments. Those meshes
+ * are folded to a single full-range draw for the cascades and the prepass — see
+ * "group folding" below. It is automatic and needs nothing from the owner, but
+ * it is why a geometry whose groups do not tile its index range exactly, or one
+ * of whose slot materials is invisible, quietly costs more.
  */
 export class RenderSystem {
   static id = 'render';
@@ -323,6 +330,18 @@ export class RenderSystem {
     this._nHide = 0;
     this._noShadow = [];
     this._nNoShadow = 0;
+    // Multi-material meshes whose groups can be folded into one draw for the
+    // override passes. See _tilesIndexRange.
+    this._fold = [];
+    this._foldSaved = [];
+    this._nFold = 0;
+    this._foldCache = new WeakMap();
+    // Stands in for a folded mesh's material array while an override pass runs.
+    // Never shades anything: `renderObjects` swaps in scene.overrideMaterial
+    // before the draw. It only has to land in the opaque bucket (transparent
+    // false, no transmission) and allow the override (the Material default).
+    this._foldMaterial = new THREE.Material();
+    this._foldMaterial.name = 'ow-fold';
     this._dirLights = [];
     this._nDirLights = 0;
     this._foreignMeshes = 0;
@@ -679,6 +698,9 @@ export class RenderSystem {
         ctx.scene.background = null;
         this._hideList(this._hide, this._nHide);
         this._hideList(this._noShadow, this._nNoShadow);
+        // Fold for the same reason the real frame does — and so the programs
+        // this pass warms are reached through the same render-list shape.
+        this._foldGroups();
         this.csm.update(camera, this.sunDir, this.settings.sunSoftness);
         this.csm.render(renderer, ctx.scene, this._draw, this._nDraw);
         this._showList(this._noShadow, this._nNoShadow);
@@ -690,6 +712,7 @@ export class RenderSystem {
           this._currVP,
           true
         );
+        this._unfoldGroups();
         this._showList(this._hide, this._nHide);
         ctx.scene.background = bg;
         this.csm.restoreFit(fit);
@@ -986,6 +1009,7 @@ export class RenderSystem {
       } else {
         this._draw[this._nDraw++] = o;
         if (ud.owNoShadow === true) this._noShadow[this._nNoShadow++] = o;
+        if (Array.isArray(mat) && this._foldable(o, mat)) this._fold[this._nFold++] = o;
       }
     } else if (o.isDirectionalLight === true) {
       this._dirLights[this._nDirLights++] = o;
@@ -996,9 +1020,104 @@ export class RenderSystem {
     this._nDraw = 0;
     this._nHide = 0;
     this._nNoShadow = 0;
+    this._nFold = 0;
     this._nDirLights = 0;
     this._foreignMeshes = 0;
     scene.traverseVisible(this._visit);
+  }
+
+  // ==========================================================================
+  //  group folding — one draw per mesh in the override passes
+  // ==========================================================================
+  //
+  // A mesh with a material array is pushed to the render list ONCE PER GEOMETRY
+  // GROUP (three.module.js, `projectObject`: the fan-out is gated on
+  // `Array.isArray( object.material )` and iterates `geometry.groups`). The CSM
+  // cascades and the prepass both draw with `scene.overrideMaterial`, so all of
+  // those draws emit *the same* fragments from the same program — nine draws
+  // producing what one draw would. Measured (tools/drawcalls.mjs --shot=combat
+  // --quality=high): a soldier costs 51.7 draw calls a frame before this and
+  // 14.3 after, and the `ai` system as a whole 310 -> 86.
+  //
+  // `renderObjects` substitutes the override per render ITEM, and
+  // `renderBufferDirect` clamps to `group` only when `group !== null`. So
+  // handing the renderer a single (non-array) material collapses the fan-out to
+  // one item with `group: null`, which draws the whole index range in one call.
+  // Swapping the *geometry* for a groups-less one does NOT work: the fan-out is
+  // keyed on the material being an array, so empty `groups` would emit nothing.
+  //
+  // This is output-preserving only while a single full-range draw covers
+  // exactly the triangles the per-group draws did, which `_foldable` checks
+  // every frame. The one thing it does change is render-list order:
+  // `painterSortStable` breaks ties on `material.id`, so a folded mesh sorts as
+  // one item rather than nine. Depth resolves the override passes, so this is
+  // invisible except at exactly-equal depths — which is why it goes through the
+  // pixel gate (`tools/baseline.mjs`) and not on inspection alone.
+
+  /**
+   * Do this geometry's groups tile its whole index range, in order, with no gap
+   * and no overlap? Cached: the answer is a property of the built geometry, and
+   * nothing in this engine re-groups a geometry after construction.
+   */
+  _tilesIndexRange(geo) {
+    let v = this._foldCache.get(geo);
+    if (v !== undefined) return v;
+    v = false;
+    const groups = geo.groups;
+    const index = geo.index;
+    const dr = geo.drawRange;
+    // < 2 groups is already one draw; nothing to fold and nothing to risk.
+    if (groups.length >= 2 && index !== null && dr.start === 0 && dr.count === Infinity) {
+      let cursor = 0;
+      v = true;
+      for (let i = 0; i < groups.length; i++) {
+        const g = groups[i];
+        if (g.start !== cursor || !(g.count > 0)) {
+          v = false;
+          break;
+        }
+        cursor += g.count;
+      }
+      if (v && cursor !== index.count) v = false;
+    }
+    this._foldCache.set(geo, v);
+    return v;
+  }
+
+  /**
+   * Would folding draw exactly what the per-group draws draw? The material
+   * checks are per-frame because `visible` is a runtime flag: three skips a
+   * group whose material is missing or invisible, and a full-range draw would
+   * put those triangles back. `allowOverride === false` means the group draws
+   * its own material even under an override, so it cannot be folded either.
+   */
+  _foldable(o, mat) {
+    const geo = o.geometry;
+    if (geo === undefined || geo === null) return false;
+    if (this._tilesIndexRange(geo) !== true) return false;
+    const groups = geo.groups;
+    for (let i = 0; i < groups.length; i++) {
+      const m = mat[groups[i].materialIndex];
+      if (m === undefined || m === null) return false;
+      if (m.visible !== true || m.allowOverride === false) return false;
+    }
+    return true;
+  }
+
+  _foldGroups() {
+    const s = this._foldMaterial;
+    for (let i = 0; i < this._nFold; i++) {
+      const o = this._fold[i];
+      this._foldSaved[i] = o.material;
+      o.material = s;
+    }
+  }
+
+  _unfoldGroups() {
+    for (let i = 0; i < this._nFold; i++) {
+      this._fold[i].material = this._foldSaved[i];
+      this._foldSaved[i] = null;
+    }
   }
 
   _hideList(list, n) {
@@ -1339,7 +1458,9 @@ export class RenderSystem {
       scene.background = null;
       this._hideList(this._hide, this._nHide);
       this._hideList(this._noShadow, this._nNoShadow);
+      this._foldGroups();
       this.csm.render(renderer, scene, this._noCascadeCull ? null : this._draw, this._nDraw);
+      this._unfoldGroups();
       this._showList(this._noShadow, this._nNoShadow);
       this._showList(this._hide, this._nHide);
       scene.background = bg;
@@ -1356,7 +1477,9 @@ export class RenderSystem {
     if (this.needsPrepass) {
       scene.background = null;
       this._hideList(this._hide, this._nHide);
+      this._foldGroups();
       gb.render(renderer, scene, camera, this._currVP, this._prevVP, true);
+      this._unfoldGroups();
       this._showList(this._hide, this._nHide);
       scene.background = bg;
     }
@@ -1716,6 +1839,7 @@ export class RenderSystem {
       this.probe.dispose();
     }
     this._debugPass?.dispose();
+    this._foldMaterial?.dispose();
     this.patcher.dispose();
     this.renderer.dispose();
   }

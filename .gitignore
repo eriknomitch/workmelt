@@ -17,6 +17,14 @@ assets-src/*
 # ...except the announcer lines: ours, tiny, and not fetchable from anywhere.
 !assets-src/vox/
 
+# Goal scorecard output — measurements and their PNGs. Regenerate with
+# `node tools/goal.mjs`; the criteria themselves live in tools/lib/criteria.mjs.
+.goal/
+
+# Goal scorecard output — measurements and their PNGs. Regenerate with
+# `node tools/goal.mjs`; the criteria themselves live in tools/lib/criteria.mjs.
+.goal/
+
 # Agent scratch
 demo/
 .tmp-demo/

@@ -106,6 +106,54 @@ export function installShotApi(engine, { capture, lockstep = false } = {}) {
   window.__SHOTS__ = SHOTS;
 
   /**
+   * Screen-space boxes for every live enemy, in canvas pixels, plus their range
+   * from the camera.
+   *
+   * `tools/visibility.mjs` uses this to score how legible each individual enemy
+   * is at each quality tier. Doing it from the driver instead of from a
+   * hand-maintained list of coordinates means the measurement follows whatever
+   * the AI actually staged, and an actor that stopped resolving at a low
+   * `renderScale` is caught by name rather than by eyeball.
+   */
+  window.__ACTOR_BOXES__ = () => {
+    const ai = engine.ctx.peek('ai');
+    const cam = engine.camera;
+    const canvas = engine.ctx.canvas;
+    const w = canvas.clientWidth || canvas.width;
+    const h = canvas.clientHeight || canvas.height;
+    const box = new THREE.Box3();
+    const v = new THREE.Vector3();
+    cam.updateMatrixWorld();
+    const out = [];
+    for (const a of ai?.agents ?? []) {
+      if (a.alive === false || !a.group?.visible) continue;
+      a.group.updateMatrixWorld(true);
+      box.setFromObject(a.group);
+      if (box.isEmpty()) continue;
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, behind = 0;
+      for (let i = 0; i < 8; i++) {
+        v.set(i & 1 ? box.max.x : box.min.x, i & 2 ? box.max.y : box.min.y, i & 4 ? box.max.z : box.min.z);
+        v.applyMatrix4(cam.matrixWorldInverse);
+        if (v.z > -0.05) behind++;
+        v.applyMatrix4(cam.projectionMatrix);
+        const px = (v.x * 0.5 + 0.5) * w;
+        const py = (-v.y * 0.5 + 0.5) * h;
+        x0 = Math.min(x0, px); x1 = Math.max(x1, px);
+        y0 = Math.min(y0, py); y1 = Math.max(y1, py);
+      }
+      if (behind === 8) continue;
+      if (x1 < 0 || y1 < 0 || x0 > w || y0 > h) continue;
+      out.push({
+        id: a.id ?? out.length,
+        variant: a.variantName ?? 'enemy',
+        distance: cam.position.distanceTo(a.group.position),
+        x0, y0, x1, y1,
+      });
+    }
+    return { width: w, height: h, actors: out };
+  };
+
+  /**
    * `opts.grabFrame` is how many frames the harness will pump before it presses
    * the shutter. Shots whose subject is a transient (a muzzle flash lives ~52 ms)
    * need it so they can land the event on the captured frame instead of guessing.

@@ -19,6 +19,10 @@
  * WHAT IT OWNS
  *   • `state`: 'setup' -> 'countdown' -> 'live', and the gating that goes with
  *     it — input, player control, HUD visibility, pointer lock.
+ *   • WHICH MAP is loaded. `world` owns the map list and the rebuild; this
+ *     system owns the moment it is allowed to happen — on the lobby and
+ *     nowhere else — and, in a room, defers the choice to the relay so
+ *     everybody switches together (see `_chooseMap` / `_applyMap`).
  *   • WHERE the player deploys — a spawn scored by `world.spawns` rather than
  *     the menu backdrop everyone was standing on — and, when there is no `net`
  *     to own it, the respawn cycle after a bot kills you.
@@ -63,6 +67,8 @@ export class MatchSystem {
     this._deathSite = new THREE.Vector3();
     this._lastAttack = new THREE.Vector3();
     this._lastAttackValid = false;
+    /** A level rebuild is in flight; nothing may start until it lands. */
+    this._mapBusy = false;
   }
 
   async init(ctx) {
@@ -75,10 +81,16 @@ export class MatchSystem {
     // is only ever used for sending.
     this.net = ctx.peek('net');
 
+    this.world = ctx.get('world');
+
     this.ui = new MatchStartUI({
       multiplayer: !!this.net,
       invited: !!this.net?.arrivedByInvite,
     });
+    this.ui.setMaps(this.world.maps ?? []);
+    this.ui.setMap(this.world.mapId);
+    this.ui.setMapNote(this.net ? 'Shared with everyone in your room' : '');
+    this.ui.onMap = (id) => this._chooseMap(id);
     this.ui.onBots = (key) => this._setBots(key);
     this.ui.onPrimary = () => this._primary();
     this.ui.onStartSolo = () => this.start({ bots: this.bots, mode: 'bots' });
@@ -131,6 +143,62 @@ export class MatchSystem {
     // Enter is the whole screen: land the focus ring on the one button that
     // matters so a keyboard player never has to hunt for it.
     requestAnimationFrame(() => this.ui.focusPrimary());
+  }
+
+  /* ==================================================================== */
+  /* map                                                                  */
+  /* ==================================================================== */
+
+  /**
+   * The player clicked a map card.
+   *
+   * In a room the map belongs to the ROOM, not to this client: ask the relay
+   * and wait for the lobby frame to come back. That is deliberately the same
+   * path a remote player's choice arrives on, so there is one code path and no
+   * way for two clients to end up on different levels.
+   *
+   * Solo (or while the relay is unreachable) it is applied straight away, and
+   * the id goes out with the next `join` — so a player who picks Rust offline
+   * and then connects brings that choice into an empty room with them.
+   */
+  _chooseMap(id) {
+    if (this.state !== 'setup' || this._mapBusy) return;
+    if (!this._knownMap(id) || id === this.world.mapId) return;
+    this._sfx('ready', 0.7);
+    if (this.net?.connected) this.net.setMap(id);
+    else this._applyMap(id);
+  }
+
+  _knownMap(id) {
+    return !!id && (this.world.maps ?? []).some((m) => m.id === id);
+  }
+
+  /**
+   * Rebuild the level. Everything that cached the old one — the physics BVH,
+   * `ai`'s nav grid, the minimap bake — is refreshed off `world:rebuilt`; all
+   * this system has to do is hold the menu shut while it happens and then put
+   * the player back on the ground, because the spawn they were standing on
+   * belonged to a level that no longer exists.
+   */
+  async _applyMap(id) {
+    if (this._mapBusy || !this.world || this.world.mapId === id) return;
+    this._mapBusy = true;
+    this.ui.setMapBusy(true);
+    if (this.net) this._onLobby(null);
+    try {
+      await this.world.setMap(id);
+      this.player.respawn(0);
+    } catch (err) {
+      console.warn('[match] map change failed', err);
+    } finally {
+      this._mapBusy = false;
+      this.ui.setMapBusy(false);
+      this.ui.setMap(this.world.mapId);
+      this.ui.setMapNote(this.net ? 'Shared with everyone in your room' : '');
+      this.ui.setBots(this.bots);
+      if (this.net) this._onLobby(null);
+      else this.ui.render({});
+    }
   }
 
   _setBots(key) {
@@ -188,6 +256,10 @@ export class MatchSystem {
   /** Repaint from whatever `net` currently holds (the event payload is a hint). */
   _onLobby(e) {
     if (!this.net || this.state !== 'setup') return;
+    // The room's map is authoritative over this client's: whoever was in the
+    // room first set it, and a change anybody makes arrives here.
+    const roomMap = e?.map ?? this.net.lobby.map;
+    if (this._knownMap(roomMap) && roomMap !== this.world.mapId) this._applyMap(roomMap);
     this.ui.setRoom(this.net.room);
     this.ui.render(
       e ?? {
@@ -197,6 +269,7 @@ export class MatchSystem {
         players: this.net.lobbyPlayers(),
         myId: this.net.myId,
         ready: this.net.ready,
+        map: this.net.lobby.map,
       }
     );
   }
@@ -243,6 +316,9 @@ export class MatchSystem {
    */
   start({ bots = 'off', mode = 'bots' } = {}) {
     if (this.state === 'live') return;
+    // A half-built level is not a match. The countdown path can land here too,
+    // so this is a guard rather than a UI concern.
+    if (this._mapBusy) return;
     this.state = 'live';
     const preset = BOT_PRESETS.find((p) => p.key === bots) ?? BOT_PRESETS[0];
 
@@ -278,8 +354,9 @@ export class MatchSystem {
       squads: preset.squads,
       perSquad: preset.perSquad,
       mode,
+      map: this.world?.mapId ?? null,
     });
-    console.info(`[match] start mode=${mode} bots=${preset.key}`);
+    console.info(`[match] start mode=${mode} bots=${preset.key} map=${this.world?.mapId}`);
   }
 
   /**

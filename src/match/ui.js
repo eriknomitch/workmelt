@@ -25,10 +25,15 @@
  *
  *   COPY INVITE LINK / SHARE  one click, whatever else is on screen
  *
- * Nothing else on the screen is a required step. Garrison size is a segmented
- * control with a sane default, the callsign is an inline field, and settings
- * open over the top. `Enter` fires the primary button and `C` copies the link,
- * so the whole screen is also two keystrokes.
+ * Nothing else on the screen is a required step. The map cards and the garrison
+ * chips both have working defaults, the callsign is an inline field, and
+ * settings open over the top. `Enter` fires the primary button and `C` copies
+ * the link, so the whole screen is also two keystrokes.
+ *
+ * The map is the one choice that is not this client's alone: in a room it
+ * belongs to the ROOM, so a card click is a request the relay answers and the
+ * cards lock while the level rebuilds. `src/match/index.js` owns that dance —
+ * this view only renders `setMap` / `setMapBusy` / `setMapLocked`.
  *
  * Self-contained DOM + CSS (same pattern as src/net/ui.js) so it does not reach
  * into the HUD subsystem's stylesheet. It renders a model and reports clicks —
@@ -112,6 +117,35 @@ const CSS = `
   margin-bottom: 30px; text-wrap: balance;
 }
 .wm-lobby .lede b { color: var(--wm-fg); font-weight: 600; }
+
+/* map picker — the first decision, and the one that changes what the rest
+   mean. Cards rather than chips because each carries three lines of read. */
+.wm-lobby .maps { margin-bottom: 20px; }
+.wm-lobby .maps .hd { display: flex; align-items: baseline; gap: 10px; margin-bottom: 9px; }
+.wm-lobby .maps .hd .note { font-size: 11px; letter-spacing: .015em; color: var(--wm-muted-fg);
+  text-transform: none; font-weight: 400; }
+.wm-lobby .mapcards { display: flex; gap: 10px; flex-wrap: wrap; }
+.wm-lobby .mapcard {
+  flex: 1 1 250px; max-width: 400px; display: flex; flex-direction: column; gap: 3px;
+  padding: 12px 14px; text-align: left; cursor: pointer;
+  background: var(--wm-panel-2); border: 1px solid var(--wm-border); border-radius: var(--wm-r);
+  transition: border-color var(--wm-t), background var(--wm-t);
+}
+.wm-lobby .mapcard:hover:not(:disabled) { border-color: var(--wm-accent); }
+.wm-lobby .mapcard[aria-pressed="true"] { border-color: var(--wm-fg); background: var(--wm-hover); }
+.wm-lobby .mapcard:disabled { opacity: .45; cursor: not-allowed; }
+.wm-lobby .mapcard .nm {
+  font-family: var(--wm-display); font-size: 20px; letter-spacing: .07em;
+  text-transform: uppercase; line-height: 1; color: var(--wm-fg-dim);
+}
+.wm-lobby .mapcard[aria-pressed="true"] .nm { color: var(--wm-fg); }
+.wm-lobby .mapcard .sub {
+  font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--wm-muted-fg);
+}
+.wm-lobby .mapcard .bl { margin-top: 4px; font-size: 12px; line-height: 1.45; color: var(--wm-muted-fg); }
+.wm-lobby .mapcard .sz { margin-top: 3px; font-size: 11px; color: var(--wm-muted-fg);
+  font-variant-numeric: tabular-nums; }
 
 /* garrison picker — 4 chips, one click, no drilling */
 .wm-lobby .opts { margin-bottom: 22px; }
@@ -292,6 +326,9 @@ const CSS = `
   .wm-lobby .hero .eyebrow { margin-bottom: 10px; }
   .wm-lobby .lede { font-size: 14px; margin-bottom: 18px; }
   .wm-lobby .opts { margin-bottom: 16px; }
+  .wm-lobby .maps { margin-bottom: 14px; }
+  .wm-lobby .mapcard { padding: 9px 11px; }
+  .wm-lobby .mapcard .bl { display: none; }
   .wm-lobby .btn-primary { font-size: 22px; padding: 12px 24px 10px; }
   .wm-lobby .btn-ghost { font-size: 17px; padding: 10px 18px 8px; }
 }
@@ -327,6 +364,7 @@ export class MatchStartUI {
     this.invited = invited;
 
     /** Callbacks — every one of them is owned by src/match/index.js. */
+    this.onMap = null; // a map card was clicked — a request, not a decision
     this.onPrimary = null; // the single dominant CTA, whatever it means now
     this.onStartSolo = null; // the "start on your own" escape hatch
     this.onCopyInvite = null;
@@ -353,6 +391,13 @@ export class MatchStartUI {
             <span class="wm-mark">${WORDMARK_HTML}</span>
             <p class="lede">A tactical arena built out of the floor you already work on.
               <b>Browser-first</b>, no install — send a link and your co-workers are in.</p>
+            <div class="maps" data-maps>
+              <div class="hd">
+                <span class="eyebrow">Map</span>
+                <span class="note" data-map-note></span>
+              </div>
+              <div class="mapcards" data-mapcards role="group" aria-label="Map"></div>
+            </div>
             <div class="opts">
               <span class="eyebrow">Garrison</span>
               <div class="chips" data-bots role="group" aria-label="Garrison size"></div>
@@ -398,6 +443,9 @@ export class MatchStartUI {
 
     const q = (sel) => this.root.querySelector(sel);
     this.bodyEl = q('[data-body]');
+    this.mapsEl = q('[data-maps]');
+    this.mapCardsEl = q('[data-mapcards]');
+    this.mapNoteEl = q('[data-map-note]');
     this.eyebrowEl = q('[data-eyebrow]');
     this.botChips = q('[data-bots]');
     this.botNote = q('[data-bot-note]');
@@ -471,6 +519,15 @@ export class MatchStartUI {
     }
     this._setEyebrow();
 
+    /** id -> card element, filled by setMaps(). */
+    this.mapBtns = new Map();
+    this.mapId = null;
+    /** A level rebuild is in flight — nothing may be started against half a map. */
+    this.mapBusy = false;
+    /** The room is already playing, so its level is no longer up for a vote. */
+    this.mapLocked = false;
+    this.mapNoteIdle = '';
+
     /** What the primary button currently does; render() keeps it honest. */
     this._mode = 'solo';
   }
@@ -488,6 +545,81 @@ export class MatchStartUI {
     this.eyebrowEl.textContent = this.invited
       ? 'You were invited — join the room below'
       : 'Season 1 · Live operations';
+  }
+
+  /**
+   * Build the map cards from the list `world` publishes. This view never
+   * imports the world subsystem — it renders what it is handed.
+   */
+  setMaps(list = []) {
+    this.mapCardsEl.textContent = '';
+    this.mapBtns.clear();
+    for (const m of list) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'mapcard';
+      b.setAttribute('aria-pressed', 'false');
+      for (const [cls, text] of [
+        ['nm', m.name],
+        ['sub', m.subtitle],
+        ['bl', m.blurb],
+        ['sz', m.size],
+      ]) {
+        if (!text) continue;
+        const span = document.createElement('span');
+        span.className = cls;
+        span.textContent = text;
+        b.appendChild(span);
+      }
+      b.addEventListener('click', () => this.onMap?.(m.id));
+      this.mapCardsEl.appendChild(b);
+      this.mapBtns.set(m.id, b);
+    }
+    // One map is not a choice — do not make the player look at a picker with a
+    // single option in it.
+    this.mapsEl.classList.toggle('hide', list.length < 2);
+    this.setMap(this.mapId);
+  }
+
+  setMap(id) {
+    this.mapId = id;
+    for (const [k, b] of this.mapBtns) b.setAttribute('aria-pressed', String(k === id));
+  }
+
+  /**
+   * Building a level takes a beat and re-runs the shader pre-warm. Lock the
+   * cards and the primary while it happens.
+   */
+  setMapBusy(on) {
+    this.mapBusy = !!on;
+    this._syncMap();
+    this._paintPrimary();
+  }
+
+  /**
+   * A live room's level is settled: the relay refuses a change once anybody is
+   * deployed, so offering the cards would be offering a button that does
+   * nothing. Say so rather than failing silently.
+   */
+  setMapLocked(on) {
+    this.mapLocked = !!on;
+    this._syncMap();
+  }
+
+  /** The caller's line — what the note says when nothing is overriding it. */
+  setMapNote(text) {
+    this.mapNoteIdle = text ?? '';
+    this._syncMap();
+  }
+
+  _syncMap() {
+    const off = this.mapBusy || this.mapLocked;
+    for (const b of this.mapBtns.values()) b.disabled = off;
+    this.mapNoteEl.textContent = this.mapBusy
+      ? 'Loading…'
+      : this.mapLocked
+        ? 'Locked — the match is already running'
+        : this.mapNoteIdle;
   }
 
   setBots(key) {
@@ -538,6 +670,10 @@ export class MatchStartUI {
       this._paintPrimary();
       return;
     }
+    // A live room's level is settled; the relay refuses a change once anybody
+    // is deployed. Painted before the roster so the cards never disagree with
+    // the status line under them.
+    this.setMapLocked(!!m.live);
     const players = m.players ?? [];
     const others = players.filter((p) => p.id !== m.myId);
 
@@ -571,6 +707,13 @@ export class MatchStartUI {
       : `Relay <b>${m.everConnected ? 'reconnecting' : 'connecting'}</b>`;
 
     // ---- what is the single best next move? -------------------------------
+    if (this.mapBusy) {
+      // Nothing is the best next move until the level exists.
+      this._mode = 'solo';
+      this.statusEl.textContent = 'Loading the map…';
+      this._paintPrimary();
+      return;
+    }
     if (m.live) {
       this._mode = 'deploy';
       this.statusEl.innerHTML = 'Match already running — drop in whenever you like.';
@@ -608,10 +751,10 @@ export class MatchStartUI {
       solo: bots ? `Play vs ${bots} bots` : 'Play',
     }[this._mode];
 
-    this.primaryBtn.textContent = label;
-    this.primaryBtn.disabled = false;
+    this.primaryBtn.textContent = this.mapBusy ? 'Loading map' : label;
+    this.primaryBtn.disabled = this.mapBusy;
     this.primaryBtn.className = this._mode === 'unready' ? 'btn btn-ghost' : 'btn btn-primary';
-    this.stripPrimary.textContent = label;
+    this.stripPrimary.textContent = this.mapBusy ? 'Loading map' : label;
     // The escape hatch only exists while the primary is waiting on other people.
     this.altBtn.classList.toggle('hide', this._mode !== 'ready' && this._mode !== 'unready');
   }

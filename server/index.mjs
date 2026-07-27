@@ -129,7 +129,7 @@ let nextId = 1;
 function getRoom(code) {
   let r = rooms.get(code);
   if (!r) {
-    r = { code, peers: new Map() /* id -> Peer */ };
+    r = { code, peers: new Map() /* id -> Peer */, map: null };
     rooms.set(code, r);
   }
   return r;
@@ -169,7 +169,23 @@ function isLive(room) {
 }
 
 function sendLobby(room) {
-  broadcast(room, { t: 'lobby', live: isLive(room), players: lobby(room) });
+  broadcast(room, { t: 'lobby', live: isLive(room), players: lobby(room), map: room.map });
+}
+
+/**
+ * The room's map.
+ *
+ * The relay does not know what maps exist and must not: it stores whatever slug
+ * the clients agree on and hands it back, and each client validates the id
+ * against its own list. What the relay DOES own is that there is one answer per
+ * room — two players cannot ready up on different levels.
+ *
+ * The first player into a room sets it; after that a change is an explicit
+ * request, and only while the match has not started.
+ */
+function sanitiseMap(v) {
+  const s = String(v ?? '').slice(0, 24).toLowerCase();
+  return /^[a-z0-9][a-z0-9_-]*$/.test(s) ? s : null;
 }
 
 /** Start the match when every player in a not-yet-live room has readied up. */
@@ -250,6 +266,8 @@ function handle(peer, msg) {
       }
       peer.room = code;
       room.peers.set(peer.id, peer);
+      // First one in picks the level; everybody after joins the one in progress.
+      if (!room.map) room.map = sanitiseMap(msg.map);
       // Tell the newcomer who they are + who's already here.
       send(peer, {
         t: 'welcome',
@@ -257,10 +275,26 @@ function handle(peer, msg) {
         room: code,
         tickHz: TICK_HZ,
         live: isLive(room),
+        map: room.map,
         peers: roster(room).filter((p) => p.id !== peer.id),
       });
       // Announce to everyone else.
       broadcast(room, { t: 'peer_join', id: peer.id, name: peer.name }, peer.id);
+      sendLobby(room);
+      break;
+    }
+
+    case 'map': {
+      // Change the room's level. Refused once anybody is deployed — swapping the
+      // map under a live match would teleport everyone into a level that no
+      // longer exists. Ready flags are cleared: you readied up for a level, and
+      // it is not that level any more.
+      const room = peer.room && rooms.get(peer.room);
+      if (!room || isLive(room)) return;
+      const next = sanitiseMap(msg.map);
+      if (!next || next === room.map) return;
+      room.map = next;
+      for (const p of room.peers.values()) p.ready = false;
       sendLobby(room);
       break;
     }

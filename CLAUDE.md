@@ -13,3 +13,6 @@ Deep-dive docs — read on demand, not loaded at session start:
 - `CLOUDFLARE.md` — Worker + Durable Object deploy path for `worker/`.
 - `TEXTURE-PERF.md` — where texture memory, per-pixel fetches and character draw
   calls actually go, and why a shipped texture pack is the wrong tool for it.
+- `LIBRARIES.md` — what `three@0.180` already ships that we don't use, which
+  platform APIs replace a dependency, and the one third-party runtime library
+  worth a rule change. Read before proposing any new dependency.

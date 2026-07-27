@@ -40,13 +40,30 @@ getting in is always a single click and never a choice between two panels:
 | the match is running | **Deploy now** | drop into it; nobody already shooting has to wait for you |
 
 `Enter` presses that button and `C` copies the invite link, so the lobby is also
-two keystrokes. Garrison size is a segmented control with a working default —
-changing it is optional, never a step.
+two keystrokes. Above it sit the two choices that both have working defaults, so
+changing either is optional and neither is ever a step:
+
+- **Map** — **Market** or **Rust**. In a room the map belongs to the *room*: the
+  choice goes to the relay and everybody switches together, and the cards lock
+  while the level rebuilds. Once anybody is deployed the room's level is settled
+  and the cards say so.
+- **Garrison** — none / light (3) / standard (6) / heavy (12).
 
 The garrison is per-client, spawned at the moment you deploy, so a players-only
 match really is empty of AI. A player who arrives after the match has started
 sees "match in progress" and a **Deploy now** button instead of the ready flow —
 nobody already shooting has to wait for them.
+
+### The room's map
+
+The relay stores one map slug per room and hands it back on `welcome` and every
+`lobby` frame. It does not know what maps exist — clients validate the slug
+against their own list and ignore one they do not recognise — but it does own
+that there is a single answer, so two players cannot ready up on different
+levels. The first player into a room sets it; after that any player can change
+it while the match has not started, and doing so clears everyone's ready flag
+(you readied up for a level, and it is not that level any more). A change is
+refused once anybody is deployed.
 
 Ready state, the "is this room live" flag and the start signal live on the relay
 (`maybeStart()` in `server/index.mjs`, mirrored in `worker/room.js`), because two
@@ -108,6 +125,7 @@ non-capture run (disable with `?mp=0`). It:
 | dir | message | meaning |
 |---|---|---|
 | C→S | `join {room, name}` | enter a room |
+| C→S | `map {map}` | change the room's level (refused once anyone is deployed; clears everyone's ready flag) |
 | C→S | `ready {ready}` | toggle my match-start ready flag |
 | C→S | `deploy` | I am in the match now (bots start, or countdown finished) |
 | C→S | `undeploy` | I went back to the lobby (pause menu → Leave match); clears my `deployed` flag so the room stops being LIVE |
@@ -117,9 +135,9 @@ non-capture run (disable with `?mp=0`). It:
 | C→S | `kill {by,headshot}` | victim confirms its own death |
 | C→S | `spawn {p}` | "I am coming in here" — a spawn claim, relayed to the room |
 | C→S | `name` / `chat` / `respawn` / `ping` | misc |
-| S→C | `welcome {id,room,live,peers}` | you joined; who's here; is the match already live |
+| S→C | `welcome {id,room,live,map,peers}` | you joined; who's here; which level; is the match already live |
 | S→C | `peer_join` / `peer_leave` | roster changes |
-| S→C | `lobby {live,players}` | match-start lobby: `[{id,name,ready,deployed}]` |
+| S→C | `lobby {live,players,map}` | match-start lobby: `[{id,name,ready,deployed}]`, plus the room's level |
 | S→C | `match_start {in}` | everyone readied up — count down `in` ms and deploy |
 | S→C | `snapshot {states:[…]}` | everyone's latest transform |
 | S→C | `spawn {id,p}` | somebody else claimed that ground to spawn on |
