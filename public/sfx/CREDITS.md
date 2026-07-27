@@ -32,6 +32,13 @@ from the packs below — trimmed, normalized, downmixed to mono and encoded to
 - **Source:** https://kenney.nl/assets/interface-sounds
 - **Used for:** UI and match-flow indicators
 
+## Announcer lines (text-to-speech)
+
+- **Author:** generated for this project
+- **License:** no third-party rights — masters in assets-src/vox/
+- **Source:** assets-src/vox/
+- **Used for:** announcer: match begin, start, headshot, killstreak, game over
+
 ---
 
 Anything without a sample here is synthesized at runtime by

@@ -11,7 +11,11 @@ shots/
 
 # Raw SFX source packs — 338 MB of 96 kHz masters. Not needed to build or run;
 # `public/sfx/` is the committed output. Re-fetch with tools/fetch-sfx.sh.
-assets-src/
+# (`assets-src/*`, not `assets-src/`: git will not look inside an excluded
+# directory, so the re-include below would never be reached.)
+assets-src/*
+# ...except the announcer lines: ours, tiny, and not fetchable from anywhere.
+!assets-src/vox/
 
 # Agent scratch
 demo/

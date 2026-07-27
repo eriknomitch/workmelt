@@ -23,6 +23,10 @@ const SHOT_BIG = { lead: 0.02, dur: 1.7, bitrate: '96k' };
 const STEP = { lead: 0.01, dur: 0.5, bitrate: '64k' };
 const IMPACT = { lead: 0.01, dur: 0.7, bitrate: '72k' };
 const UI = { lead: 0.005, dur: 1.0, bitrate: '64k' };
+/* Announcer lines are already tight, so `whole` keeps the file end to end: a
+ * peak window would start the clip at the loudest syllable and eat the first
+ * word. 56k mono is transparent for speech. */
+const VOX = { whole: true, bitrate: '56k' };
 
 const fa = (dir, ...files) => files.map((f) => `firearms/${dir}/${f}.wav`);
 const fs = (dir, n) => Array.from({ length: n }, (_, i) => `footsteps/${dir}/${i}.ogg`);
@@ -103,6 +107,16 @@ export const SOURCES = [
   { group: 'ui', key: 'matchstart', ...UI, src: kn('interface-sounds', 'bong_001') },
   // dryfire / lowhealth stay procedural: the synthesized versions are already
   // mechanically right and nothing in these packs beats them.
+
+  /* ── announcer ─────────────────────────────────────────────────────────
+   * Text-to-speech lines, one take each, kept as masters in assets-src/vox/
+   * (committed — unlike the packs above, they are not fetchable). Keys are the
+   * `line` names audio.announce() dispatches on. */
+  { group: 'vox', key: 'match_begin', ...VOX, src: ['vox/match_begin.wav'] },
+  { group: 'vox', key: 'start', ...VOX, src: ['vox/start.wav'] },
+  { group: 'vox', key: 'headshot', ...VOX, src: ['vox/headshot.wav'] },
+  { group: 'vox', key: 'killstreak', ...VOX, src: ['vox/killstreak.wav'] },
+  { group: 'vox', key: 'game_over', ...VOX, src: ['vox/game_over.wav'] },
 ];
 
 /** kenney numbers variants _000.._00N. */
@@ -140,5 +154,12 @@ export const CREDITS = [
     license: 'CC0 1.0 (public domain)',
     url: 'https://kenney.nl/assets/interface-sounds',
     used: 'UI and match-flow indicators',
+  },
+  {
+    pack: 'Announcer lines (text-to-speech)',
+    authors: 'generated for this project',
+    license: 'no third-party rights — masters in assets-src/vox/',
+    url: 'assets-src/vox/',
+    used: 'announcer: match begin, start, headshot, killstreak, game over',
   },
 ];

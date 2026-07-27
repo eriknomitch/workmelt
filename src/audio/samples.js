@@ -37,6 +37,10 @@ const GROUP = {
   step: { jitter: 0.09, send: 0.18 },
   impact: { jitter: 0.08, send: 0.3 },
   ui: { jitter: 0, send: 0 },
+  // Announcer: one take per line, so no jitter (a detuned voice reads as a
+  // different, wrong announcer) and a touch of room so it is not glued to the
+  // inside of the player's head.
+  vox: { jitter: 0, send: 0.1 },
 };
 
 export class SampleBank {
@@ -136,10 +140,23 @@ export class SampleBank {
     if (kind === 'shot') { group = 'shot'; key = o.profile?.name; }
     else if (kind === 'step') { group = 'step'; key = o.surface ?? 'concrete'; }
     else if (kind === 'impact') { group = 'impact'; key = o.surface ?? 'concrete'; }
+    // 'announce' has no synthesized counterpart: it is a recorded line or it is
+    // nothing, which is why AudioSystem.announce() checks has() before playing.
+    else if (kind === 'announce') { group = 'vox'; key = o.line; }
     else { group = 'ui'; key = kind; }
     if (!key) return null;
     const set = this.sets.get(group)?.get(key);
     return set ? { set, group } : null;
+  }
+
+  /** Is there a decoded sample for this group/key yet? */
+  has(group, key) {
+    return !!this.sets.get(group)?.get(key);
+  }
+
+  /** Length of the first variant, in seconds; 0 when there is no sample. */
+  duration(group, key) {
+    return this.sets.get(group)?.get(key)?.buffers[0]?.duration ?? 0;
   }
 
   /**
