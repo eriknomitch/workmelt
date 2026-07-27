@@ -27,6 +27,19 @@ import { LOOP_MAP } from './loop.js';
  *   isOpen       (x, z, margin) => boolean — where a character can stand
  *                outdoors; this is what `ui/minimap` draws as floor
  *   build(A,rng) assemble the level into `A`; returns { buildings }
+ *   environment  OPTIONAL { hour, weather, exposureBias } — the sky this map is
+ *                set under. `hour` is local solar time, 0..24; `weather` is a
+ *                patch over the sky's defaults (`turbidity`, `cloudCoverage`,
+ *                `cloudDensity`, `cirrusCoverage`, `cirrusOpacity`,
+ *                `horizonMurk`, `windSpeed`, `windAngle`, `fogDensity`,
+ *                `fogHeight`, `shaftGain` — see `sky.setWeather`);
+ *                `exposureBias` is EV of metering compensation the map adds to
+ *                the sky's own, positive being darker, for a level whose own
+ *                lights carry the frame. `world` hands the whole thing to
+ *                `sky.applyEnvironment` on every build, and a map WITHOUT one
+ *                restores the sky's defaults rather than inheriting the last
+ *                map's — so a night map cannot leak into a day one. The Loop is
+ *                the only map that carries one today.
  *
  * `build` must register its own prop prototypes and must draw only from the
  * `rng` it is handed — the world's fork — so a capture run stays reproducible.

@@ -2,18 +2,26 @@ import * as THREE from 'three';
 import { BOX, BOX_SOFT, BOX_THIN, PANE, IDENT, LL, stairRun } from './kit.js';
 import { registerProps } from './props.js';
 import { registerLoopProps, TIE } from './loopprops.js';
-import { fbm3, paintMasks, patchGeometry, polyPrism, tubeY } from './util.js';
+import { fbm3, hash3, paintMasks, patchGeometry, polyPrism, tubeY } from './util.js';
 
 /**
  * WORLD — THE LOOP.
  *
- * A low-poly Chicago street corner under the elevated tracks: two downtown
- * streets crossing at an intersection the L turns over, compressed to a
- * ~76 x 76 m block the way Rust compresses a refinery. The icon IS the
+ * A low-poly Chicago street corner under the elevated tracks, AT NIGHT: two
+ * downtown streets crossing at an intersection the L turns over, compressed to
+ * a ~76 x 76 m block the way Rust compresses a refinery. The icon IS the
  * structure — riveted steel bents marching down the middle of the street, a
  * curve of track bed swinging through the corner overhead, and a stalled
  * train sitting at the platform. Everything is generated here; nothing is
  * loaded from disk.
+ *
+ * THE HOUR IS PART OF THE MAP. The descriptor at the bottom of this file
+ * carries an `environment` (see src/world/maps.js), so building this level sets
+ * the sky to half past eleven and a city's haze, and leaving it puts the sky back.
+ * Everything below is dressed for that: the shopfronts, the marquee, the blade
+ * sign, the platform fittings and a fifth of the rooms upstairs are emitters,
+ * and the practicals the world already ramps on solar altitude — the lamp posts
+ * and the interior bulbs — are the key light for the whole block.
  *
  *   THE TRACKS     enter at the north edge over one street, curve over the
  *                  intersection and leave east over the other. The deck is the
@@ -314,10 +322,35 @@ function ewall(A, key, cx, cz, ry, len, y0, h, t, holes = [], opts = {}) {
 }
 
 /**
- * A dark-room window in an opening: glass catching the sky, a void plane
- * behind it, and a painted frame. This is the whole upper-storey vocabulary —
- * nothing above the ground floor is enterable, and a lit grey rectangle is
- * the one thing that would give that away.
+ * Which rooms have a light on.
+ *
+ * A block at half past eleven is neither uniformly dark nor uniformly lit: a
+ * scatter of windows are up, and the scatter has to be STABLE — the same rooms
+ * on the same facade every build, or a map rebuild would reshuffle the whole
+ * street. So it comes off `hash3` of the opening's own position rather than out
+ * of the level rng: nothing to thread through six build functions, and not one
+ * draw taken from the stream every prop on the map is placed from.
+ *
+ * `share` is the fraction lit. A fifth is what a photograph of a real block at
+ * this hour shows — enough that no facade is a solid black slab, few enough
+ * that a lit window still reads as somebody being in.
+ */
+const LIT_SHARE = 0.2;
+function litRoom(x, y, z, share = LIT_SHARE) {
+  return share > 0 && hash3(x, y, z) < share;
+}
+
+/**
+ * A window in an opening: glass catching the sky, a room plane behind it, and
+ * a painted frame. This is the whole upper-storey vocabulary — nothing above
+ * the ground floor is enterable, and a lit grey rectangle is the one thing
+ * that would give that away.
+ *
+ * `opts.lit` swaps that dark room for `window_glow`: somebody upstairs left a
+ * light on. It is emissive only — no punctual light, no shader permutation,
+ * nothing added to the light budget — which is what makes it affordable by the
+ * dozen. At night it is most of what stops a facade being a black rectangle
+ * with a cornice on top; see `litRoom` for which rooms get one.
  */
 function darkWindow(A, cx, cz, ry, y0, o, opts = {}) {
   alongWall(cx, cz, ry, o.u, _wp);
@@ -331,8 +364,14 @@ function darkWindow(A, cx, cz, ry, y0, o, opts = {}) {
   A.add(opts.trim ?? 'stone_grey', BOX(A), LL(IDENT, _wp[0], y0 + oy + o.h + 0.05, _wp[1], ry, o.w + 0.24, 0.1, t + 0.1), {
     masks: [0.6, 0.35, 0.15],
   });
-  // the dark room, the glass over it, and one mullion
-  A.add('window_void', PANE(A), LL(IDENT, _wp[0], y0 + oy + o.h / 2, _wp[1], py, o.w - 0.04, o.h - 0.04, 1));
+  // the room behind the glass — dark, or with a light left on — then the glass
+  // over it and one mullion
+  A.add(
+    opts.lit ? 'window_glow' : 'window_void',
+    PANE(A),
+    LL(IDENT, _wp[0], y0 + oy + o.h / 2, _wp[1], py, o.w - 0.04, o.h - 0.04, 1),
+    opts.lit ? { masks: [0.2, 0.4, 0.1] } : null
+  );
   A.add('window_glass', PANE(A), LL(IDENT, _wp[0], y0 + oy + o.h / 2, _wp[1], py, o.w - 0.08, o.h - 0.08, 1));
   A.add('metal_dark', BOX_THIN(A), LL(IDENT, _wp[0], y0 + oy + o.h / 2, _wp[1], ry, 0.06, o.h, 0.06), {
     masks: [0.7, 0.3, 0.05],
@@ -794,14 +833,23 @@ function buildStation(A, rng) {
   A.put('bench_cta', cx + 3.5, y, cz + 0.6, 0.04, 1);
   A.put('litter_basket', P.x0 + 1.2, y, cz + 0.7, 0.4, 1);
 
-  A.lampAnchors.push({ x: cx - 2, y: y + 2.0, z: cz });
+  // Platform lighting: two fittings hung off the canopy purlin rather than one,
+  // because the platform is 16 m long and a single lamp in the middle of it
+  // leaves both ends — the stair mouth and the far end of the train — in the
+  // dark. The strip lenses are emissive so the fittings read as the source from
+  // any angle; the punctual lights are what actually put light on the boards.
+  for (const lx of [cx - 4.5, cx + 4.5]) {
+    A.add('emissive_warm', BOX_THIN(A), LL(IDENT, lx, y + 2.02, cz, 0, 1.1, 0.07, 0.24));
+    A.add('metal_dark', BOX_THIN(A), LL(IDENT, lx, y + 2.09, cz, 0, 1.2, 0.1, 0.32), { masks: [0.8, 0.4, 0.1] });
+    A.lampAnchors.push({ x: lx, y: y + 1.95, z: cz });
+  }
 }
 
 /* ─────────────────────────────────────────────────────────────────────────── */
 /* the train                                                                   */
 /* ─────────────────────────────────────────────────────────────────────────── */
 
-/** The stalled car: two-tone steel, a dark window band, doors, bogies. */
+/** The stalled car: two-tone steel, a lit window band, doors, bogies. */
 function buildTrain(A, rng) {
   const T = TRAIN;
   const cx = (T.x0 + T.x1) / 2;
@@ -813,16 +861,23 @@ function buildTrain(A, rng) {
   // body: skirt panel, green flank below the belt, window band, roof
   A.add('metal_green', BOX(A), LL(IDENT, cx, y0 + 0.525, T.z, 0, len, 1.05, T.w), { masks: [0.55, 0.4, 0.25] });
   A.add('steel', BOX(A), LL(IDENT, cx, beltY + bandH + 0.35, T.z, 0, len, 0.7, T.w), { masks: [0.6, 0.4, 0.25] });
-  // the window band: dark void with glass over it on both flanks
+  // The window band: a lit saloon with glass over it on both flanks. A stalled
+  // car with its interior lights still on is the brightest thing on the deck
+  // and the reason the platform is legible at all from the street below — a
+  // dark car up there at this hour would just be a long black mass.
   for (const s of [-1, 1]) {
-    A.add('window_void', PANE(A), LL(IDENT, cx, beltY + bandH / 2, T.z + s * (T.w / 2 + 0.01), s > 0 ? 0 : Math.PI, len - 0.5, bandH - 0.1, 1));
+    A.add('window_glow', PANE(A), LL(IDENT, cx, beltY + bandH / 2, T.z + s * (T.w / 2 + 0.01), s > 0 ? 0 : Math.PI, len - 0.5, bandH - 0.1, 1), {
+      masks: [0.3, 0.35, 0.1],
+    });
     A.add('window_glass', PANE(A), LL(IDENT, cx, beltY + bandH / 2, T.z + s * (T.w / 2 + 0.02), s > 0 ? 0 : Math.PI, len - 0.6, bandH - 0.16, 1));
     // door leaves: paired panels that interrupt the band
     for (const dx of [-len * 0.32, len * 0.32]) {
       A.add('metal_green', BOX(A), LL(IDENT, cx + dx, y0 + 1.35, T.z + s * (T.w / 2 - 0.02), 0, 1.5, 2.7, 0.06), {
         masks: [0.6, 0.45, 0.25],
       });
-      A.add('window_void', PANE(A), LL(IDENT, cx + dx, y0 + 2.0, T.z + s * (T.w / 2 + 0.045), s > 0 ? 0 : Math.PI, 1.1, 0.8, 1));
+      A.add('window_glow', PANE(A), LL(IDENT, cx + dx, y0 + 2.0, T.z + s * (T.w / 2 + 0.045), s > 0 ? 0 : Math.PI, 1.1, 0.8, 1), {
+        masks: [0.3, 0.35, 0.1],
+      });
     }
     // belt rail
     A.add('plaster_white', BOX_THIN(A), LL(IDENT, cx, beltY - 0.03, T.z + s * (T.w / 2 + 0.01), 0, len, 0.09, 0.03), {
@@ -856,6 +911,12 @@ function buildTrain(A, rng) {
   });
   // one collision box for the whole car
   A.box('metal', cx, y0 + T.h / 2 + 0.1, T.z, len + 0.4, T.h + 0.6, T.w + 0.1);
+
+  // The saloon's own light, so the car throws onto the platform boards and the
+  // canopy underside instead of only glowing at them. One, at the centre: this
+  // is a punctual light on a map that budgets them (see WorldSystem._addLights),
+  // and the emissive band carries the rest of the read.
+  A.interiorLights.push({ x: cx, y: y0 + 1.7, z: T.z });
 }
 
 /* ─────────────────────────────────────────────────────────────────────────── */
@@ -871,8 +932,8 @@ function cornice(A, key, s, faces) {
 }
 
 /**
- * Upper storeys of a street face: rows of dark windows between string
- * courses. `x0..x1` is the face's wall-local window band.
+ * Upper storeys of a street face: rows of windows between string courses, a
+ * fifth of them with a light on. `x0..x1` is the face's wall-local window band.
  */
 function upperFace(A, key, cx, cz, ry, len, s, opts = {}) {
   const g0 = opts.g0 ?? 4.4; // top of the ground storey
@@ -891,7 +952,13 @@ function upperFace(A, key, cx, cz, ry, len, s, opts = {}) {
     const wh = Math.min(1.9, sh - 1.15);
     const holes = wns.map((u) => ({ u, w: opts.winW ?? 2.4, y: sh * 0.32, h: wh }));
     ewall(A, key, cx, cz, ry, len, y0, sh, t, holes, { masks: opts.masks ?? [0.5, 0.45, 0.25] });
-    for (const o of holes) darkWindow(A, cx, cz, ry, y0, o, { flip: opts.flip, trim: opts.trim, t });
+    for (const o of holes) {
+      // hashed off the opening's own place on the facade, so the pattern of
+      // lit rooms is a property of the building rather than of the build order
+      alongWall(cx, cz, ry, o.u, _wp);
+      const lit = litRoom(_wp[0], y0, _wp[1], opts.litShare);
+      darkWindow(A, cx, cz, ry, y0, o, { flip: opts.flip, trim: opts.trim, t, lit });
+    }
   }
   // the parapet cap
   ewall(A, key, cx, cz, ry, len, s.h - 1.1, 1.1, t, [], { masks: [0.55, 0.45, 0.25] });
@@ -1008,9 +1075,11 @@ function buildDiner(A, rng) {
   blankFace(A, 'brick_chicago', s.x, s.z - s.d / 2, 0, s.w, 4.4, s.h - 4.4);
   cornice(A, 'stone_grey', s, [[ex, s.z, H, s.d], [s.x, sz, 0, s.w]]);
 
-  // the diner's corner sign: a small red blade at the corner over the door
+  // the diner's corner sign: a small red blade at the corner over the door,
+  // lit — the diner is open, and its sign is the landmark on this corner the
+  // way the marquee is on the theatre's
   A.add('sign_red', BOX(A), LL(IDENT, ex + 0.5, 5.4, sz - 3.2, H, 2.6, 1.0, 0.14), { masks: [0.6, 0.3, 0.1] });
-  A.add('plaster_white', BOX_THIN(A), LL(IDENT, ex + 0.56, 5.4, sz - 3.2, H, 2.3, 0.6, 0.05), { masks: [0.7, 0.2, 0] });
+  A.add('sign_glow', BOX_THIN(A), LL(IDENT, ex + 0.56, 5.4, sz - 3.2, H, 2.3, 0.6, 0.05));
 }
 
 /** The NE block: the theatre — terracotta, marquee and the blade sign. */
@@ -1083,9 +1152,13 @@ function buildTheatre(A, rng) {
   const mw = 7.4;
   const mx = lx;
   A.add('sign_red', BOX(A), LL(IDENT, mx, my + 0.5, sz + 1.35, 0, mw, 1.0, 2.7), { masks: [0.55, 0.35, 0.15] });
-  A.add('plaster_white', BOX_THIN(A), LL(IDENT, mx, my + 0.5, sz + 2.72, 0, mw - 0.5, 0.62, 0.06), {
-    masks: [0.75, 0.2, 0],
-  });
+  // the letterboard, lit from behind — the brightest surface on the map, and
+  // the thing you steer by from the far end of either street
+  A.add('sign_glow', BOX_THIN(A), LL(IDENT, mx, my + 0.5, sz + 2.72, 0, mw - 0.5, 0.62, 0.06));
+  // and the same board on the returns, so the corner reads from the west too
+  for (const s of [-1, 1]) {
+    A.add('sign_glow', BOX_THIN(A), LL(IDENT, mx + s * (mw / 2 - 0.03), my + 0.5, sz + 1.35, H, 2.2, 0.62, 0.06));
+  }
   A.add('metal_dark', BOX_THIN(A), LL(IDENT, mx, my - 0.02, sz + 1.35, 0, mw + 0.2, 0.08, 2.8), {
     masks: [0.8, 0.4, 0.1],
   });
@@ -1103,9 +1176,7 @@ function buildTheatre(A, rng) {
   const bx = 7 + 0.4;
   const bz = -7 + 0.4;
   A.add('sign_red', BOX(A), LL(IDENT, bx - 0.6, 9.2, bz - 0.6, Math.PI / 4, 1.5, 7.2, 0.3), { masks: [0.55, 0.3, 0.1] });
-  A.add('plaster_white', BOX_THIN(A), LL(IDENT, bx - 0.68, 9.2, bz - 0.68, Math.PI / 4, 1.1, 6.6, 0.06), {
-    masks: [0.75, 0.2, 0],
-  });
+  A.add('sign_glow', BOX_THIN(A), LL(IDENT, bx - 0.68, 9.2, bz - 0.68, Math.PI / 4, 1.1, 6.6, 0.06));
   // stacked bulbs down both edges
   for (let i = 0; i < 7; i++) {
     A.add('emissive_warm', BOX_THIN(A), LL(IDENT, bx - 0.62, 6.2 + i * 1.0, bz - 0.62, Math.PI / 4, 0.1, 0.1, 0.36));
@@ -1145,8 +1216,10 @@ function buildTavern(A, rng) {
   backedDoor(ex, s.z, H, -s.d / 2 + 7.2);
   backedDoor(s.x, nz, 0, -2.2);
   backedDoor(s.x - s.w / 2, s.z, H, -4);
+  // the shopfront under the red awning still has its lights on; the other two
+  // shut hours ago, which is what makes the lit one read as open
   for (const u of [-s.d / 2 + 3.4, 2.5, 8.5]) {
-    darkWindow(A, ex, s.z, H, 0, { u, w: 3.0, y: 0.8, h: 2.4 }, { trim: 'stone_grey', t });
+    darkWindow(A, ex, s.z, H, 0, { u, w: 3.0, y: 0.8, h: 2.4 }, { trim: 'stone_grey', t, lit: u === 2.5 });
   }
   darkWindow(A, s.x, nz, 0, 0, { u: 2.2, w: 3.2, y: 0.8, h: 2.4 }, { flip: true, trim: 'stone_grey', t });
 
@@ -1385,15 +1458,29 @@ function buildBackdrop(A, rng) {
     A.add(key, BOX(A), LL(IDENT, x, h / 2, z, (x * 3.1 + z * 1.7) % 0.14 - 0.07, w, h, d), {
       masks: [0.45, 0.5, 0.35],
     });
-    // a dark window grid on the faces that look into the map
+    // A window grid on the faces that look into the map. Broken into bays
+    // rather than run as one band per floor, because at night this is the
+    // skyline: a mass whose whole floor lights at once reads as a lit strip,
+    // and a mass with none reads as a hole cut out of the sky. Bay by bay, a
+    // fifth of them up, it reads as a building with people in it — which is
+    // all the backdrop has to do from 60 m away.
     const gy = Math.floor(h / 3.4);
     const toward = Math.abs(x) > Math.abs(z) ? (x > 0 ? -1 : 1) : 0;
     const faceX = x + (toward !== 0 ? toward * (w / 2 + 0.06) : 0);
     const facez = toward === 0 ? z + (z > 0 ? -1 : 1) * (d / 2 + 0.06) : z;
     const fw = toward === 0 ? w : d;
     const ry = toward === 0 ? (z > 0 ? Math.PI : 0) : (x > 0 ? -H : H);
+    const bays = Math.max(2, Math.round((fw - 2.5) / 3.2));
+    const bw = (fw - 2.5) / bays;
     for (let fy = 1; fy < gy; fy++) {
-      A.add('window_void', PANE(A), LL(IDENT, faceX, fy * 3.4 + 0.6, facez, ry, fw - 2.5, 1.4, 1));
+      const wy = fy * 3.4 + 0.6;
+      for (let b = 0; b < bays; b++) {
+        const u = -(fw - 2.5) / 2 + bw * (b + 0.5);
+        alongWall(faceX, facez, ry, u, _wp);
+        const lit = litRoom(_wp[0], wy, _wp[1]);
+        A.add(lit ? 'window_glow' : 'window_void', PANE(A), LL(IDENT, _wp[0], wy, _wp[1], ry, bw - 0.35, 1.4, 1),
+          lit ? { masks: [0.25, 0.4, 0.1] } : null);
+      }
     }
   }
   // the ground out there: one big dark apron so gaps between masses read as
@@ -1557,9 +1644,9 @@ export function buildLoop(A, rng) {
 export const LOOP_MAP = {
   id: 'loop',
   name: 'The Loop',
-  subtitle: 'Chicago corner under the L',
+  subtitle: 'Chicago corner under the L, after dark',
   blurb:
-    'Two streets cross under the elevated: steel columns and shopfronts below, a stalled train, a station platform and a walkable curve of track above.',
+    'Two streets cross under the elevated at half past eleven: steel columns and lit shopfronts below, a stalled train, a station platform and a walkable curve of track above.',
   size: '76 × 76 m',
   /**
    * LEVEL -> WORLD. Off-axis for the same reason Rust and Wilmot are: every
@@ -1569,6 +1656,61 @@ export const LOOP_MAP = {
   transform: { yaw: 0.46, tx: 0, tz: 0 },
   /** Tight to the block plus a skirt for the nav grid; the perimeter is sealed. */
   bounds: [-42, -2, -42, 42, 24, 42],
+  /**
+   * NIGHT. The Loop is the game's night map — the one time of day this corner
+   * is actually about. Everything the block owns is a light source: the lamps
+   * on their cast posts, the marquee and the blade sign, the diner's window,
+   * the lit rooms over the shopfronts and the stalled car at the platform. In
+   * daylight they are all detail on top of the sun; after dark they ARE the
+   * lighting, they are what the streets read by, and the steel of the L turns
+   * into a lid that puts everything under it in shadow.
+   *
+   * `hour` is 23:30 local solar time. The sun is 21 degrees under, so there is
+   * no twilight left in the sky at all, and the choice between this and the
+   * graded 01:30 of the `night` shot is a COLOUR one, made off the frame.
+   *
+   * The moon is the only key there is, and how blue it is depends entirely on
+   * how far it has to look through the atmosphere: `src/sky` tints it cool for
+   * the Purkinje shift and then reddens it by real airmass on the way down.
+   * At 01:30 it sits at 21 degrees, which is low enough that the reddening
+   * wins — it comes out at (1.00, 0.98, 0.88), a warm key against a blue sky,
+   * and pale limestone under a warm key photographs as daylight no matter what
+   * the clock says. At 23:30 it is at 42 degrees, the airmass is half of that,
+   * and it lands on (0.89, 0.96, 1.00): a cool key against warm sodium lamps
+   * and warm windows, which is the separation every night frame is built on.
+   * High enough to reach the road between the blocks, off-axis enough (due
+   * west, so across both streets) to leave one face of every mass in shadow.
+   *
+   * The weather is a city's, not the market's desert: more aerosol, so the
+   * practicals wear real halos and the far end of a street goes soft; a thinner
+   * cloud deck than the default, because the moon is the only key there is and
+   * a full one would take it away; and fog banked lower and heavier than the
+   * default, which is what a warm street exhaling into cold air does, and what
+   * gives the lamps something to stand in.
+   *
+   * `exposureBias` is a stop of metering compensation ON TOP of the half stop
+   * the sky already applies after dark, and it is the difference between a
+   * night frame and a long exposure of one. A meter weighted onto the geometry
+   * sees a frame that is mostly dark and opens up until moonlight on the bank's
+   * limestone reads as sunlight; this block does not need it to, because unlike
+   * the market it owns ten lamp posts, a marquee, a lit car and seventy lit
+   * windows, and stopping down is what hands the top of the tone curve to
+   * those instead of to a wall.
+   */
+  environment: {
+    hour: 23.5,
+    exposureBias: 1.0,
+    weather: {
+      turbidity: 1.85,
+      cloudCoverage: 0.22,
+      cloudDensity: 2.2,
+      cirrusCoverage: 0.14,
+      cirrusOpacity: 0.24,
+      horizonMurk: 0.2,
+      fogDensity: 1.3,
+      fogHeight: 14,
+    },
+  },
   spawnPoints: LOOP_SPAWNS,
   standable: standableAtLoop,
   groundY: groundYLoop,

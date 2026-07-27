@@ -81,6 +81,10 @@ const NIGHT_AMBIENT_HUE = [0.35, 0.5, 1.0];
  *   sky.setTimeOfDay(hours)      0..24, local solar time. Rebakes everything.
  *   sky.timeOfDay                current hour
  *   sky.setTimeRate(hoursPerSec) animate the sun (0 = frozen; default 0)
+ *   sky.applyEnvironment(env)    { hour, weather, exposureBias } — the sky a
+ *                                MAP is set under, or `null` for the defaults
+ *                                this system booted with. `world` calls it on
+ *                                every level build; see src/world/maps.js.
  *   sky.sunDirection             Vector3 pointing AT the sun   (read only)
  *   sky.moonDirection            Vector3 pointing AT the moon  (read only)
  *   sky.sunAltitude              radians above the horizon
@@ -96,8 +100,9 @@ const NIGHT_AMBIENT_HUE = [0.35, 0.5, 1.0];
  *                                after dark. See _updateCelestial. `render`
  *                                multiplies its IBL diffuse budget by this.
  *   sky.exposureBias             EV of metering compensation for this sun
- *                                elevation (+ is darker). `render` adds it to
- *                                settings.exposureBias.
+ *                                elevation, plus whatever the active map's
+ *                                environment asks for (+ is darker). `render`
+ *                                adds it to settings.exposureBias.
  *   sky.cloudShadowAt(x, z)      0..1 direct sunlight reaching a ground point
  *   sky.setWeather({ ... })      coverage, cirrus, turbidity, fogDensity,
  *                                fogHeight, windSpeed, windAngle, shaftGain
@@ -357,6 +362,28 @@ export class SkySystem {
     this._cloudTime = 0;
     this._occParams = { coverage: 0, density: 0, windX: 0, windZ: 0, time: 0 };
 
+    /**
+     * The sky the game boots on, captured from the authored state above rather
+     * than restated as a literal, so it can never drift from it. A map that
+     * carries an `environment` is applied over this, and dropping that map puts
+     * it back — see `applyEnvironment`. The three fog fields are the ones
+     * `setWeather` understands; `fogDensity` is a multiplier on the authored
+     * fog, so 1 is the identity.
+     */
+    this._defaultEnvironment = {
+      hour: this.hour,
+      weather: {
+        ...this.weather,
+        fogDensity: 1,
+        fogHeight: this._fog.heightScale,
+        shaftGain: this._fog.shaftGain,
+      },
+    };
+    /** The map environment currently applied, or null for the defaults. */
+    this._environment = null;
+    /** EV the active map adds to this system's own metering compensation. */
+    this._envExposureBias = 0;
+
     this._applyWeather();
     this._applyFog();
     this.setTimeOfDay(this.hour);
@@ -439,6 +466,45 @@ export class SkySystem {
     if (patch.turbidity !== undefined) this.luts.bakeStatic();
     this._skyDirty = true;
     this._envDirty = true;
+    return this;
+  }
+
+  /**
+   * The sky a MAP is set under.
+   *
+   * A map descriptor may carry an `environment` — the hour it plays at and any
+   * weather it wants over the defaults (see the contract in src/world/maps.js)
+   * — and `world` hands it here every time it builds a level. The Loop is a
+   * night map; the rest play under the sky's own defaults, and pass `null`.
+   *
+   * That `null` is the half that matters. Switching from a night map to a day
+   * one has to put the whole sky back, not just the hour, or the next map
+   * inherits the last one's haze and cloud deck. So the patch is always applied
+   * over `_defaultEnvironment` rather than over whatever is live now.
+   *
+   * `exposureBias` is EV the map adds to the metering compensation this system
+   * already publishes for the hour (see the end of `_updateCelestial`);
+   * positive is darker. It is a MAP's knob, not a time-of-day one: the level's
+   * own light matters. On a street whose practicals are one moon and nothing
+   * else, the half stop after dark is the whole correction; on a block with ten
+   * lamp posts, a marquee and seventy lit windows there is enough light in the
+   * frame that the meter can be stopped down further, and stopping it down is
+   * what puts the lamps at the top of the tone curve instead of the moonlit
+   * limestone behind them. Every night frame is exposed for its practicals.
+   *
+   * A descriptor is a module singleton, which makes the identity check exact:
+   * rebuilding the same map is free, and booting a map with no environment of
+   * its own costs nothing at all.
+   */
+  applyEnvironment(env = null) {
+    const next = env ?? null;
+    if (next === this._environment) return this;
+    this._environment = next;
+    const base = this._defaultEnvironment;
+    this._envExposureBias = next?.exposureBias ?? 0;
+    this.setWeather({ ...base.weather, ...(next?.weather ?? null) });
+    // setTimeOfDay re-runs _updateCelestial, which is where the bias lands.
+    this.setTimeOfDay(next?.hour ?? base.hour);
     return this;
   }
 
@@ -757,7 +823,11 @@ export class SkySystem {
       // the geometry, and once the only key is a moon plus twenty-two sodium
       // lamps it opens up until a midnight street reads as an overcast evening.
       // Every night frame ever shot is underexposed on purpose.
-      0.55 * (1 - beamAlive);
+      0.55 * (1 - beamAlive) +
+      // ...plus whatever the active map asks for on top. How far a night frame
+      // can be stopped down depends on how much light the LEVEL owns, which is
+      // a property of the map and not of the hour. See `applyEnvironment`.
+      this._envExposureBias;
 
     // Released — and then some — once the beam is gone. After dark the moonlit
     // sky is the ONLY fill there is, the warm ground bounce that made the daytime

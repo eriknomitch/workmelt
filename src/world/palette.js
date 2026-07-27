@@ -610,6 +610,24 @@ export const PALETTE = {
       three: { emissive: 0xffb066, emissiveIntensity: 1.1, toneMapped: true },
     },
   },
+  /**
+   * A lit sign face: a marquee letterboard, a blade sign, a diner's name over
+   * the door. It sits between the two above on purpose — `window_glow` is a
+   * whole room catching one bulb and reads as a value, not as a light, while
+   * `emissive_warm` is the bulb itself and blows out anything larger than a
+   * few centimetres. A sign board is neither: a painted panel with a bank of
+   * lamps a hand's width behind it, bright enough to be the brightest thing on
+   * a night street and still hold its lettering instead of clipping to white.
+   */
+  sign_glow: {
+    name: 'plaster',
+    surface: 'plaster',
+    opts: {
+      scale: 0.9,
+      tint: 0xf7e6c8,
+      three: { emissive: 0xffd9a0, emissiveIntensity: 3.4, toneMapped: true },
+    },
+  },
   /** Street-lamp diffuser. Emission is driven by time of day at runtime. */
   lamp_lens: {
     name: 'glass',

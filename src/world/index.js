@@ -78,7 +78,15 @@ const LIGHT_SLOTS = 20;
 
 export class WorldSystem {
   static id = 'world';
-  static deps = ['materials', 'physics'];
+  /**
+   * `sky` is a dependency because a MAP OWNS THE HOUR IT PLAYS AT: `_build`
+   * hands the descriptor's `environment` to `sky.applyEnvironment` (see
+   * maps.js), and that has to happen with the sky already stood up — before
+   * the pre-warm compiles anything and before the first frame, not on the
+   * first `update`, or a night map would boot through a frame of daylight.
+   * Ordering was already sky-then-world; this makes the registry enforce it.
+   */
+  static deps = ['materials', 'physics', 'sky'];
 
   constructor(opts = {}) {
     /** Overrides the URL / stored preference. Used by headless harnesses. */
@@ -158,6 +166,12 @@ export class WorldSystem {
     const map = getMap(id) ?? getMap(DEFAULT_MAP_ID);
     this.map = map;
     this.mapId = map.id;
+
+    // The sky this map is set under — The Loop plays at night, the rest under
+    // the sky's own defaults. Applied before the level is assembled so the
+    // lamps, the pre-warm and the first frame all see the same hour; passing a
+    // map's `environment` (or null) also puts back what the last map changed.
+    ctx.peek('sky')?.applyEnvironment?.(map.environment ?? null);
 
     // A fresh stream off the level seed, so rebuilding a map reproduces it
     // exactly and a map change never perturbs another subsystem's sequence.
