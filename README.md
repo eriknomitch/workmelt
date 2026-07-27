@@ -61,13 +61,14 @@ in that order.
 
 ## Maps
 
-Two levels ship, and the Match Start screen picks between them. Both are
+Three levels ship, and the Match Start screen picks between them. All are
 generated in code like everything else.
 
 | | |
 |---|---|
 | **Market** | A 120 m Middle-Eastern market street in the spirit of Crash/Backlot: one long street, two flanking alleys, an arched gate closing the vista, three enterable and furnished buildings, several thousand props. |
 | **Rust** | A low-poly take on the classic: a 55 m desert oil refinery built around a 13 m steel derrick with two stair-connected platforms and a gantry to the shed roof, rows of shipping containers for cover, and a two-storey office overlooking the yard. |
+| **Wilmot** | A low-poly walled country estate modelled on 1900 Wilmot Rd, Bannockburn IL: a two-storey brick manor you fight through, its listing's own pool terrace, tennis court, sunken-garden trench, hay-loft barn and glass greenhouse arranged around the lawn. |
 
 Deep-link a level with `?map=rust`; otherwise the game remembers whichever you
 last chose. In a room the map belongs to the *room* — pick one and everybody in
