@@ -56,8 +56,16 @@ export function autoEdgeWear(geo, margin = 0.02, amount = 1) {
   });
 }
 
-/** Part accumulator for one prop. */
-class PB {
+/**
+ * Part accumulator for one prop.
+ *
+ * Exported because every map's prop library wants the same builder — see
+ * `src/world/rustprops.js`. It owns the two things that stop a prop reading as
+ * an extruded box: automatic convex-edge wear on every part, and the merge down
+ * to a single geometry so a prototype is one draw call however many parts it
+ * was assembled from.
+ */
+export class PB {
   constructor() {
     this.list = [];
   }

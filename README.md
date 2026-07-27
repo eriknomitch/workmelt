@@ -15,9 +15,9 @@ npm run dev          # http://127.0.0.1:5173
 ```
 
 The game opens on a **Match Start** screen rather than dropping you mid-firefight:
-pick a bot garrison and start on your own, or wait for a friend to join your room
-and ready up together. Once the match is live, click the canvas to lock the
-cursor. WASD move, mouse aim, LMB fire, RMB or X ADS, R reload, Shift sprint,
+pick a **map**, pick a bot garrison and start on your own, or wait for a friend
+to join your room and ready up together. Once the match is live, click the canvas
+to lock the cursor. WASD move, mouse aim, LMB fire, RMB or X ADS, R reload, Shift sprint,
 Ctrl crouch, Space jump, Q/E lean, Esc release.
 
 **On a trackpad**, aiming down sights has its own settings, because a two-finger
@@ -32,6 +32,21 @@ Performance/Low/Medium/High/Ultra pipeline, then adjusts internal resolution
 within that tier to pursue stable p95 frame pacing. Open the pause menu to
 choose a fixed preset or a target from 30–240 FPS; settings are stored locally
 and never synchronized in multiplayer.
+
+## Maps
+
+Two levels ship, and the Match Start screen picks between them. Both are
+generated in code like everything else.
+
+| | |
+|---|---|
+| **Market** | A 120 m Middle-Eastern market street in the spirit of Crash/Backlot: one long street, two flanking alleys, an arched gate closing the vista, three enterable and furnished buildings, several thousand props. |
+| **Rust** | A low-poly take on the classic: a 55 m desert oil refinery built around a 13 m steel derrick with two stair-connected platforms and a gantry to the shed roof, rows of shipping containers for cover, and a two-storey office overlooking the yard. |
+
+Deep-link a level with `?map=rust`; otherwise the game remembers whichever you
+last chose. In a room the map belongs to the *room* — pick one and everybody in
+it switches together. Adding a third is a module and one line in
+`src/world/maps.js`; see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Multiplayer
 

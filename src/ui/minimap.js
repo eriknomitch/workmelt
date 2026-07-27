@@ -68,6 +68,18 @@ export class Minimap {
 
   /* --------------------------------------------------------------- bake --- */
 
+  /**
+   * Throw the baked bitmap away so the next `tryBake` draws the new level.
+   * Called when `world` reports a map change — the bake is a picture of a
+   * specific set of footprints, and after a rebuild it is a picture of a level
+   * that no longer exists.
+   */
+  invalidate() {
+    this.baked = null;
+    this.bakeDone = false;
+    this.bakeTries = 0;
+  }
+
   tryBake(ctx) {
     if (this.bakeDone || this.bakeTries > 6) return;
     this.bakeTries++;

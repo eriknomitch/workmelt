@@ -212,6 +212,64 @@ export const PALETTE = {
   },
   steel: { name: 'metal_brushed', surface: 'metal', opts: { vertexMasks: true, scale: 0.9 } },
   corrugated: { name: 'corrugated', surface: 'metal', opts: { vertexMasks: true, scale: 2.2 } },
+  /**
+   * Corrugated at SHED scale. The 2.2 m tile above is sized for a roof read at
+   * 20 m; a fence panel two metres tall gets one and a half ribs across it and
+   * reads as flat sheet, which is the whole point of the material.
+   */
+  corrugated_fine: {
+    name: 'corrugated',
+    surface: 'metal',
+    opts: { vertexMasks: true, tint: 0x9a9084, scale: 0.85, normalStrength: 1.3, weather: [0.5, 0.4, 0.35, 0.5] },
+  },
+
+  /**
+   * SHIPPING CONTAINERS — the Rust map's whole vocabulary of cover.
+   *
+   * All four are the corrugated generator under a paint tint, at a tile sized
+   * for a 2.4 m container wall rather than a roof, so the ribs read at the
+   * distance you actually fight across (8-20 m). The tints are deliberately
+   * desaturated and kept inside 0.05-0.35 reflectance: a saturated primary-red
+   * box is the fastest way to make a container read as a toy, and a yard of
+   * them at full chroma flattens the whole frame.
+   */
+  container_red: {
+    name: 'corrugated',
+    surface: 'metal',
+    opts: { vertexMasks: true, tint: 0x8a4c3c, scale: 1.25, normalStrength: 1.25, weather: [0.55, 0.45, 0.5, 0.5] },
+  },
+  container_blue: {
+    name: 'corrugated',
+    surface: 'metal',
+    opts: { vertexMasks: true, tint: 0x486074, scale: 1.25, normalStrength: 1.25, weather: [0.5, 0.45, 0.5, 0.5] },
+  },
+  container_green: {
+    name: 'corrugated',
+    surface: 'metal',
+    opts: { vertexMasks: true, tint: 0x53644c, scale: 1.25, normalStrength: 1.25, weather: [0.5, 0.5, 0.55, 0.55] },
+  },
+  container_sand: {
+    name: 'corrugated',
+    surface: 'metal',
+    opts: { vertexMasks: true, tint: 0x9d8f72, scale: 1.25, normalStrength: 1.25, weather: [0.6, 0.4, 0.45, 0.5] },
+  },
+  /**
+   * Structural steel that is PAINTED and only rusting through at the arris —
+   * the derrick legs, gantry stringers and pipe trestles. Distinct from
+   * `metal_rust`, which is bare corroded sheet: a whole 14 m tower in bare rust
+   * reads as one orange silhouette with no structure in it.
+   */
+  steel_frame: {
+    name: 'metal_painted',
+    surface: 'metal',
+    opts: { vertexMasks: true, tint: 0x7c6a58, scale: 0.75, normalStrength: 1.2, weather: [0.6, 0.4, 0.5, 0.5] },
+  },
+  /** Walkway grating and stair treads: darker, and rough enough to kill glare. */
+  steel_grate: {
+    name: 'metal_brushed',
+    surface: 'metal',
+    opts: { vertexMasks: true, tint: 0x585552, scale: 0.5, normalStrength: 1.2, weather: [0.5, 0.5, 0.5, 0.6] },
+  },
 
   // ---------------------------------------------------------------- organic --
   wood: { name: 'wood', surface: 'wood', opts: { vertexMasks: true, scale: 1.8 } },
