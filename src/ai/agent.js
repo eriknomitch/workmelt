@@ -1038,6 +1038,7 @@ export class Agent {
     }
     an.update(this._animAccum, this.ctx.time.elapsed);
     this._animAccum = 0;
+    if (an.footPlant && this.alive) this.ai.actorFootstep(this, an.footPlant);
   }
 
   /** Push the hit capsules onto the animated skeleton. */

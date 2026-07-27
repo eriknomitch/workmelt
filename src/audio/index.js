@@ -33,7 +33,8 @@
  *
  * Driven off the canonical events in ARCHITECTURE.md: weapon:fire,
  * weapon:reload, weapon:shell, bullet:impact, bullet:tracer, damage:dealt,
- * damage:taken, actor:death, player:land, player:footstep, player:state,
+ * damage:taken, actor:death, player:land, player:footstep, actor:footstep,
+ * player:state,
  * explosion. If `ai` emits the optional `ai:bark {kind, position, voice}` it is
  * picked up as well.
  */
@@ -72,6 +73,29 @@ const GESTURES = ['pointerdown', 'mousedown', 'keydown', 'touchstart', 'wheel'];
 
 /** Where tools/encode-sfx.mjs puts its output, honouring a deployed subpath. */
 const SAMPLE_BASE = `${import.meta.env?.BASE_URL ?? '/'}sfx/`.replace(/\/{2,}/g, '/');
+
+/**
+ * Your own boots, played dry. Was an effective 0.72 through a 3D emitter parked
+ * in the no-attenuation zone, which is why it drowned everything.
+ */
+const SELF_STEP_LEVEL = 0.34;
+
+/**
+ * Footstep distance law, deliberately shallower than `spatial.attenuation()`.
+ *
+ * The physical curve rolls off at 0.85 and was tuned when the only footstep in
+ * the game was your own — it put an enemy at 10 m a full 10 dB under your feet,
+ * which is inaudible under fire. Footsteps are a gameplay signal before they are
+ * a physical event, so they get 0.38 and a nearer hard cutoff: clearly readable
+ * out to ~25 m, then gone, rather than a faint wash of the whole map. Gunfire
+ * and impacts keep the physical curve.
+ */
+const STEP_REF = 2.0;
+const STEP_ROLLOFF = 0.38;
+const STEP_CUTOFF = 32;
+function stepAttenuation(dist) {
+  return STEP_REF / (STEP_REF + STEP_ROLLOFF * Math.max(0, dist - STEP_REF));
+}
 
 /** Names other subsystems already use, mapped onto our voices. */
 const UI_ALIAS = {
@@ -131,7 +155,10 @@ export class AudioSystem {
     this._dryCursor = 0;
 
     /* per-frame rate limits */
-    this._budget = { impact: 0, step: 0, shell: 0, whizz: 0 };
+    // `selfStep` is separate from `step` on purpose: a garrison moving nearby
+    // would otherwise spend the shared budget and drop the player's own boots,
+    // which is the one footstep that must never stutter.
+    this._budget = { impact: 0, step: 0, shell: 0, whizz: 0, selfStep: 0 };
     this._lastBarkTime = -99;
     this._lastEnemyFire = -99;
 
@@ -311,7 +338,7 @@ export class AudioSystem {
 
       /* ---- reset per-frame budgets ------------------------------- */
       const b = this._budget;
-      b.impact = 0; b.step = 0; b.shell = 0; b.whizz = 0;
+      b.impact = 0; b.step = 0; b.shell = 0; b.whizz = 0; b.selfStep = 0;
 
       const s = this.stats;
       s.voices = this.field.stats.active;
@@ -428,6 +455,9 @@ export class AudioSystem {
         endTime: voice.end,
         occlusion: o.occlusion,
         tracked: o.tracked,
+        // Opt out of the physical distance law; acquire() still folds occlusion
+        // in on top. Only footsteps use this — see stepAttenuation().
+        atten: o.atten,
       });
       if (!em) {
         try { voice.node.disconnect(); } catch { /* noop */ }
@@ -595,6 +625,8 @@ export class AudioSystem {
     on('bullet:tracer', (p) => this._onTracer(p));
     on('explosion', (p) => this._onExplosion(p));
     on('player:footstep', (p) => this._onFootstep(p));
+    // Bots and remote players — `ai` owns both bodies, so both arrive here.
+    on('actor:footstep', (p) => this._onActorFootstep(p));
     on('player:land', (p) => this._onLand(p));
     on('player:state', (p) => this._onPlayerState(p));
     on('damage:dealt', (p) => this._onDamageDealt(p));
@@ -754,18 +786,44 @@ export class AudioSystem {
     if (near > 0.1) this.mixer.concuss(Math.pow(near, 1.4));
   }
 
+  /**
+   * The local player's own step. Deliberately NOT spatialised.
+   *
+   * Panning a source that is rigidly attached to the listener's head conveys
+   * nothing, and the position it would get — the feet, ~1.6 m down — sits inside
+   * `attenuation()`'s flat near field, so a 3D emitter gives it full gain and
+   * makes your own boots the loudest footstep the game can produce. A dry voice
+   * at a fixed level is both more honest and immune to emitter stealing, so your
+   * own movement never drops out in a firefight.
+   *
+   * SELF_STEP_LEVEL is the knob if this wants rebalancing against enemy steps.
+   */
   _onFootstep(p) {
+    if (!this.running) return;
+    if (this._budget.selfStep++ > 1) return;
+    const gait = p?.gait ?? (p?.running ? 'run' : p?.crouched ? 'crouch' : 'walk');
+    this._playDry('step', {
+      surface: p?.surface ?? 'concrete', gait,
+      level: p?.level ?? SELF_STEP_LEVEL,
+    }, 'foley', 0.12);
+  }
+
+  /**
+   * A bot or remote player's step, from `ai`. Spatialised, but on a gentler
+   * curve than the physical one — see STEP_ROLLOFF.
+   */
+  _onActorFootstep(p) {
     if (!this.running) return;
     if (this._budget.step++ > 3) return;
     const pos = p?.position;
-    const lp = this.field.listenerPos;
-    const x = pos?.x ?? lp.x, y = pos?.y ?? lp.y - 1.6, z = pos?.z ?? lp.z;
-    const dist = this.field.distanceTo(x, y, z);
-    if (dist > 45) return;
+    if (!pos) return;
+    const dist = this.field.distanceTo(pos.x, pos.y, pos.z);
+    if (dist > STEP_CUTOFF) return;
     const gait = p?.gait ?? (p?.running ? 'run' : p?.crouched ? 'crouch' : 'walk');
-    this._playAt('step', x, y, z, {
+    this._playAt('step', pos.x, pos.y, pos.z, {
       surface: p?.surface ?? 'concrete', gait,
-      level: p?.level ?? (dist < 2 ? 0.72 : 1),
+      level: p?.level ?? 1,
+      atten: stepAttenuation(dist),
     }, 'foley', 0.4);
   }
 
@@ -925,6 +983,14 @@ export class AudioSystem {
         surface: s, damage: 32, exit: false,
       });
       ev.emit('player:footstep', { position: at(0, -1.6, 0), surface: s, running: true });
+    }
+    // Enemy steps at a spread of ranges: exercises stepAttenuation() and the
+    // cutoff, which the local player's dry step never touches.
+    for (const d of [1.5, 6, 14, 26, 40]) {
+      ev.emit('actor:footstep', {
+        actor: { id: 9 }, position: at(d * 0.7, -1.6, -d * 0.7),
+        surface: 'concrete', speed: 4.2, running: true, crouched: false, left: d < 20,
+      });
     }
     ev.emit('weapon:shell', { position: at(0.3, -0.2, -0.2), velocity: { x: 1, y: 1, z: 0 } });
     for (const ph of ['start', 'magout', 'magin', 'end']) ev.emit('weapon:reload', { weapon: 'rifle', phase: ph });

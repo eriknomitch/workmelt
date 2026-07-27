@@ -41,7 +41,7 @@
  * EVENTS consumed: weapon:fire, bullet:impact, damage:dealt, explosion,
  *   equipment:flash, player:footstep
  * EVENTS emitted: weapon:fire (enemy muzzle), weapon:shell, bullet:tracer,
- *   damage:dealt (enemy hitting the player), actor:death
+ *   damage:dealt (enemy hitting the player), actor:death, actor:footstep
  */
 
 import * as THREE from 'three';
@@ -63,6 +63,10 @@ import { NetPuppet } from './puppet.js';
  */
 const CORPSE_SECONDS = 14;
 const REINFORCE_SECONDS = 4;
+/** Past this the step is inaudible anyway, so it never costs a surface ray. */
+const STEP_EMIT_RANGE = 36;
+/** Half the stance width — the planted foot is beside the body, not under it. */
+const STEP_LATERAL = 0.17;
 
 export class AiSystem {
   static id = 'ai';
@@ -109,6 +113,13 @@ export class AiSystem {
     this._v = new THREE.Vector3();
     this._v2 = new THREE.Vector3();
     this._v3 = new THREE.Vector3();
+    // Reused per foot plant: emission is synchronous, so listeners are done
+    // with the payload before the next one is built.
+    this._stepListener = new THREE.Vector3();
+    this._stepPayload = {
+      actor: null, position: new THREE.Vector3(), surface: 'concrete',
+      speed: 0, running: false, crouched: false, left: false,
+    };
     this._probe = { y: 0, nx: 0, ny: 1, nz: 0, hit: false };
     this._tracerFrom = new THREE.Vector3();
     this._tracerTo = new THREE.Vector3();
@@ -579,6 +590,61 @@ export class AiSystem {
     out.setFromMatrixPosition(this.ctx.camera.matrixWorld);
     out.y -= 0.1;
     return out;
+  }
+
+  /**
+   * Publish a foot plant for a body this subsystem owns — a bot or a remote
+   * player's puppet. `audio` turns it into a spatialised step.
+   *
+   * Deliberately NOT `player:footstep`: that event means *the local player
+   * stepped*, and two listeners depend on it meaning exactly that. Our own
+   * perception listener feeds every step to `agent.hear()`, so reusing it would
+   * have the garrison hearing itself and standing to permanently; `fx` spawns
+   * dust from it and would puff under every bot on the map. `actor:footstep`
+   * carries `actor` the way `actor:death` does, and only `audio` consumes it.
+   *
+   * The range gate is here rather than in `audio` because the surface probe is
+   * a raycast: an inaudible step should cost nothing, not a ray plus an event.
+   * `audio` still applies its own cutoff and remains the authority on it.
+   */
+  actorFootstep(actor, foot) {
+    const ev = this.ctx.events;
+    if (!ev || !actor) return;
+    const pos = actor.position;
+    if (!pos) return;
+    const lp = this.playerPosition(this._stepListener);
+    const dx = pos.x - lp.x, dy = pos.y - lp.y, dz = pos.z - lp.z;
+    if (dx * dx + dy * dy + dz * dz > STEP_EMIT_RANGE * STEP_EMIT_RANGE) return;
+
+    // Offset to the planted foot, not the body centre. right = (cos y, 0, -sin y)
+    // for the forward = (sin y, ., cos y) convention the rig and puppet share.
+    const yaw = actor.yaw ?? 0;
+    const lat = foot * STEP_LATERAL;
+    const fx = pos.x + Math.cos(yaw) * lat;
+    const fz = pos.z - Math.sin(yaw) * lat;
+
+    // Surface under the foot, same reasoning as the player's own step: a stride
+    // that lands on a kerb should sound like the kerb.
+    let y = pos.y;
+    let surface = 'concrete';
+    const phys = this.phys;
+    if (phys) {
+      const hit = phys.raycast(fx, pos.y + 0.35, fz, 0, -1, 0, 0.95, phys.MASK.WORLD);
+      if (hit.hit) {
+        y = hit.point.y;
+        surface = hit.surface;
+      }
+    }
+
+    const e = this._stepPayload;
+    e.actor = actor;
+    e.position.set(fx, y, fz);
+    e.surface = surface;
+    e.speed = actor.speed ?? 0;
+    e.running = !actor.crouch && e.speed > 2.6;
+    e.crouched = !!actor.crouch;
+    e.left = foot < 0;
+    ev.emit('actor:footstep', e);
   }
 
   /* ================================================================== */
