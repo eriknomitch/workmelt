@@ -23,6 +23,7 @@
  *   audio.ui(kind)                     'hitmarker'|'headshot'|'kill'|'damage'
  *   audio.setMasterVolume(v)  audio.setBusVolume(bus, v)
  *   audio.setAmbienceIntensity(v)      scales the distant-battle scheduler
+ *   audio.setAmbienceWind(v)           wind bed level 0..1 (ships at 0)
  *   audio.report()                     diagnostics snapshot
  *
  * All of it is a no-op — never a throw — before the graph exists, so callers
@@ -536,6 +537,8 @@ export class AudioSystem {
   setMasterVolume(v) { this.mixer?.setMasterVolume(v); }
   setBusVolume(bus, v) { this.mixer?.setBusVolume(bus, v); }
   setAmbienceIntensity(v) { if (this.ambience) this.ambience.intensity = clamp(v, 0, 3); }
+  /** Wind bed level, 0..1. Ships at 0 — see WIND_LEVEL in ambience.js. */
+  setAmbienceWind(v) { this.ambience?.setWind(clamp(v, 0, 1)); }
   setOcclusionEnabled(v) { if (this.field) this.field.occlusionEnabled = !!v; }
 
   /* ================================================================ */

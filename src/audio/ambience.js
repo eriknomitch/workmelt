@@ -11,9 +11,28 @@
  * The beds also react to the space probe: walking inside drops the wind and
  * closes a lowpass over the outdoor content, which is a huge part of why a
  * doorway feels like a doorway.
+ *
+ * The wind bed ships SILENT (WIND_LEVEL below) — it is built and wired, but at
+ * zero gain until someone turns it up.
  */
 
 import { ad, biquad, clamp, gain, lerp, osc, series, struckResonator, sweep } from './dsp.js';
+
+/**
+ * Wind bed level, 0..1, scaling the whole wind layer (both brown-noise beds,
+ * the whistle, the gusts and the enclosure duck).
+ *
+ * SET TO 0 ON PURPOSE. Continuous wind is the one bed with nothing to say: it
+ * masks the low end of gunfire, it never changes what a player does, and over
+ * a session it reads as hiss rather than as weather. The city hum and the
+ * distant-war rumble carry the outdoor space on their own. The layer is still
+ * built and still tracks enclosure, so `audio.setAmbienceWind(1)` from the
+ * console brings it back at full strength without a reload.
+ */
+const WIND_LEVEL = 0;
+
+/** Bed gain the wind sits at outdoors, before WIND_LEVEL scales it. */
+const WIND_BED = 0.5;
 
 export class Ambience {
   constructor(actx, bank, mixer, field, rng) {
@@ -26,6 +45,7 @@ export class Ambience {
     this.started = false;
     this.enclosure = 0;
     this.intensity = 1;    // scales the distant-battle scheduler
+    this.windLevel = WIND_LEVEL;
     this._timers = { gust: 2, volley: 4, boom: 18, oneshot: 6, chatter: 25 };
   }
 
@@ -51,7 +71,7 @@ export class Ambience {
     this.nodes.push(sendTap);
 
     /* ---- wind: two decorrelated brown-noise layers ---------------- */
-    this._windGain = gain(actx, 0.5);
+    this._windGain = gain(actx, WIND_BED * this.windLevel);
     this._windGain.connect(outdoorLP);
     this.nodes.push(this._windGain);
     for (let i = 0; i < 2; i++) {
@@ -141,7 +161,23 @@ export class Ambience {
     const t = this.actx.currentTime;
     this._outdoorLP.frequency.setTargetAtTime(lerp(20000, 620, this.enclosure), t, 0.6);
     this._outdoorGain.gain.setTargetAtTime(lerp(1, 0.45, this.enclosure), t, 0.6);
-    if (this._windGain) this._windGain.gain.setTargetAtTime(lerp(0.5, 0.12, this.enclosure), t, 0.8);
+    this._applyWind(0.8);
+  }
+
+  /**
+   * Set the wind bed level, 0..1. 0 is silent wind; 1 is the full bed. Live —
+   * the layer keeps running, so this can be turned back up mid-match.
+   */
+  setWind(v) {
+    this.windLevel = clamp(v, 0, 1);
+    this._applyWind(0.3);
+  }
+
+  /** Push windLevel × the enclosure duck into the bed gain. */
+  _applyWind(timeConstant) {
+    if (!this._windGain) return;
+    const target = lerp(WIND_BED, 0.12, this.enclosure) * this.windLevel;
+    this._windGain.gain.setTargetAtTime(target, this.actx.currentTime, timeConstant);
   }
 
   update(dt, api) {
@@ -182,6 +218,7 @@ export class Ambience {
 
   /** A gust: level swell plus the lowpass opening as the air speeds up. */
   _gust() {
+    if (this.windLevel <= 0) return; // silent bed — don't automate what nobody hears
     const t = this.actx.currentTime;
     const r = this.rng;
     const dur = r.range(2.2, 6.5);
