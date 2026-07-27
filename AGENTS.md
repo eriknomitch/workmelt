@@ -16,6 +16,7 @@ The browser client lives in `src/`. Features are divided into subsystem director
 - `node src/physics/selftest.js` and `node src/ai/selftest.mjs` run subsystem checks.
 - `npm run test:input` checks input aggregation and the persisted control binds.
 - `npm run playtest:ads` drives the pause menu and ADS binds in a real browser.
+- `node src/world/spawns.selftest.mjs` checks the spawn director's scoring headlessly; `node src/world/spawns.probe.mjs` verifies spawn placement, the bot garrison and 30 respawns inside the real built level (needs a browser).
 - `node tools/capture.mjs` performs the required GPU-backed visual smoke test.
 
 ## Coding Style & Naming Conventions

@@ -35,6 +35,15 @@ export class Squad {
     return agent;
   }
 
+  /** Forget a member. Called when `ai` retires a body it is done with. */
+  remove(agent) {
+    const i = this.members.indexOf(agent);
+    if (i >= 0) this.members.splice(i, 1);
+    this.peekHolders.delete(agent.id);
+    if (this.flanker === agent) this.flanker = null;
+    this.peekTokens = Math.max(1, Math.round(this.members.length * 0.5));
+  }
+
   get alive() {
     let n = 0;
     for (const m of this.members) if (m.alive) n++;

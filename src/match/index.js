@@ -15,6 +15,9 @@
  * WHAT IT OWNS
  *   • `state`: 'setup' -> 'countdown' -> 'live', and the gating that goes with
  *     it — input, player control, HUD visibility, pointer lock.
+ *   • WHERE the player deploys — a spawn scored by `world.spawns` rather than
+ *     the menu backdrop everyone was standing on — and, when there is no `net`
+ *     to own it, the respawn cycle after a bot kills you.
  *   • WHEN the garrison spawns. `config.deferGarrison` (set in src/main.js) tells
  *     `ai` not to populate during boot; this system calls `ai.populate()` with
  *     the chosen size at the moment the match starts, so a players-only match
@@ -32,9 +35,12 @@
  *   match:countdown { seconds }                    a countdown tick landed
  */
 
+import * as THREE from 'three';
 import { MatchStartUI, BOT_PRESETS } from './ui.js';
 
 const DEFAULT_BOTS = 'standard';
+/** Time on your back before you are put back in. Matches `net`'s own timer. */
+const RESPAWN_MS = 3200;
 
 export class MatchSystem {
   static id = 'match';
@@ -47,6 +53,11 @@ export class MatchSystem {
     this._countdownEnd = 0;
     this._lastTick = -1;
     this._off = [];
+    /** Bots-only respawn cycle — see `_onPlayerDeath`. 0 when not waiting. */
+    this._respawnAt = 0;
+    this._deathSite = new THREE.Vector3();
+    this._lastAttack = new THREE.Vector3();
+    this._lastAttackValid = false;
   }
 
   async init(ctx) {
@@ -72,6 +83,11 @@ export class MatchSystem {
     if (this.net) this.ui.setRoom(this.net.room);
 
     const on = (t, fn) => this._off.push(ctx.events.on(t, fn));
+    on('player:death', () => this._onPlayerDeath());
+    on('damage:taken', (e) => {
+      if (e?.from) this._lastAttack.copy(e.from);
+      this._lastAttackValid = !!e?.from;
+    });
     on('net:lobby', (e) => this._onLobby(e));
     on('net:countdown', (e) => this._onCountdown(e));
     on('net:join', () => this._sfx('join'));
@@ -148,6 +164,7 @@ export class MatchSystem {
   }
 
   update() {
+    this._updateRespawn();
     if (this.state !== 'countdown') return;
     const left = this._countdownEnd - performance.now();
     const n = Math.max(0, Math.ceil(left / 1000));
@@ -174,6 +191,11 @@ export class MatchSystem {
     if (this.state === 'live') return;
     this.state = 'live';
     const preset = BOT_PRESETS.find((p) => p.key === bots) ?? BOT_PRESETS[0];
+
+    // Deploy the player FIRST, then the garrison: the bots' anchors are scored
+    // against wherever everybody actually is, and "everybody" now includes a
+    // player who just moved off the menu backdrop.
+    this._deploy();
 
     if (preset.squads > 0) {
       try {
@@ -205,8 +227,73 @@ export class MatchSystem {
   }
 
   /* ==================================================================== */
+  /* respawn (bots-only matches)                                          */
+  /* ==================================================================== */
+
+  /**
+   * A bots-only match has to put the player back in too.
+   *
+   * `net` owns the respawn cycle whenever there is a room, because it also has
+   * to tell the relay. With `?mp=0` there is no `net` at all, and until now
+   * nothing brought the player back from a bot's bullet — you simply lay there
+   * at zero health for the rest of the session. Same 3.2 s, same director, and
+   * the bot that killed you is passed in so you do not come back in its lap.
+   */
+  _onPlayerDeath() {
+    if (this.net || this.state !== 'live' || this._respawnAt) return;
+    this._deathSite.copy(this.player.feetPosition);
+    this._respawnAt = performance.now() + RESPAWN_MS;
+    this.player.setControlEnabled(false);
+    this._sfx('leave', 0.8);
+  }
+
+  _updateRespawn() {
+    if (!this._respawnAt || performance.now() < this._respawnAt) return;
+    this._respawnAt = 0;
+    this.player.respawn({
+      team: 'player',
+      actorId: 'player',
+      from: this._deathSite,
+      killer: this._lastAttackValid ? this._lastAttack : null,
+    });
+    this.player.setControlEnabled(true);
+    this._lastAttackValid = false;
+  }
+
+  /* ==================================================================== */
   /* helpers                                                              */
   /* ==================================================================== */
+
+  /**
+   * Put the player on a deployment spawn.
+   *
+   * Until now everyone sat on spawn point 0 while the menu was up — which in a
+   * room of four means four players materialising on the same slab the instant
+   * the countdown ends. The director scores the point against every other
+   * player it can see (each client feeds it the room's live transforms through
+   * `net`), and the pick is announced so a client whose countdown finished a
+   * frame earlier has already reserved its ground.
+   *
+   * Bots-only and late "deploy now" joins take the same path — a live match is
+   * exactly the case where a fixed spawn is most likely to be somebody's
+   * killing ground.
+   */
+  _deploy() {
+    const world = this.ctx.peek('world');
+    if (!world?.spawns) return;
+    try {
+      const point = this.player.respawn({
+        team: this.net?.spawnTeam ?? 'player',
+        actorId: 'player',
+      });
+      this.net?.announceSpawn?.(point);
+      if (point) console.info(`[match] deploy at ${point.zone ?? point.tag}`);
+    } catch (err) {
+      // A spawn we could not resolve is not a reason to keep the player in a
+      // menu: he simply deploys where he already stands.
+      console.warn('[match] deploy spawn failed', err);
+    }
+  }
 
   _sfx(kind, level = 1) {
     // Audio needs a user gesture, so the very first cue in a session can land

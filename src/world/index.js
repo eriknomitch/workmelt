@@ -14,6 +14,7 @@ import {
   groundY,
   isOpen,
 } from './dressing.js';
+import { SPAWN_POINTS, SpawnDirector, buildSpawnPoints } from './spawns.js';
 
 /**
  * WORLD — level geometry, the modular building kit, props, set dressing and
@@ -42,7 +43,11 @@ import {
  *   world.root                THREE.Group holding everything
  *   world.bounds              THREE.Box3 of the playable area, world space
  *   world.spawnPoints         [{ position:Vector3, yaw:number, tag:string }]
- *   world.spawn(i)            one of the above
+ *   world.spawn(i)            one of the above, by index
+ *   world.spawns              the SpawnDirector (see src/world/spawns.js) —
+ *                             scored, CoD-style spawn selection for players,
+ *                             remote players and bots
+ *   world.selectSpawn(opts)   shorthand for world.spawns.select(opts)
  *   world.groundHeight(x, z)  cheap analytic floor height (physics is exact)
  *   world.isOpen(x, z)        true where a character can stand outdoors
  *   world.stats               { staticTris, instTris, instances, drawCalls }
@@ -69,18 +74,6 @@ const LEVEL_TZ = 1.34;
  * puts that at 10 for the world's own lights, plus whatever `fx` keeps live.
  */
 const LIGHT_SLOTS = 20;
-
-/** Spawn points in LEVEL space: [x, z, yaw, tag]. */
-const SPAWNS = [
-  [0.4, 22.5, Math.PI, 'north street'],
-  [-2.4, 30.0, Math.PI, 'north plaza'],
-  [3.6, 5.0, Math.PI, 'market'],
-  [-3.4, -12.0, 0, 'mid street'],
-  [2.6, -32.0, 0, 'south street'],
-  [-1.0, -39.0, 0, 'gate'],
-  [10.5, 4.6, -Math.PI / 2, 'east alley'],
-  [-9.0, -10.2, Math.PI / 2, 'west alley'],
-];
 
 export class WorldSystem {
   static id = 'world';
@@ -141,11 +134,7 @@ export class WorldSystem {
     // -------------------------------------------------------------- queries --
     this._v = new THREE.Vector3();
     this._inv = new THREE.Matrix4().copy(A.xform).invert();
-    this.spawnPoints = SPAWNS.map(([x, z, yaw, tag]) => ({
-      position: A.toWorld(x, 0, z),
-      yaw: yaw + LEVEL_YAW,
-      tag,
-    }));
+    this._buildSpawns(physics);
     this.bounds = new THREE.Box3(
       new THREE.Vector3(-62, -2, -62),
       new THREE.Vector3(62, 26, 62)
@@ -157,6 +146,86 @@ export class WorldSystem {
       `[world] built in ${ms.toFixed(0)}ms — ${(A.stats.staticTris / 1000).toFixed(0)}k static tris, ` +
         `${(A.stats.instTris / 1000).toFixed(0)}k instanced tris in ${A.stats.instances} instances, ` +
         `${A.stats.drawCalls} draw calls, ${(A.stats.collideTris / 1000).toFixed(1)}k collision tris`
+    );
+  }
+
+  // ----------------------------------------------------------------- spawns --
+  /**
+   * Validate the authored spawn table against real collision and stand up the
+   * spawn director.
+   *
+   * Validation matters because the level is *dressed procedurally*: a spawn
+   * authored on clear pavement can end up inside a crate the debris pass
+   * happened to drop there. Every point therefore gets the floor height that
+   * collision actually reports and a standing-capsule clearance test, and a
+   * point that fails is dropped with a reason in the boot log.
+   *
+   * Index 0 is exempt — it is the frozen boot/capture spawn (see SPAWN_POINTS).
+   */
+  _buildSpawns(physics) {
+    const A = this.A;
+    this._losA = new THREE.Vector3();
+    this._losB = new THREE.Vector3();
+    this._capA = new THREE.Vector3();
+    this._capB = new THREE.Vector3();
+
+    // The clearance capsule is the TORSO, not the whole body: the character
+    // controller steps over anything up to 0.42 m, so a kerb or a brick under
+    // a spawn is not a reason to throw the point away — a crate at chest
+    // height is.
+    const R = 0.34; // a shade wider than the player capsule: spawns want room
+    this.spawnPoints = buildSpawnPoints(SPAWN_POINTS, {
+      toWorld: (x, y, z) => A.toWorld(x, y, z),
+      groundY: physics ? (x, z, fromY) => physics.groundHeight(x, z, fromY) : null,
+      clear: physics
+        ? (x, y, z) =>
+          physics.checkCapsule(
+            this._capA.set(x, y + 0.5, z),
+            this._capB.set(x, y + 1.72, z),
+            R,
+            physics.MASK.CHARACTER
+          )
+        : null,
+      log: (m) => console.info(m),
+    });
+    // Authored yaws are LEVEL space; the level is rotated into the world.
+    for (const p of this.spawnPoints) p.yaw += LEVEL_YAW;
+
+    this.spawns = new SpawnDirector({
+      points: this.spawnPoints,
+      // The director never draws from an RNG (a spawn must not perturb any
+      // other subsystem's stream, and capture runs must stay reproducible), so
+      // its variety comes from this salt. One draw from the world's own fork,
+      // taken after the level is built and that fork is finished with, so it
+      // cannot move a pixel: fixed under `deterministic`, different every
+      // session otherwise. `net` overrides it with the peer id in a room.
+      salt: this.rng.u32(),
+      los: physics
+        ? (ax, ay, az, bx, by, bz) =>
+          physics.lineOfSight(
+            this._losA.set(ax, ay, az),
+            this._losB.set(bx, by, bz),
+            physics.MASK.SIGHT
+          )
+        : null,
+    });
+    // Every death poisons the ground it happened on for a few seconds — the
+    // rule that stops a room settling into a spawn loop. `world` subscribes
+    // rather than each shooter reporting: a death is a death whoever caused it.
+    this._offEvents = [];
+    const on = (t, fn) => this._offEvents.push(this.ctx.events.on(t, fn));
+    on('actor:death', (e) => {
+      const p = e?.point ?? e?.actor?.position;
+      if (p) this.spawns.noteDeath(p.x, p.y, p.z);
+    });
+    on('player:death', (e) => {
+      const p = e?.position;
+      if (p) this.spawns.noteDeath(p.x, p.y, p.z);
+    });
+
+    const zones = [...this.spawns.zones.values()].map((z) => `${z.name}:${z.points.length}`);
+    console.info(
+      `[world] ${this.spawnPoints.length} spawn points in ${this.spawns.zones.size} zones — ${zones.join(' ')}`
     );
   }
 
@@ -312,6 +381,10 @@ export class WorldSystem {
     // Distance LOD for the scatter clouds: one bounding-sphere test per batch.
     this.A?.updateLod(ctx.camera);
 
+    // Spawn memory (recent deaths, spawn cooldowns, remote claims) decays on
+    // wall time, not on when somebody next asks for a spawn.
+    this.spawns?.update(dt);
+
     // Street lamps come on as the sun goes down, driven by the sky's real solar
     // altitude rather than a timer, so it is right at any time of day.
     const sky = this._sky ?? (this._sky = ctx.peek('sky'));
@@ -408,7 +481,17 @@ export class WorldSystem {
   // ---------------------------------------------------------------- queries --
   spawn(i = 0) {
     const n = this.spawnPoints.length;
+    if (!n) return null;
     return this.spawnPoints[((i % n) + n) % n];
+  }
+
+  /**
+   * Pick a spawn point the way a shooter should: scored against every living
+   * actor rather than drawn out of a hat. See src/world/spawns.js for the
+   * options and the reasoning.
+   */
+  selectSpawn(opts = {}) {
+    return this.spawns?.select(opts) ?? this.spawn(0);
   }
 
   levelToWorld(x, y, z, out = new THREE.Vector3()) {
@@ -433,6 +516,9 @@ export class WorldSystem {
 
   dispose() {
     this.A?.dispose();
+    for (const off of this._offEvents ?? []) off?.();
+    this._offEvents = null;
+    this.spawns = null;
     this.root?.parent?.remove(this.root);
     for (const l of this._ballast ?? []) l.parent?.remove(l);
     this._ballast = null;

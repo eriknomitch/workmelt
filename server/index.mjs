@@ -342,6 +342,19 @@ function handle(peer, msg) {
       break;
     }
 
+    case 'spawn': {
+      // "I am coming in here." Clients pick their own spawn points (the relay
+      // has no map), so the announcement is what stops two respawns that land
+      // on the same tick choosing the same ground. Advisory, like every other
+      // gameplay claim on this relay — see src/world/spawns.js.
+      const room = peer.room && rooms.get(peer.room);
+      if (!room || !Array.isArray(msg.p) || msg.p.length < 3) return;
+      const p = msg.p.map(Number);
+      if (!p.every(Number.isFinite)) return;
+      broadcast(room, { t: 'spawn', id: peer.id, p }, peer.id);
+      break;
+    }
+
     case 'chat': {
       const room = peer.room && rooms.get(peer.room);
       if (!room) return;

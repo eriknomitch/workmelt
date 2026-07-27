@@ -73,6 +73,7 @@
  *   player:mantle     { kind, height }                                        *
  *   player:jump       { position }                                            *
  *   player:death      { position }                                            *
+ *   player:spawn      { position, yaw, zone }   respawned at a director point *
  *   (*) not in the canonical table in ARCHITECTURE.md — additive, optional, and
  *   safe to ignore. The canonical `player:state` payload carries `health` too so
  *   a listener that only knows the documented four fields still gets everything.
@@ -121,6 +122,7 @@ export class PlayerSystem {
     };
     this._mantlePayload = { kind: 'none', height: 0 };
     this._jumpPayload = { position: new THREE.Vector3() };
+    this._spawnPayload = { position: new THREE.Vector3(), yaw: 0, zone: '' };
     // Preallocated HUD snapshot polled by `ui` (see getHudState).
     this._hudState = {
       health: HEALTH.max, maxHealth: HEALTH.max, regen: false, dead: false,
@@ -159,6 +161,7 @@ export class PlayerSystem {
     this.rig.reset(STANCE.stand.eye);
     this.rig.update(1 / 60, this.movement, this.health);
     this.rig.applyTo(ctx.camera);
+    this._registerSpawnSource(ctx.peek('world'));
 
     // ---- hitbox ----------------------------------------------------------
     // A capsule on the PLAYER layer so `ai` has something to shoot at. PLAYER is
@@ -196,10 +199,20 @@ export class PlayerSystem {
     );
   }
 
+  /**
+   * The boot spawn.
+   *
+   * Deterministic runs take spawn point 0 verbatim — it is the position every
+   * capture baseline is framed from, so it must not move. Normal play asks the
+   * spawn director instead: at boot nobody else exists yet, so this is really
+   * "a random-but-sensible point, spread from wherever the bots will land".
+   */
   _resolveSpawn() {
     const world = this.ctx.peek('world');
     const out = { feet: new THREE.Vector3(0, 0.2, 0), yaw: 0 };
-    const sp = world?.spawn?.(0);
+    const sp = this.ctx.config.deterministic
+      ? world?.spawn?.(0)
+      : world?.selectSpawn?.({ team: 'player', actorId: 'player' }) ?? world?.spawn?.(0);
     if (sp?.position) {
       out.feet.copy(sp.position);
       out.yaw = sp.yaw ?? 0;
@@ -208,6 +221,19 @@ export class PlayerSystem {
     const gy = this.physics.groundHeight(out.feet.x, out.feet.z, out.feet.y + 6);
     out.feet.y = Number.isFinite(gy) ? gy + 0.03 : out.feet.y + 0.2;
     return out;
+  }
+
+  /**
+   * Tell the spawn director where we are, so nobody spawns on top of us and we
+   * are counted as a threat when somebody else picks a point. Pulled at the
+   * moment of a spawn, so it can never be stale.
+   */
+  _registerSpawnSource(world) {
+    if (!world?.spawns) return;
+    this._offSpawnSource = world.spawns.addSource((add) => {
+      const p = this.feetPosition;
+      add(p.x, p.y, p.z, this.movement.yaw, 'player', 'player', this.dead);
+    });
   }
 
   /* ==================================================================== */
@@ -654,20 +680,51 @@ export class PlayerSystem {
     this._prev.state = '';
   }
 
-  respawn(index = 0) {
+  /**
+   * Put the player back in the fight.
+   *
+   * Three call shapes, because three different systems ask:
+   *   respawn()                   the director picks — what play should use
+   *   respawn(3)                  spawn point 3, verbatim (dev harnesses)
+   *   respawn({ killer, from })    the director picks, told who killed me and
+   *                                where I died so it can put me somewhere else
+   *
+   * Returns the point used, so the caller (`net`) can announce it.
+   */
+  respawn(where) {
     const world = this.ctx.peek('world');
-    const sp = world?.spawn?.(index);
+    let sp = null;
+    if (typeof where === 'number') {
+      sp = world?.spawn?.(where);
+    } else {
+      const o = where ?? {};
+      sp =
+        world?.selectSpawn?.({
+          team: o.team ?? 'player',
+          actorId: o.actorId ?? 'player',
+          killer: o.killer ?? null,
+          from: o.from ?? this.feetPosition,
+          claim: o.claim,
+        }) ?? world?.spawn?.(0);
+    }
     this.health.reset(true);
     // Toggle-mode ADS is a latch, not a held button: without this a player who
     // died aiming comes back scoped in without having asked for it.
     this.ctx.input?.clearAdsToggle?.();
-    if (!sp?.position) return;
+    if (!sp?.position) return null;
     const gy = this.physics.groundHeight(sp.position.x, sp.position.z, sp.position.y + 6);
     const feetY = Number.isFinite(gy) ? gy + 0.03 : sp.position.y;
     this.movement.yaw = sp.yaw ?? 0;
     this.movement.pitch = 0;
     this.movement.teleport(sp.position.x, feetY, sp.position.z);
     this.rig.reset(STANCE.stand.eye);
+    this.rig.applyTo(this.ctx.camera);
+    this._prev.state = '';
+    this._spawnPayload.position.set(sp.position.x, feetY, sp.position.z);
+    this._spawnPayload.yaw = this.movement.yaw;
+    this._spawnPayload.zone = sp.zone ?? sp.tag ?? '';
+    this.ctx.events.emit('player:spawn', this._spawnPayload);
+    return sp;
   }
 
   /** Named states for dev overlays and future shots. */
@@ -743,6 +800,8 @@ export class PlayerSystem {
   dispose() {
     for (const off of this._offEvents) off?.();
     this._offEvents.length = 0;
+    this._offSpawnSource?.();
+    this._offSpawnSource = null;
     if (this.hitbox) {
       this.physics?.removeCollider(this.hitbox);
       this.hitbox = null;
