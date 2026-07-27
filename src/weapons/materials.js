@@ -697,9 +697,11 @@ export class WeaponMaterials {
    * Exposure: the viewmodel light rig delivers roughly 20x the irradiance per
    * unit albedo that the world does (see the recalibration note on `alu`), so
    * these albedos sit in the same deliberately crushed band as the gun's.
-   * The anodised receiver is ~0.0095 linear and renders mid-grey (L~67);
-   * the glove sits half a stop above it and the sleeve a stop, so the limb
-   * reads as two dark greys that are visibly NOT more gun.
+   * The anodised receiver is ~0.0095 linear and renders mid-grey (L~67); the
+   * glove sits just under it and the sleeve half a stop above, so the limb
+   * reads as two dark greys with the flat-shaded facets carrying the value
+   * separation from the gun. MEASURED: a first pass at 2-3x these albedos
+   * rendered the sunlit forearm pale grey — the crush is not optional.
    *
    * `flatShading` is the whole look: the arm geometry is faceted prisms, and
    * the per-facet value steps are what replace seams, pads and fold rings as
@@ -713,7 +715,10 @@ export class WeaponMaterials {
     let m = this.cache.get(key);
     if (m) return m;
     m = new THREE.MeshPhysicalMaterial({
-      color: 0x202124,
+      // ~0.0085 linear — the same crushed band as the gun (receiver ~0.0095).
+      // MEASURED: at 0x202124 (~0.019 linear) the arm rendered pale grey in the
+      // weapon shot; the rig's irradiance needs gun-level albedos.
+      color: 0x171818,
       roughness: 0.86,
       metalness: 0,
       specularIntensity: 0.12,
@@ -732,7 +737,9 @@ export class WeaponMaterials {
     let m = this.cache.get(key);
     if (m) return m;
     m = new THREE.MeshPhysicalMaterial({
-      color: 0x2b2d30,
+      // ~0.013 linear — about half a stop above the receiver and a bit over the
+      // glove, so the limb keeps its two-value structure while staying dark.
+      color: 0x1e2021,
       roughness: 0.92,
       metalness: 0,
       specularIntensity: 0.12,
