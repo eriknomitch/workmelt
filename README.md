@@ -175,6 +175,19 @@ The interesting part of this repo is arguably the harness, not the game.
 | `tools/imagediff.mjs` | Per-pixel gate. Exits non-zero if any pixel moved |
 | `tools/profile.mjs` | Isolated gameplay profiler at real device pixel ratio. Frame-time *distribution*, engine timings, and an optional `--target=FPS` exit-code gate |
 | `tools/playtest.mjs` | Scripted movement/fire smoke test |
+| `tools/visibility.mjs` | Per-tier readability: sharpness, black crush, shadow detail, and per-enemy silhouette contrast. Runs on SwiftShader, needs no GPU |
+| `tools/cost.mjs` | Per-tier GPU workload model (`costIndex`) read out of the live engine, plus measured CPU simulation time. Ordinal, not fps |
+| `tools/goal.mjs` | Scores an open goal in `goals/` and exits non-zero until every criterion passes |
+
+### Measuring on a machine with no GPU
+
+`visibility.mjs`, `cost.mjs` and `goal.mjs` run under Chromium's SwiftShader
+backend, which executes the real shaders and produces the real image at roughly
+2 s per frame at 640×360. That makes every *image* metric fully valid on a
+GPU-less container — sharpness, crush, enemy contrast — while frame rate stays
+strictly the province of `tools/profile.mjs` on real hardware. `goals/` states
+which criteria are decided where, and `tools/goal.mjs --ingest=run.json` folds a
+real-hardware profile back into the scorecard.
 
 Two findings worth recording, because both invalidated earlier measurements:
 

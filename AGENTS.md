@@ -20,6 +20,8 @@ The browser client lives in `src/`. Features are divided into subsystem director
 - `node src/world/maps.selftest.mjs` builds every map headlessly and checks the map-descriptor contract, spawn tables and layout invariants.
 - `node src/world/spawns.selftest.mjs` checks the spawn director's scoring headlessly; `node src/world/spawns.probe.mjs` verifies spawn placement, the bot garrison and 30 respawns inside the real built level (needs a browser).
 - `node tools/capture.mjs` performs the required GPU-backed visual smoke test.
+- `npm run goal` scores the open goal in `goals/`; `npm run goal:quick` is the faster
+  iteration pass. Both run headless on SwiftShader and need no GPU.
 
 ## Coding Style & Naming Conventions
 
@@ -27,7 +29,7 @@ Use modern ES modules, two-space indentation, semicolons, and single-quoted stri
 
 ## Testing Guidelines
 
-Tests are executable subsystem harnesses rather than a centralized test suite; name new focused checks `selftest.js` or `selftest.mjs` beside the code they verify. There is no formal coverage threshold. Before submitting, run relevant self-tests, `npm run build`, and a capture or playtest for rendering/gameplay changes. Preserve deterministic output so `tools/baseline.mjs` and `tools/imagediff.mjs` remain meaningful.
+Tests are executable subsystem harnesses rather than a centralized test suite; name new focused checks `selftest.js` or `selftest.mjs` beside the code they verify. There is no formal coverage threshold. Before submitting, run relevant self-tests, `npm run build`, and a capture or playtest for rendering/gameplay changes. Preserve deterministic output so `tools/baseline.mjs` and `tools/imagediff.mjs` remain meaningful. Quality-tier or performance work is gated by `node tools/goal.mjs`; `node tools/lib/selftest.mjs` covers the measurement primitives behind it. Frame rate is never measurable on a GPU-less machine — report `costIndex` ratios there, and real fps only from `tools/profile.mjs` on real hardware.
 
 ## Commit & Pull Request Guidelines
 
