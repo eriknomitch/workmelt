@@ -129,19 +129,49 @@ non-capture run (disable with `?mp=0`). It:
 | C→S | `ready {ready}` | toggle my match-start ready flag |
 | C→S | `deploy` | I am in the match now (bots start, or countdown finished) |
 | C→S | `undeploy` | I went back to the lobby (pause menu → Leave match); clears my `deployed` flag so the room stops being LIVE |
-| C→S | `state {s:{p,y,pt,sp,cr,ad,hp,dead,v}}` | transform snapshot (20 Hz) |
+| C→S | `state {s:{p,y,pt,sp,cr,ad,hp,dead,v,sk}}` | transform snapshot (20 Hz). `v` is my body variant, `sk` my relay-assigned colour slot echoed back |
 | C→S | `fire {o,d,w,seed}` | a shot (origin, dir) |
 | C→S | `hit {target,dmg,part,o,w}` | shooter's damage claim |
 | C→S | `kill {by,headshot}` | victim confirms its own death |
 | C→S | `spawn {p}` | "I am coming in here" — a spawn claim, relayed to the room |
 | C→S | `name` / `chat` / `respawn` / `ping` | misc |
-| S→C | `welcome {id,room,live,map,peers}` | you joined; who's here; which level; is the match already live |
-| S→C | `peer_join` / `peer_leave` | roster changes |
+| S→C | `welcome {id,room,skin,live,map,peers}` | you joined; who's here; which level; is the match already live. `skin` is your colour slot — see below |
+| S→C | `peer_join {id,name,skin}` / `peer_leave {id}` | roster changes |
 | S→C | `lobby {live,players,map}` | match-start lobby: `[{id,name,ready,deployed}]`, plus the room's level |
 | S→C | `match_start {in}` | everyone readied up — count down `in` ms and deploy |
 | S→C | `snapshot {states:[…]}` | everyone's latest transform |
 | S→C | `spawn {id,p}` | somebody else claimed that ground to spawn on |
 | S→C | `fire` / `hit` / `kill` / `score` / `chat` | relayed events + scoreboard |
+
+### Colour is assigned by the relay
+
+Every player wears a **livery** — one saturated hue that is how you tell who is
+who at 30 m (`src/ai/livery.js`). Two players in one room may never share one,
+and that is a property no client can guarantee on its own: two clients each
+picking "the lowest slot I have not seen" race on a simultaneous join and pick
+the same. So the relay owns it, because it is the one process that sees the
+whole room at once.
+
+- On `join` the relay assigns the **lowest colour slot nobody in the room is
+  wearing** (`takeSkin` in `server/index.mjs`, `_takeSkin` in `worker/room.js`)
+  and returns it as `welcome.skin`. Lowest-free rather than a counter, so a
+  leaver's colour is reused and a long-lived room never walks off the end of the
+  palette. `MAX_ROOM` is 12 and so is the curated palette, so a full room is
+  always covered.
+- The slot rides `peer_join.skin` and each `roster` entry's `skin`, and each
+  client also echoes its own back in every state blob as `sk`. The echo is the
+  belt-and-braces path: a puppet is built from the first snapshot that carries a
+  peer, and a snapshot can beat the roster in.
+- `net` hands the slot to `ai.createPuppet(..., { livery })`, and
+  `puppet.setLivery()` recolours a body already in the scene if the slot lands
+  late. Recolouring swaps a material array — same geometry, same compiled
+  program — so it cannot stall.
+- Bots never draw from the player range: `ai.takeLivery()` allocates from
+  `BOT_SLOT` upward. A garrison can therefore not wear a colour a player is
+  identified by.
+
+An older relay that does not send `skin` still works: the client falls back to
+its socket id, so colours may collide but nothing breaks.
 
 ## Spawning
 

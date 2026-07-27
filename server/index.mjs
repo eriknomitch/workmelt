@@ -138,9 +138,37 @@ function getRoom(code) {
 function roster(room) {
   const out = [];
   for (const p of room.peers.values()) {
-    out.push({ id: p.id, name: p.name, kills: p.kills, deaths: p.deaths, hp: p.state?.hp ?? 100 });
+    out.push({
+      id: p.id,
+      name: p.name,
+      kills: p.kills,
+      deaths: p.deaths,
+      hp: p.state?.hp ?? 100,
+      skin: p.skin,
+    });
   }
   return out;
+}
+
+/**
+ * The lowest colour slot nobody in this room is wearing.
+ *
+ * Colour is how a player is identified in this game, so two players in one room
+ * may not share one — and the relay is the only party that can guarantee that,
+ * because it is the only one that sees the whole room at once. Clients cannot:
+ * two of them picking "the lowest slot I have not seen" race on a simultaneous
+ * join and both pick the same.
+ *
+ * Lowest-free rather than a counter, so the slot a leaver frees is reused and a
+ * long-lived room never walks off the end of the client's curated palette.
+ * `MAX_ROOM` is 12 and so is that palette, so a full room is always covered.
+ */
+function takeSkin(room) {
+  const used = new Set();
+  for (const p of room.peers.values()) used.add(p.skin);
+  let s = 0;
+  while (used.has(s)) s++;
+  return s;
 }
 
 /* ── lobby / match start ──────────────────────────────────────────────────
@@ -227,6 +255,8 @@ wss.on('connection', (ws) => {
     name: 'Operator',
     kills: 0,
     deaths: 0,
+    /** Room-unique colour slot, assigned on join. See takeSkin(). */
+    skin: 0,
     state: null,
     alive: true,
     /** readied up in the match-start lobby */
@@ -265,6 +295,9 @@ function handle(peer, msg) {
         return;
       }
       peer.room = code;
+      // Before the insert: `takeSkin` reads the room, and this peer is not one
+      // of the players it has to avoid.
+      peer.skin = takeSkin(room);
       room.peers.set(peer.id, peer);
       // First one in picks the level; everybody after joins the one in progress.
       if (!room.map) room.map = sanitiseMap(msg.map);
@@ -273,13 +306,14 @@ function handle(peer, msg) {
         t: 'welcome',
         id: peer.id,
         room: code,
+        skin: peer.skin,
         tickHz: TICK_HZ,
         live: isLive(room),
         map: room.map,
         peers: roster(room).filter((p) => p.id !== peer.id),
       });
       // Announce to everyone else.
-      broadcast(room, { t: 'peer_join', id: peer.id, name: peer.name }, peer.id);
+      broadcast(room, { t: 'peer_join', id: peer.id, name: peer.name, skin: peer.skin }, peer.id);
       sendLobby(room);
       break;
     }

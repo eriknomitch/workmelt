@@ -30,8 +30,6 @@ const SHARED = {
   post: true,
   /** Multiplier on the world texture bake resolution; 1 = 1K reference. */
   textureScale: 1,
-  /** Edge length of the CPU-baked soldier maps. Fixed at every tier, still. */
-  characterTextureSize: 512,
   /** Multiplier on per-surface parallax depth; 0 disables the POM march. */
   parallaxScale: 1,
   /** Multiplier on the shared micro-detail layer's strength and range. */

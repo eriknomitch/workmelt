@@ -194,7 +194,6 @@ section('visibility settings reach the right places');
   applyGraphicsOverrides(cfg, {
     renderScale: 1.5,
     pixelRatioCap: 2,
-    characterTextureSize: 1024,
     textureScale: 2,
     anisotropy: 16,
   });
@@ -202,7 +201,6 @@ section('visibility settings reach the right places');
   check('scale ceiling widened', cfg.q.maxRenderScale >= 1.5);
   check('scaler locked out', cfg.q.lockRenderScale === true);
   check('dpr cap raised', cfg.q.pixelRatioCap === 2);
-  check('character bake raised', cfg.q.characterTextureSize === 1024);
   check('world bake raised', cfg.q.textureScale === 2);
   check('aniso raised', cfg.q.anisotropy === 16);
 }

@@ -46,6 +46,8 @@ export class Room {
       name: 'Operator',
       kills: 0,
       deaths: 0,
+      /** Room-unique colour slot, assigned on join. See _takeSkin(). */
+      skin: 0,
       pstate: null,
       alive: true,
       ready: false,
@@ -88,6 +90,7 @@ export class Room {
           this.sessions.delete(peer.ws);
           return;
         }
+        peer.skin = this._takeSkin(peer);
         peer.joined = true;
         // First one in picks the level; everybody after joins the one in progress.
         if (!this.map) this.map = sanitiseMap(msg.map);
@@ -95,12 +98,13 @@ export class Room {
           t: 'welcome',
           id: peer.id,
           room: msg.room ?? '',
+          skin: peer.skin,
           tickHz: this.tickHz,
           live: this._isLive(),
           map: this.map,
           peers: this._roster().filter((p) => p.id !== peer.id),
         });
-        this._broadcast({ t: 'peer_join', id: peer.id, name: peer.name }, peer.id);
+        this._broadcast({ t: 'peer_join', id: peer.id, name: peer.name, skin: peer.skin }, peer.id);
         this._sendLobby();
         break;
       }
@@ -283,9 +287,33 @@ export class Room {
   _roster() {
     const out = [];
     for (const p of this.sessions.values()) {
-      out.push({ id: p.id, name: p.name, kills: p.kills, deaths: p.deaths, hp: p.pstate?.hp ?? 100 });
+      out.push({
+        id: p.id,
+        name: p.name,
+        kills: p.kills,
+        deaths: p.deaths,
+        hp: p.pstate?.hp ?? 100,
+        skin: p.skin,
+      });
     }
     return out;
+  }
+
+  /**
+   * The lowest colour slot nobody in this room is wearing. Mirrors `takeSkin`
+   * in server/index.mjs — see the note there for why the relay owns this and a
+   * client cannot.
+   *
+   * Only JOINED peers count: a socket that has connected but not sent `join`
+   * has no colour yet, and letting its default block slot 0 would leave the
+   * first real player in a fresh room wearing the second colour.
+   */
+  _takeSkin(self) {
+    const used = new Set();
+    for (const p of this.sessions.values()) if (p !== self && p.joined) used.add(p.skin);
+    let s = 0;
+    while (used.has(s)) s++;
+    return s;
   }
 
   _peerById(id) {

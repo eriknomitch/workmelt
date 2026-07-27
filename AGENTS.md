@@ -20,6 +20,7 @@ The browser client lives in `src/`. Features are divided into subsystem director
 - `npm run playtest:ads` drives the pause menu and ADS binds in a real browser.
 - `npm run playtest:graphics` drives the advanced graphics menu in a real browser, including a reload that carries the overrides back into `config.q`.
 - `node server/map.selftest.mjs` walks the relay's room-map protocol against a real server on a real socket.
+- `node server/skin.selftest.mjs` does the same for the player-colour slots the relay hands out — no two players in a room may share one.
 - `node src/world/maps.selftest.mjs` builds every map headlessly and checks the map-descriptor contract, spawn tables and layout invariants.
 - `node src/world/spawns.selftest.mjs` checks the spawn director's scoring headlessly; `node src/world/spawns.probe.mjs` verifies spawn placement, the bot garrison and 30 respawns inside the real built level (needs a browser).
 - `node tools/capture.mjs` performs the required GPU-backed visual smoke test.

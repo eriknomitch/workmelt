@@ -51,7 +51,7 @@ export class NetSystem {
     this.name = null;
     this.variant = 0;
 
-    /** id -> { name, kills, deaths, puppet, buf:[], last, hp, dead, variant } */
+    /** id -> { name, kills, deaths, puppet, buf:[], last, hp, dead, variant, livery } */
     this.peers = new Map();
     this.roster = []; // last authoritative scoreboard from server
 
@@ -108,6 +108,20 @@ export class NetSystem {
     this._rng = ctx.rng.fork();
     this.variant = this._rng.int(0, variants.length - 1);
     this._variants = variants;
+    /**
+     * Our livery (colour) slot. Unlike the variant this is NOT a local choice:
+     * the relay assigns it on `welcome` so no two players in a room can wear the
+     * same colour. Until then we are slot 0, which nothing is looking at yet.
+     */
+    this.livery = 0;
+    /**
+     * The swatch on each scoreboard row. Bound once so `renderRoster` can be
+     * handed a plain function and `net/ui.js` never has to know that `ai` owns
+     * the palette. `skin < 0` means the slot has not arrived yet — no swatch is
+     * better than the wrong one.
+     */
+    this._liveryCss = (row) =>
+      typeof row.skin === 'number' && row.skin >= 0 ? this.ai.livery(row.skin).css : null;
     this._registerSpawnSource();
 
     // ---- overlay ----
@@ -225,6 +239,12 @@ export class NetSystem {
         // seeds to differ — so two players cannot score their way onto the
         // same slab on the same tick.
         this.world?.spawns?.setSalt(this.myId);
+        // Our colour, and the relay is the only party that could have picked
+        // it: it is the one process that can see the whole room at once, so it
+        // is the one place a slot can be guaranteed distinct from every other
+        // player's. Falling back to the id keeps a pre-`skin` relay playable —
+        // colours may then collide, but nothing breaks.
+        this.livery = typeof msg.skin === 'number' ? msg.skin : (this.myId ?? 0);
         this.tickHz = msg.tickHz ?? SEND_HZ;
         this.lobby.live = !!msg.live;
         if (msg.map) this.lobby.map = msg.map;
@@ -235,7 +255,7 @@ export class NetSystem {
         break;
       }
       case 'peer_join': {
-        this._ensurePeer(msg.id, msg.name);
+        this._ensurePeer(msg.id, msg.name, msg);
         this.ui.toast(`<b>${esc(msg.name)}</b> joined`);
         this._updateStatus();
         this.ctx.events.emit('net:join', { id: msg.id, name: msg.name });
@@ -281,7 +301,7 @@ export class NetSystem {
       case 'score':
         this.roster = msg.roster ?? [];
         this._applyRoster();
-        this.ui.renderRoster(this.roster, this.myId);
+        this.ui.renderRoster(this.roster, this.myId, this._liveryCss);
         break;
       case 'chat':
         this.ui.toast(`<b>${esc(msg.name)}:</b> ${esc(msg.text)}`);
@@ -307,10 +327,18 @@ export class NetSystem {
         hp: extra?.hp ?? 100,
         dead: false,
         variant: 0,
+        /**
+         * The peer's colour slot. Seeded from the roster when we have it, and
+         * corrected from the peer's own state blob if the snapshot got here
+         * first. -1 until it is known, which never matches a real slot, so
+         * `_advancePeer` recolours as soon as one arrives.
+         */
+        livery: typeof extra?.skin === 'number' ? extra.skin : -1,
       };
       this.peers.set(id, p);
-    } else if (name) {
-      p.name = name;
+    } else {
+      if (name) p.name = name;
+      if (typeof extra?.skin === 'number') p.livery = extra.skin;
     }
     return p;
   }
@@ -339,6 +367,7 @@ export class NetSystem {
       p.hp = s.hp ?? p.hp;
       p.dead = !!s.dead;
       if (typeof s.v === 'number') p.variant = s.v;
+      if (typeof s.sk === 'number') p.livery = s.sk;
       p.buf.push({
         t: now,
         x: s.p[0], y: s.p[1], z: s.p[2],
@@ -553,6 +582,11 @@ export class NetSystem {
         hp: Math.round(pl.health),
         dead: pl.dead,
         v: this.variant,
+        // Our relay-assigned colour slot, echoed on every tick rather than
+        // announced once: a peer that joined before us learns our colour from
+        // the roster, but a peer whose roster message we raced learns it here.
+        // It is one small integer at 20 Hz.
+        sk: this.livery,
       },
     });
   }
@@ -563,7 +597,12 @@ export class NetSystem {
     if (!p.puppet) {
       const vname = this._variants[p.variant % this._variants.length] ?? 'vanguard';
       const s0 = buf[buf.length - 1];
-      p.puppet = this.ai.createPuppet(vname, this._v2.set(s0.x, s0.y, s0.z), s0.yaw);
+      p.puppet = this.ai.createPuppet(vname, this._v2.set(s0.x, s0.y, s0.z), s0.yaw, {
+        livery: p.livery,
+      });
+    } else if (p.puppet.livery !== p.livery) {
+      // The slot arrived after the body did.
+      p.puppet.setLivery(p.livery);
     }
 
     // find two samples bracketing renderT
@@ -820,7 +859,7 @@ export class NetSystem {
       e.stopPropagation();
       if (!this._boardHeld) {
         this._boardHeld = true;
-        this.ui.renderRoster(this._fullRoster(), this.myId);
+        this.ui.renderRoster(this._fullRoster(), this.myId, this._liveryCss);
         this.ui.showBoard(true);
       }
     }
@@ -835,10 +874,11 @@ export class NetSystem {
         name: this.name,
         kills: me?.kills ?? 0,
         deaths: me?.deaths ?? 0,
+        skin: this.livery,
       });
     }
     for (const p of this.peers.values()) {
-      list.push({ id: p.id, name: p.name, kills: p.kills, deaths: p.deaths });
+      list.push({ id: p.id, name: p.name, kills: p.kills, deaths: p.deaths, skin: p.livery });
     }
     return list;
   }

@@ -72,6 +72,12 @@ const CSS = `
   border-top: 1px solid var(--wm-border); font-variant-numeric: tabular-nums; }
 .cod-mp td.l { text-align: left; font-weight: 500; color: var(--wm-fg); }
 .cod-mp tr.me td { background: var(--wm-panel-2); color: var(--wm-fg); }
+/* Livery swatch. The only colour in this overlay that is not a brand token,
+   because it is not decoration: it is the datum that says which body in the
+   level is this row. It comes from ai's palette via net, never from a literal
+   here — see renderRoster. */
+.cod-mp td.l .lv { display: inline-block; width: 9px; height: 9px; border-radius: 2px;
+  margin-right: 8px; vertical-align: baseline; box-shadow: 0 0 0 1px var(--wm-border); }
 .cod-mp .hintkey { position: absolute; bottom: 12px; left: 12px; font-size: 11px;
   font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: var(--wm-muted-fg); }
 .cod-mp .hintkey .k { border: 1px solid var(--wm-border); border-radius: 3px;
@@ -173,15 +179,34 @@ export class NetUI {
     this.board.classList.toggle('show', show);
   }
 
-  renderRoster(list, myId) {
+  /**
+   * The scoreboard. `colourOf(row)` returns a CSS colour for a player's livery,
+   * or null; `net` supplies it out of `ai`'s palette, because a free-for-all
+   * with no name tags over heads leaves the swatch as the only place you can
+   * learn which colour in the level is you.
+   */
+  renderRoster(list, myId, colourOf = null) {
     list = [...list].sort((a, b) => b.kills - a.kills || a.deaths - b.deaths);
     this.rows.innerHTML = '';
     for (const p of list) {
       const tr = document.createElement('tr');
       if (p.id === myId) tr.className = 'me';
       const kd = p.deaths ? (p.kills / p.deaths).toFixed(2) : p.kills.toFixed(2);
-      tr.innerHTML = `<td class="l">${escapeHtml(p.name)}${p.id === myId ? ' (you)' : ''}</td>` +
-        `<td>${p.kills}</td><td>${p.deaths}</td><td>${kd}</td>`;
+      const c = colourOf?.(p) ?? null;
+      // Attribute, not innerHTML: the colour is generated but it still goes
+      // through the DOM rather than through a string, so nothing in this row
+      // can ever be a markup injection point.
+      const dot = document.createElement('span');
+      dot.className = 'lv';
+      if (c) dot.style.background = c;
+      const name = document.createElement('td');
+      name.className = 'l';
+      if (c) name.appendChild(dot);
+      name.appendChild(
+        document.createTextNode(`${p.name}${p.id === myId ? ' (you)' : ''}`)
+      );
+      tr.appendChild(name);
+      tr.insertAdjacentHTML('beforeend', `<td>${p.kills}</td><td>${p.deaths}</td><td>${kd}</td>`);
       this.rows.appendChild(tr);
     }
   }
@@ -189,8 +214,4 @@ export class NetUI {
   dispose() {
     this.root.remove();
   }
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }

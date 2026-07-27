@@ -7,7 +7,7 @@
  *   geo.js        loft/tube/revolve toolkit, skin binder, baked vertex AO
  *   parts.js      body and kit: jacket, plate carrier, pouches, helmet, boots
  *   weapon.js     the carried carbine / long rifle, baked into the character
- *   textures.js   tiling PBR sets: camo cloth, cordura, skin, polymer, steel
+ *   livery.js     the neon player-colour palette + the flat untextured materials
  *   soldier.js    variant assembly -> one skinned geometry + material list
  *   clips.js      hand-authored pose layers (idle/walk/run/crouch/hit/recoil…)
  *   animator.js   layered blending + aim, look-at, arm and foot IK
@@ -17,7 +17,9 @@
  *   squad.js      peek rotation, contact sharing, flank and grenade rationing
  *
  * PUBLIC API — `const ai = ctx.get('ai')`
- *   ai.spawn(variant, position, yaw, opts) -> Agent
+ *   ai.spawn(variant, position, yaw, opts) -> Agent   (opts.livery = colour slot)
+ *   ai.takeLivery() / ai.releaseLivery(slot)  bot colour slots, never a player's
+ *   ai.materialsFor(variant, slot)         the material array for one livery
  *   ai.populate({squads, perSquad, respawn}) garrison the level through the
  *                                          world's spawn director
  *   ai.reinforce(n)                        bring n replacements in now
@@ -43,7 +45,7 @@
  */
 
 import * as THREE from 'three';
-import { SoldierMaterials } from './textures.js';
+import { SoldierMaterials, liveryFor, liveryCss, BOT_SLOT } from './livery.js';
 import { buildSoldier, resolveMaterials, MATERIAL_SLOTS, VARIANTS } from './soldier.js';
 import { RIG } from './rig.js';
 import { NavGrid, CoverMap } from './nav.js';
@@ -74,19 +76,18 @@ export class AiSystem {
     ctx.scene.add(this.root);
 
     const t0 = performance.now();
-    // The soldier maps are baked per-texel on the CPU, so this size is paid in
-    // LOADING time, not frame time — which is why it is exposed as its own
-    // graphics setting rather than riding the world texture budget. 512 is the
-    // default at every tier; 1024 is what makes kit read as kit at 25 m.
-    this.materials = new SoldierMaterials(this.rng.fork(), {
-      size: ctx.config.q.characterTextureSize ?? 512,
-      anisotropy: ctx.config.q.anisotropy ?? 8,
-      camo: ['arid', 'woodland', 'urban'],
-    });
+    // Flat, untextured, one material per (slot, livery). Nothing is baked, so
+    // this costs microseconds where the camo/cordura/skin bake it replaced cost
+    // 3.27 s of blocking main-thread JavaScript and 38.7 MB of RGBA8.
+    this.materials = new SoldierMaterials();
     // Contact occlusion under every actor. Without it the cast shadow alone
     // leaves them hovering: see grounding.js.
     this.ground = new GroundShadows(this.root, 16);
     this._variants = new Map();
+    /** `${variant}|${liverySlot}` -> THREE.Material[] */
+    this._liveryMats = new Map();
+    /** Livery slots handed to bots. Players' slots come from the relay. */
+    this._botSlots = new Set();
     this.agents = [];
     this.squads = [];
     this.grid = null;
@@ -146,20 +147,7 @@ export class AiSystem {
     this._lodStats = { irrelevant: 0 };
 
     this._wireEvents(ctx);
-    console.info(
-      `[ai] materials ${(performance.now() - t0).toFixed(0)}ms ` +
-        `(${this.materials.bakeMs.toFixed(0)}ms texture bake)`
-    );
-    // The albedo budget is only real if it is measured. Print what every camo
-    // bake actually landed on, so a drift out of 0.09-0.32 is visible in the
-    // capture log instead of only in the critic's histogram.
-    for (const k in this.materials.camoStats ?? {}) {
-      const s = this.materials.camoStats[k];
-      console.info(
-        `[ai] camo ${k}: map mean ${s.mean.toFixed(3)} (was ${s.was.toFixed(3)}) ` +
-          `range ${s.min.toFixed(3)}-${s.max.toFixed(3)} sd ${s.sd.toFixed(3)}`
-      );
-    }
+    console.info(`[ai] materials ${(performance.now() - t0).toFixed(0)}ms (no texture bake)`);
 
     // Navigation, the garrison and every character shader, DURING BOOT.
     //
@@ -214,10 +202,13 @@ export class AiSystem {
    * pass reached the character programs by staging a firefight, which left actors
    * and decals behind and blew the pixel gate. Nothing here is a gameplay object.
    *
-   *  - `resolveMaterials()` is a pure function of the variant name, so every
-   *    material every variant will ever ask for can be created now. It draws no
+   *  - `resolveMaterials()` is a pure function of its arguments, so every
+   *    material any character will ever ask for can be created now. It draws no
    *    random numbers, so the RNG stream — and therefore the picture — is
-   *    untouched. It MUST be handed `MATERIAL_SLOTS` in the builder's own order:
+   *    untouched. ONE livery is enough to warm all of them: colour is a
+   *    `THREE.Color` uniform and is deliberately absent from
+   *    `customProgramCacheKey`, so livery 0's programs are livery 11's.
+   *    It MUST be handed `MATERIAL_SLOTS` in the builder's own order:
    *    three sorts opaque draws (including the nine groups inside one soldier) by
    *    the global `Material.id` counter, so creating them in any other order
    *    reorders those draws and flips the depth tie on coplanar surfaces. That is
@@ -242,10 +233,8 @@ export class AiSystem {
     try {
       const mats = [];
       const seen = new Set();
-      for (const name in VARIANTS) {
-        for (const m of resolveMaterials(name, MATERIAL_SLOTS, this.materials)) {
-          if (m && !seen.has(m)) { seen.add(m); mats.push(m); }
-        }
+      for (const m of resolveMaterials(MATERIAL_SLOTS, this.materials)) {
+        if (m && !seen.has(m)) { seen.add(m); mats.push(m); }
       }
       // the thrown grenade's mesh is built on the first throw, mid-firefight
       this._ensureGrenade();
@@ -419,6 +408,61 @@ export class AiSystem {
   /* assets                                                             */
   /* ================================================================== */
 
+  /**
+   * Take a livery slot for a bot.
+   *
+   * Bots start at `BOT_SLOT` and never descend into the block the relay hands
+   * out to humans, so a garrison can never wear a colour a player is identified
+   * by — which is the whole reason the two ranges are separate rather than one
+   * shared pool with a claim protocol. Inside the bot range the lowest free slot
+   * wins, so a garrison that is killed and reinforced reuses colours instead of
+   * walking off the end of the palette.
+   */
+  takeLivery() {
+    let s = BOT_SLOT;
+    while (this._botSlots.has(s)) s++;
+    this._botSlots.add(s);
+    return s;
+  }
+
+  /** Give a bot's colour back when its body is retired. */
+  releaseLivery(slot) {
+    this._botSlots.delete(slot);
+  }
+
+  /**
+   * A colour slot as data a menu can render: `{ id, name, css }`.
+   *
+   * Exists so `net` can put a swatch on the scoreboard without importing
+   * `livery.js` — nothing outside `src/ai/` reaches into another subsystem's
+   * modules (ARCHITECTURE.md rule 2), and the palette is ours.
+   */
+  livery(slot) {
+    const l = liveryFor(slot);
+    return { id: l.id, name: l.name, css: liveryCss(l) };
+  }
+
+  /**
+   * The material array for one variant in one livery, in `MATERIAL_SLOTS` order.
+   *
+   * Cached per (variant, slot). A set is nine untextured materials sharing one
+   * compiled program with every other livery, so a full 12-player room plus a
+   * garrison costs shader compiles for none of them — only `THREE.Color`
+   * uniforms. The geometry is still shared: colour never reaches the mesh.
+   */
+  materialsFor(variantName, slot = 0) {
+    const def = this.variant(variantName);
+    const key = `${variantName}|${slot | 0}`;
+    let mats = this._liveryMats.get(key);
+    if (!mats) {
+      mats = resolveMaterials(def.materialNames, this.materials, liveryFor(slot));
+      this._liveryMats.set(key, mats);
+      const r = this.ctx.peek('render');
+      if (r?.patcher) for (const m of mats) r.patcher.patch(m);
+    }
+    return mats;
+  }
+
   variant(name) {
     let v = this._variants.get(name);
     if (!v) {
@@ -517,8 +561,14 @@ export class AiSystem {
   /* spawning                                                           */
   /* ================================================================== */
 
+  /**
+   * `opts.livery` pins a colour slot; without it the bot range allocates one.
+   * Allocation is sequential and draws no random numbers, so a capture run
+   * still paints the same bodies the same colours on every boot.
+   */
   spawn(variantName, position, yaw = 0, opts = {}) {
-    const a = new Agent(this, { variant: variantName, position, yaw, ...opts });
+    const livery = opts.livery ?? this.takeLivery();
+    const a = new Agent(this, { variant: variantName, position, yaw, ...opts, livery });
     this.agents.push(a);
     return a;
   }
@@ -527,6 +577,10 @@ export class AiSystem {
    * A network-driven soldier body (a remote player) — same look as an enemy,
    * but with no brain, no physics and no perception. `net` owns it and feeds it
    * transforms; see src/ai/puppet.js. Returns the NetPuppet.
+   *
+   * `opts.livery` is the remote player's relay-assigned colour slot. It is NOT
+   * taken from the bot pool: the relay is the only party that can see a whole
+   * room, so it owns the human slots and this side just paints what it is told.
    */
   createPuppet(variantName = 'vanguard', position, yaw = 0, opts = {}) {
     return new NetPuppet(this, { variant: variantName, position, yaw, ...opts });
@@ -805,6 +859,7 @@ export class AiSystem {
     const i = this.agents.indexOf(a);
     if (i >= 0) this.agents.splice(i, 1);
     a.squad?.remove?.(a);
+    this.releaseLivery(a.livery);
     a.dispose();
   }
 
@@ -1396,6 +1451,11 @@ export class AiSystem {
     this.ground?.dispose();
     for (const v of this._variants.values()) v.geometry.dispose();
     this._variants.clear();
+    // The arrays are per (variant, livery) but the materials inside them are
+    // owned by `SoldierMaterials`, so dropping the arrays and disposing the
+    // owner frees each material exactly once.
+    this._liveryMats.clear();
+    this._botSlots.clear();
     this.materials?.dispose();
     this.root.parent?.remove(this.root);
   }

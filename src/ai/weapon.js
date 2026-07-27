@@ -10,9 +10,12 @@
 import * as THREE from 'three';
 import {
   emptyMesh, loft, tube, ribbon, revolve, boxRound, superEllipse, ellipseProfile,
-  appendMesh, computeNormals, displace, transformMesh, warp,
+  appendMesh, computeNormals, transformMesh, warp,
 } from './geo.js';
 import { GRIP_R, BORE_DIR } from './rig.js';
+// Section counts and the sub-centimetre displacement scale are the character's,
+// not the gun's: a low-poly soldier carrying a smooth rifle reads as a bug.
+import { F, R, displace } from './parts.js';
 
 const BORE_Y = 0.095;
 
@@ -20,8 +23,8 @@ const BORE_Y = 0.095;
 function box(hx, hy, hz, x, y, z, opts = {}) {
   const m = boxRound(hx, hy, hz, {
     n: opts.n ?? 3.6,
-    seg: opts.seg ?? 16,
-    rows: opts.rows ?? 7,
+    seg: F(opts.seg ?? 16),
+    rows: R(opts.rows ?? 7),
     roundY: opts.roundY ?? 0.3,
   });
   const q = new THREE.Quaternion().setFromEuler(
@@ -34,7 +37,8 @@ function box(hx, hy, hz, x, y, z, opts = {}) {
 
 /** Cylinder along +Z in weapon space. */
 function cyl(r0, r1, z0, z1, x, y, seg = 14, cap = true) {
-  const n = 5;
+  seg = F(seg);
+  const n = 3;
   const pts = [];
   for (let i = 0; i < n; i++) pts.push([x, y, z0 + ((z1 - z0) * i) / (n - 1)]);
   const m = tube(
@@ -79,7 +83,7 @@ export function buildWeapon(nz, style = 'carbine', rng) {
       const a = Math.PI * t;
       pts.push([0, BORE_Y - 0.068 - Math.sin(a) * 0.020, -0.028 + Math.cos(a) * -0.024 + 0.024]);
     }
-    const g = ribbon(pts, 0.014, 0.006, { seg: 5, up: [1, 0, 0] });
+    const g = ribbon(pts, 0.014, 0.006, { seg: F(5), up: [1, 0, 0] });
     computeNormals(g);
     appendMesh(poly, g);
   }
@@ -95,7 +99,7 @@ export function buildWeapon(nz, style = 'carbine', rng) {
         -0.028 - Math.sin(rake) * -t * 0.105 * 0.55 - t * 0.030,
       ]);
     }
-    const g = tube(pts, (t) => superEllipse(0.0165 - t * 0.002, 0.020 - t * 0.004, 3.4, 14), {
+    const g = tube(pts, (t) => superEllipse(0.0165 - t * 0.002, 0.020 - t * 0.004, 3.4, F(14)), {
       capStart: true,
       capEnd: true,
       up: [0, 0, 1],
@@ -116,7 +120,7 @@ export function buildWeapon(nz, style = 'carbine', rng) {
       // STANAG / AK curve: the magazine sweeps forward as it drops
       const z = 0.004 + t * t * (long ? 0.062 : 0.030);
       rings.push({
-        pts: superEllipse(0.0135, 0.0225 - t * 0.001, 4.4, 14),
+        pts: superEllipse(0.0135, 0.0225 - t * 0.001, 4.4, F(14)),
         o: [0, y, z],
         q: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), t * (long ? 0.5 : 0.28)),
       });
@@ -140,7 +144,7 @@ export function buildWeapon(nz, style = 'carbine', rng) {
     const n = Math.floor((railZ1 - railZ0) / 0.0102);
     for (let i = 0; i < n; i++) {
       const z = railZ0 + 0.004 + i * 0.0102;
-      appendMesh(steel, box(0.0125, 0.0022, 0.0026, 0, BORE_Y + 0.0435, z, { n: 8, rows: 4, roundY: 0.1 }));
+      appendMesh(steel, box(0.0125, 0.0022, 0.0026, 0, BORE_Y + 0.0435, z, { n: 8, rows: R(4), roundY: 0.1 }));
     }
   }
   // ejection port cover on the shooter's right (-X)
@@ -209,7 +213,7 @@ export function buildWeapon(nz, style = 'carbine', rng) {
         [s * 0.016, BORE_Y - 0.016, -0.135],
         [s * 0.018, BORE_Y - 0.022, -0.235],
       ];
-      const r = ribbon(pts, 0.010, 0.008, { seg: 6, up: [0, 1, 0] });
+      const r = ribbon(pts, 0.010, 0.008, { seg: F(6), up: [0, 1, 0] });
       computeNormals(r);
       appendMesh(steel, r);
     }

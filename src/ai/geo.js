@@ -474,6 +474,14 @@ export class CharacterBuilder {
     this.parts = [];
     /** material name -> { tile } */
     this.materials = opts.materials;
+    /**
+     * Scales every weathering term in `_shade` — grime, ground dirt, settled
+     * dust and edge wear. 1 is the photoreal bake those terms were tuned for;
+     * 0 leaves baked AO and the value mottle alone and keeps the part tints
+     * exactly as authored, which is what a flat livery needs (see the note in
+     * `buildSoldier`). The per-part amounts stay in the part table either way.
+     */
+    this.weathering = opts.weathering ?? 1;
     this.occluders = []; // AO proxies: {a:[x,y,z], b:[x,y,z], r, k}
   }
 
@@ -642,18 +650,23 @@ export class CharacterBuilder {
    * tint. This is what puts dark under the plate carrier and the helmet brim,
    * grime at the hems and boots, and rub-through on knees and elbows — the
    * things that stop a procedural character reading as plastic.
+   *
+   * With `weathering: 0` the four weathering terms drop out and this reduces to
+   * AO x mottle x tint, which is the only shading a flat untextured livery gets
+   * — there is no ORM map behind it any more, so the AO here IS the crevice.
    */
   _shade(order, pos, nrm, col) {
     const occ = this.occluders;
     const nz = this.noise;
     const groundDirt = (y) => Math.max(0, 1 - Math.max(0, y - 0.02) / 0.55);
+    const wx = this.weathering;
     for (const part of order) {
       const n = part._vn, vo = part._vo;
       const tint = part.colour ?? [1, 1, 1];
-      const wearAmt = part.wear ?? 0;
-      const grimeAmt = part.grime ?? 0.5;
-      const dirtAmt = part.dirt ?? 0.5;
-      const dustAmt = part.dust ?? 0.22;
+      const wearAmt = (part.wear ?? 0) * wx;
+      const grimeAmt = (part.grime ?? 0.5) * wx;
+      const dirtAmt = (part.dirt ?? 0.5) * wx;
+      const dustAmt = (part.dust ?? 0.22) * wx;
       for (let i = 0; i < n; i++) {
         const vi = vo + i;
         const x = pos[vi * 3], y = pos[vi * 3 + 1], z = pos[vi * 3 + 2];

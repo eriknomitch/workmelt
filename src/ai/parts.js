@@ -5,13 +5,56 @@
  * on y = 0, facing +Z, character's right at -X). `soldier.js` decides which
  * parts a variant wears and hands them to the CharacterBuilder along with the
  * bones they bind to.
+ *
+ * LOW POLY. Every section count here goes through `F` (around the ring) or `R`
+ * (along the length), and every sub-centimetre displacement goes through
+ * `MICRO`. The three constants are the whole art direction: a character is a
+ * faceted block of colour, flat-shaded, and it is read by SILHOUETTE and HUE
+ * rather than by surface. That is why the counts are scaled in one place
+ * instead of being retyped — the shapes below are still authored at the
+ * resolution the anatomy wants, and the build decides how much of it survives.
  */
 
 import * as THREE from 'three';
 import {
   emptyMesh, loft, tube, ribbon, revolve, ellipsoid, boxRound, superEllipse,
-  ellipseProfile, appendMesh, computeNormals, displace, warp, transformMesh, vcount,
+  ellipseProfile, appendMesh, computeNormals, displace as displaceFine, warp,
+  transformMesh, vcount,
 } from './geo.js';
+
+/**
+ * Sections around a ring — tube profiles, revolved shells, ribbon
+ * cross-sections. 0.45, floor 3: a sleeve drops 16 -> 7 sides and a strap
+ * 6 -> 3, which is where the facets become the surface rather than an
+ * artifact of it.
+ */
+export const F = (n) => Math.max(3, Math.round(n * 0.45));
+
+/**
+ * Sections along a length — loft rings, `boxRound` rows, `limbTube` rings.
+ * 0.42, floor 3. Lower than `F` on purpose: a limb's silhouette is carried by
+ * its ring profile, so the rings between the joints are the cheapest thing on
+ * the character to give up.
+ */
+export const R = (n) => Math.max(3, Math.round(n * 0.42));
+
+/**
+ * Amplitude scale for every sub-centimetre displacement field: wrinkles, fold
+ * noise, crease bands, pore jitter.
+ *
+ * ZERO, and not as an oversight. Those fields existed to be read as a NORMAL
+ * MAP by a smooth-shaded surface; the characters are `flatShading: true` now
+ * (see livery.js), and three shades a flat-shaded fragment from the screen-space
+ * derivatives of the position, so the vertex normals those fields were computed
+ * to perturb are never sampled. All they could still do is jitter the facets of
+ * a 7-sided limb, which reads as noise, not as cloth. Raise it and the wrinkle
+ * fields come back exactly as authored.
+ */
+export const MICRO = 0;
+
+/** `displace`, scaled by MICRO — a no-op, and free, at MICRO 0. */
+export const displace = (mesh, fn) =>
+  MICRO > 0 ? displaceFine(mesh, (...a) => fn(...a) * MICRO) : mesh;
 
 const V = (x, y, z) => [x, y, z];
 
@@ -76,7 +119,7 @@ export function jacketTorso(nz, p = {}) {
     [1.482, 0.098, 0.080, -0.010, 2.4],
     [1.505, 0.070, 0.066, -0.010, 2.3],
   ];
-  const seg = 26;
+  const seg = F(26);
   const rings = S.map(([y, hx, hz, zo, n]) => ({
     pts: superEllipse(hx, hz, n, seg),
     o: [0, y, zo],
@@ -111,7 +154,7 @@ export function jacketTorso(nz, p = {}) {
 
 /** Pelvis / seat block so the hips read solid between jacket hem and trousers. */
 export function pelvis(nz) {
-  const seg = 22;
+  const seg = F(22);
   const rings = [
     [0.845, 0.140, 0.100],
     [0.885, 0.148, 0.106],
@@ -127,7 +170,7 @@ export function pelvis(nz) {
 
 /** Collar: a short stand-up band around the neck. */
 export function collar(nz) {
-  const seg = 22;
+  const seg = F(22);
   const rings = [
     [1.435, 0.108, 0.092],
     [1.470, 0.090, 0.082],
@@ -165,8 +208,10 @@ export function collar(nz) {
  */
 export function limbTube(nz, a, b, c, radii, opts = {}) {
   const pts = [];
-  const N = opts.rings ?? 11;
-  const segs = opts.seg ?? 14;
+  // Scaled here rather than at the call sites so a caller still states the
+  // count the anatomy wants and the build decides what survives.
+  const N = R(opts.rings ?? 11);
+  const segs = F(opts.seg ?? 14);
   // sample the two-segment path with a smooth blend around the joint
   const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b), C = new THREE.Vector3(...c);
   const tmp = new THREE.Vector3();
@@ -243,7 +288,7 @@ function radiusAt(radii, t) {
 
 /** Deltoid cap so the shoulder is round rather than a tube end. */
 export function shoulderCap(nz, shoulder, side) {
-  const m = ellipsoid(0.052, 0.064, 0.056, { seg: 18, rows: 12 });
+  const m = ellipsoid(0.052, 0.064, 0.056, { seg: F(18), rows: R(12) });
   computeNormals(m);
   warp(m, (v) => {
     v.y *= 1.0;
@@ -258,98 +303,43 @@ export function shoulderCap(nz, shoulder, side) {
 /* Head                                                              */
 /* ================================================================== */
 
-/** Skull + jaw, lofted from anatomical sections. `base` = Head bone position. */
+/**
+ * The head: a faceted block on the skull's proportions. `base` = Head bone.
+ *
+ * NO FACE, and that is the whole specification. The nose, ears and eyeballs
+ * that used to sit on this are gone, and so are the brow ridge, eye sockets,
+ * cheekbones, temple flattening, chin and occiput that used to be warped into
+ * these sections. What is left is the head's SHAPE — taller than wide, flat at
+ * the temples, tapering to the crown — which is all the silhouette needs, and
+ * which the helmet, visor band and mask are then read against.
+ *
+ * Anatomy was never going to survive here anyway: a face is a 3 cm feature set,
+ * the head is nine sections of an eleven-sided ring, and it is drawn in one
+ * accent colour with no texture. Modelling a nose at this resolution buys a
+ * lump, not a face — and a lump on a bright flat colour is worse than nothing.
+ */
 export function headMesh(nz, base, p = {}) {
   const w = p.wide ?? 1;
+  // y, half-width, half-depth, z offset, corner exponent. The exponents stay
+  // low (2.4-2.6) because a superellipse near 2 is a rounded box in plan, which
+  // is what gives the faceted head its squared temples.
   const S = [
     [0.000, 0.038 * w, 0.050, 0.020, 2.6],
-    [0.020, 0.056 * w, 0.068, 0.014, 2.6],
-    [0.044, 0.068 * w, 0.076, 0.007, 2.5],
-    [0.070, 0.077 * w, 0.083, 0.001, 2.4],
-    [0.095, 0.084 * w, 0.088, -0.002, 2.4],
-    [0.119, 0.086 * w, 0.090, -0.005, 2.4],
-    [0.146, 0.083 * w, 0.089, -0.009, 2.4],
-    [0.176, 0.076 * w, 0.082, -0.012, 2.4],
-    [0.205, 0.062 * w, 0.066, -0.014, 2.4],
-    [0.230, 0.038 * w, 0.041, -0.014, 2.4],
+    [0.030, 0.062 * w, 0.072, 0.012, 2.6],
+    [0.070, 0.077 * w, 0.083, 0.001, 2.5],
+    [0.110, 0.086 * w, 0.090, -0.004, 2.4],
+    [0.150, 0.083 * w, 0.089, -0.010, 2.4],
+    [0.190, 0.071 * w, 0.077, -0.013, 2.4],
+    [0.225, 0.045 * w, 0.048, -0.014, 2.4],
     [0.244, 0.012 * w, 0.013, -0.014, 2.4],
   ];
-  const seg = 24;
+  const seg = F(24);
   const rings = S.map(([y, hx, hz, zo, n]) => ({
     pts: superEllipse(hx, hz, n, seg),
     o: [base[0], base[1] + y, base[2] + zo],
   }));
   const m = loft(rings, { capStart: true, capEnd: false });
   computeNormals(m);
-
-  const bx = base[0], by = base[1], bz = base[2];
-  // features, all in head-local coordinates
-  warp(m, (v) => {
-    const x = v.x - bx, y = v.y - by, z = v.z - bz;
-    const front = Math.max(0, z / 0.09);
-    // brow ridge
-    const brow = Math.exp(-((y - 0.113) ** 2) / 0.00016) * front * Math.exp(-(x * x) / 0.006);
-    // eye sockets
-    const socket =
-      Math.exp(-((Math.abs(x) - 0.033) ** 2) / 0.00035) *
-      Math.exp(-((y - 0.098) ** 2) / 0.00022) * front;
-    // cheekbone
-    const cheek =
-      Math.exp(-((Math.abs(x) - 0.055) ** 2) / 0.0009) *
-      Math.exp(-((y - 0.070) ** 2) / 0.0007) * Math.max(0, z / 0.06);
-    // temple flattening
-    const temple = Math.exp(-((y - 0.150) ** 2) / 0.0016) * Math.exp(-((Math.abs(x) - 0.082) ** 2) / 0.0006);
-    // chin
-    const chin = Math.exp(-(y * y) / 0.00035) * front;
-    // occiput
-    const occ = Math.exp(-((y - 0.165) ** 2) / 0.0018) * Math.max(0, -z / 0.09);
-    const scale = 1 + 0.05 * brow - 0.10 * socket + 0.05 * cheek - 0.06 * temple;
-    v.x = bx + x * (1 - 0.05 * socket - 0.05 * temple);
-    v.y = by + y;
-    v.z = bz + z * scale + 0.006 * brow + 0.004 * chin + 0.008 * occ * -1;
-  });
-  computeNormals(m);
-  displace(m, (x, y, z) => nz.fbm3(x * 70, y * 70, z * 70, 3) * 0.0012);
-  return m;
-}
-
-/** Nose wedge + nostrils. */
-export function nose(nz, base) {
-  const bx = base[0], by = base[1], bz = base[2];
-  const S = [
-    [0.118, 0.075, 0.009, 0.010],
-    [0.104, 0.084, 0.011, 0.016],
-    [0.088, 0.093, 0.014, 0.020],
-    [0.074, 0.100, 0.017, 0.021],
-    [0.064, 0.100, 0.020, 0.018],
-    [0.058, 0.092, 0.019, 0.012],
-  ];
-  const rings = S.map(([y, z, hx, hz]) => ({
-    pts: superEllipse(hx, hz, 2.2, 12),
-    o: [bx, by + y, bz + z],
-  }));
-  const m = loft(rings, { capStart: false, capEnd: true });
-  computeNormals(m);
-  return m;
-}
-
-/** Ear: a folded flattened ellipsoid. */
-export function ear(nz, base, side) {
-  const m = ellipsoid(0.010, 0.030, 0.020, { seg: 12, rows: 9 });
-  computeNormals(m);
-  warp(m, (v) => {
-    v.z += v.y * 0.25;
-    v.x += Math.abs(v.y) * 0.10;
-  });
-  place(m, base[0] + side * 0.083, base[1] + 0.098, base[2] - 0.008, 0.1, side * 0.25, 0);
-  return m;
-}
-
-/** Eyeball: a small dark glossy sphere set into the socket. */
-export function eyeball(base, side) {
-  const m = ellipsoid(0.0125, 0.0125, 0.0125, { seg: 12, rows: 8 });
-  computeNormals(m);
-  place(m, base[0] + side * 0.032, base[1] + 0.0975, base[2] + 0.0665);
   return m;
 }
 
@@ -375,7 +365,7 @@ export function faceWrap(nz, base, p = {}) {
     [0.076, 0.090, 0.094, -0.002, 2.4],
     [0.086, 0.090, 0.093, -0.006, 2.4],
   ];
-  const seg = 22;
+  const seg = F(22);
   const rings = S.map(([y, hx, hz, zo, n]) => ({
     pts: superEllipse(hx, hz, n, seg),
     o: [bx, by + y, bz + zo],
@@ -404,7 +394,7 @@ export function faceWrap(nz, base, p = {}) {
     const y = 0.086 + Math.max(0, sz) * 0.006 - Math.exp(-(sx * sx) / 0.06) * Math.max(0, sz) * 0.010;
     hem.push([bx + sx * 0.092, by + y, bz + sz * 0.096 - 0.004]);
   }
-  const roll = ribbon(hem, 0.015, 0.008, { seg: 6, up: [0, 1, 0], upright: true });
+  const roll = ribbon(hem, 0.015, 0.008, { seg: F(6), up: [0, 1, 0], upright: true });
   computeNormals(roll);
   appendMesh(out, roll);
 
@@ -414,7 +404,7 @@ export function faceWrap(nz, base, p = {}) {
     const t = i / 4;
     seam.push([bx, by + 0.082 - t * 0.086, bz + 0.088 - t * 0.020]);
   }
-  const sm = ribbon(seam, 0.009, 0.004, { seg: 5, up: [1, 0, 0] });
+  const sm = ribbon(seam, 0.009, 0.004, { seg: F(5), up: [1, 0, 0] });
   computeNormals(sm);
   appendMesh(out, sm);
 
@@ -427,7 +417,7 @@ export function faceWrap(nz, base, p = {}) {
     ],
     0.013,
     0.005,
-    { seg: 6, up: [0, 1, 0] }
+    { seg: F(6), up: [0, 1, 0] }
   );
   computeNormals(bridge);
   appendMesh(out, bridge);
@@ -444,7 +434,7 @@ export function faceWrap(nz, base, p = {}) {
  */
 export function sunglasses(base) {
   const bx = base[0], by = base[1], bz = base[2];
-  const lens = boxRound(0.072, 0.0155, 0.006, { n: 3.0, seg: 18, rows: 5, roundY: 0.6 });
+  const lens = boxRound(0.072, 0.0155, 0.006, { n: 3.0, seg: F(18), rows: R(5), roundY: 0.6 });
   place(lens, bx, by + 0.100, bz + 0.080, -0.06, 0, 0);
   bendY(lens, 0.098, 0);
   computeNormals(lens);
@@ -458,7 +448,7 @@ export function sunglasses(base) {
       ],
       0.008,
       0.004,
-      { seg: 5, up: [0, 1, 0], upright: true }
+      { seg: F(5), up: [0, 1, 0], upright: true }
     );
     computeNormals(arm);
     appendMesh(frame, arm);
@@ -482,7 +472,7 @@ export function helmet(nz, base, p = {}) {
   const rx = 0.121, ry = 0.158, rz = 0.135;
 
   // --- shell: revolved dome, bottom edge scalloped per angle
-  const seg = 26, rows = 12;
+  const seg = F(26), rows = R(12);
   const rings = [];
   for (let r = 0; r < rows; r++) {
     const t = r / (rows - 1);
@@ -519,7 +509,7 @@ export function helmet(nz, base, p = {}) {
     const lift = side ** 2 * 0.042 - Math.max(0, sz) * 0.010;
     lipPts.push([bx + sx * rx * 0.955, cy + lift - 0.001, bz - 0.004 + sz * rz * 0.955]);
   }
-  const lip = ribbon(lipPts, 0.011, 0.006, { seg: 6, up: [0, 1, 0], upright: true });
+  const lip = ribbon(lipPts, 0.011, 0.006, { seg: F(6), up: [0, 1, 0], upright: true });
   computeNormals(lip);
   appendMesh(out, lip);
 
@@ -533,10 +523,10 @@ export function helmetHardware(nz, base) {
   const cy = by + 0.100;
 
   // NVG shroud on the brow
-  const shroud = boxRound(0.030, 0.012, 0.022, { n: 4, seg: 12, rows: 5, roundY: 0.5 });
+  const shroud = boxRound(0.030, 0.012, 0.022, { n: 4, seg: F(12), rows: R(5), roundY: 0.5 });
   place(shroud, bx, cy + 0.062, bz + 0.120, -0.50, 0, 0);
   appendMesh(out, shroud);
-  const lug = boxRound(0.009, 0.016, 0.007, { n: 4, seg: 8, rows: 4, roundY: 0.4 });
+  const lug = boxRound(0.009, 0.016, 0.007, { n: 4, seg: F(8), rows: R(4), roundY: 0.4 });
   place(lug, bx, cy + 0.086, bz + 0.126, -0.50, 0, 0);
   appendMesh(out, lug);
 
@@ -552,13 +542,13 @@ export function helmetHardware(nz, base) {
         bz - 0.004 + Math.sin(a) * 0.118,
       ]);
     }
-    const rail = ribbon(pts, 0.016, 0.009, { seg: 6, up: [0, 1, 0], upright: true });
+    const rail = ribbon(pts, 0.016, 0.009, { seg: F(6), up: [0, 1, 0], upright: true });
     computeNormals(rail);
     appendMesh(out, rail);
   }
 
   // rear counterweight pouch
-  const cw = boxRound(0.058, 0.034, 0.026, { n: 4, seg: 14, rows: 6, roundY: 0.5 });
+  const cw = boxRound(0.058, 0.034, 0.026, { n: 4, seg: F(14), rows: R(6), roundY: 0.5 });
   place(cw, bx, cy + 0.075, bz - 0.128, 0.28, 0, 0);
   computeNormals(cw);
   displace(cw, (x, y, z) => nz.fbm3(x * 40, y * 40, z * 40, 2) * 0.002);
@@ -578,7 +568,7 @@ export function chinStrap(base) {
       [bx + side * 0.048, cy - 0.104, bz + 0.062],
       [bx + side * 0.014, cy - 0.118, bz + 0.054],
     ];
-    const s = ribbon(pts, 0.016, 0.005, { seg: 6, up: [0, 0, 1] });
+    const s = ribbon(pts, 0.016, 0.005, { seg: F(6), up: [0, 0, 1] });
     computeNormals(s);
     appendMesh(out, s);
     const rear = [
@@ -586,7 +576,7 @@ export function chinStrap(base) {
       [bx + side * 0.090, cy - 0.058, bz - 0.058],
       [bx + side * 0.040, cy - 0.078, bz - 0.082],
     ];
-    const r = ribbon(rear, 0.014, 0.005, { seg: 6, up: [0, 1, 0] });
+    const r = ribbon(rear, 0.014, 0.005, { seg: F(6), up: [0, 1, 0] });
     computeNormals(r);
     appendMesh(out, r);
   }
@@ -596,7 +586,7 @@ export function chinStrap(base) {
 /** Goggles: pushed up on the shell, or pulled down over the eyes. */
 export function goggles(base, down = false) {
   if (down) return gogglesDown(base);
-  const frame = boxRound(0.082, 0.026, 0.024, { n: 3.2, seg: 20, rows: 6, roundY: 0.5 });
+  const frame = boxRound(0.082, 0.026, 0.024, { n: 3.2, seg: F(20), rows: R(6), roundY: 0.5 });
   const bx = base[0], by = base[1], bz = base[2];
   place(frame, bx, by + 0.176, bz + 0.098, -0.95, 0, 0);
   bendY(frame, 0.15, 0);
@@ -612,7 +602,7 @@ export function goggles(base, down = false) {
     ],
     0.024,
     0.007,
-    { seg: 6, up: [0, 1, 0], upright: true }
+    { seg: F(6), up: [0, 1, 0], upright: true }
   );
   computeNormals(strap);
   return { frame, strap };
@@ -620,7 +610,7 @@ export function goggles(base, down = false) {
 
 function gogglesDown(base) {
   const bx = base[0], by = base[1], bz = base[2];
-  const frame = boxRound(0.078, 0.028, 0.026, { n: 3.2, seg: 20, rows: 6, roundY: 0.5 });
+  const frame = boxRound(0.078, 0.028, 0.026, { n: 3.2, seg: F(20), rows: R(6), roundY: 0.5 });
   place(frame, bx, by + 0.098, bz + 0.072, -0.10, 0, 0);
   bendY(frame, 0.115, 0);
   computeNormals(frame);
@@ -635,7 +625,7 @@ function gogglesDown(base) {
     ],
     0.026,
     0.008,
-    { seg: 6, up: [0, 1, 0], upright: true }
+    { seg: F(6), up: [0, 1, 0], upright: true }
   );
   computeNormals(strap);
   return { frame, strap, down: true };
@@ -645,13 +635,13 @@ function gogglesDown(base) {
 export function goggleLens(base, down = false) {
   if (down) {
     const bx = base[0], by = base[1], bz = base[2];
-    const lens = boxRound(0.071, 0.020, 0.008, { n: 3.0, seg: 18, rows: 5, roundY: 0.6 });
+    const lens = boxRound(0.071, 0.020, 0.008, { n: 3.0, seg: F(18), rows: R(5), roundY: 0.6 });
     place(lens, bx, by + 0.098, bz + 0.090, -0.10, 0, 0);
     bendY(lens, 0.105, 0);
     computeNormals(lens);
     return lens;
   }
-  const lens = boxRound(0.074, 0.019, 0.008, { n: 3.0, seg: 18, rows: 5, roundY: 0.6 });
+  const lens = boxRound(0.074, 0.019, 0.008, { n: 3.0, seg: F(18), rows: R(5), roundY: 0.6 });
   const bx = base[0], by = base[1], bz = base[2];
   place(lens, bx, by + 0.176, bz + 0.115, -0.95, 0, 0);
   bendY(lens, 0.14, 0);
@@ -670,7 +660,7 @@ export function headScarf(nz, base) {
   // The skull crown sits at +0.244 in head-local space, so the dome has to reach
   // +0.250 or the bare scalp pokes through the top of the wrap — which is exactly
   // what it looked like: a pink patch on the crown at every distance.
-  const dome = ellipsoid(0.102, 0.146, 0.112, { seg: 22, rows: 12, v0: 0.34, v1: 1 });
+  const dome = ellipsoid(0.102, 0.146, 0.112, { seg: F(22), rows: R(12), v0: 0.34, v1: 1 });
   computeNormals(dome);
   place(dome, bx, by + 0.104, bz - 0.008);
   displace(dome, (x, y, z) => {
@@ -684,7 +674,7 @@ export function headScarf(nz, base) {
     const a = (i / 24) * Math.PI * 2;
     pts.push([bx + Math.sin(a) * 0.099, by + 0.118 - Math.max(0, Math.cos(a)) * 0.012, bz - 0.008 + Math.cos(a) * 0.109]);
   }
-  const brim = ribbon(pts, 0.030, 0.016, { seg: 7, up: [0, 1, 0], upright: true });
+  const brim = ribbon(pts, 0.030, 0.016, { seg: F(7), up: [0, 1, 0], upright: true });
   computeNormals(brim);
   appendMesh(out, brim);
   // tail down the back
@@ -697,7 +687,7 @@ export function headScarf(nz, base) {
       bz - 0.085 - Math.sin(t * 2.2) * 0.03,
     ]);
   }
-  const tl = tube(tail, (t) => superEllipse(0.052 - t * 0.012, 0.020 + t * 0.006, 3, 12), {
+  const tl = tube(tail, (t) => superEllipse(0.052 - t * 0.012, 0.020 + t * 0.006, 3, F(12)), {
     capStart: false,
     capEnd: true,
   });
@@ -713,7 +703,7 @@ export function headScarf(nz, base) {
 
 /** One plate: a curved slab with a soft edge. */
 function plate(hx, hy, hz, y, z, tilt, radius) {
-  const m = boxRound(hx, hy, hz, { n: 3.6, seg: 22, rows: 11, roundY: 0.24 });
+  const m = boxRound(hx, hy, hz, { n: 3.6, seg: F(22), rows: R(11), roundY: 0.24 });
   // taper: a real plate narrows toward the waist and wraps in at the bottom
   warp(m, (v) => {
     const t = Math.max(0, -v.y / hy);
@@ -731,12 +721,12 @@ function plate(hx, hy, hz, y, z, tilt, radius) {
 export function pouch(nz, o) {
   const out = emptyMesh();
   const hx = o.hx ?? 0.038, hy = o.hy ?? 0.055, hz = o.hz ?? 0.030;
-  const body = boxRound(hx, hy, hz, { n: 5.5, seg: 18, rows: 8, roundY: 0.18 });
+  const body = boxRound(hx, hy, hz, { n: 5.5, seg: F(18), rows: R(8), roundY: 0.18 });
   computeNormals(body);
   displace(body, (x, y, z) => nz.fbm3(x * 40, y * 40, z * 40, 3) * 0.0022);
   appendMesh(out, body);
   // lid
-  const lid = boxRound(hx * 1.03, 0.010, hz * 0.98, { n: 5.5, seg: 18, rows: 4, roundY: 0.5 });
+  const lid = boxRound(hx * 1.03, 0.010, hz * 0.98, { n: 5.5, seg: F(18), rows: R(4), roundY: 0.5 });
   place(lid, 0, hy - 0.004, (o.lidTilt ? hz * 0.35 : 0) + hz * 0.10, (o.lidTilt ?? 0) - 0.18, 0, 0);
   computeNormals(lid);
   appendMesh(out, lid);
@@ -749,7 +739,7 @@ export function pouch(nz, o) {
     ],
     0.014,
     0.004,
-    { seg: 5, up: [1, 0, 0] }
+    { seg: F(5), up: [1, 0, 0] }
   );
   computeNormals(tab);
   appendMesh(out, tab);
@@ -776,7 +766,7 @@ export function plateCarrier(nz, p = {}) {
     const a = (i / n) * Math.PI * 2;
     cb.push([Math.sin(a) * 0.168, 1.152 + Math.cos(a * 2) * 0.005, Math.cos(a) * 0.121 - 0.004]);
   }
-  const band = ribbon(cb, 0.100, 0.022, { seg: 8, up: [0, 1, 0], upright: true });
+  const band = ribbon(cb, 0.100, 0.022, { seg: F(8), up: [0, 1, 0], upright: true });
   computeNormals(band);
   displace(band, (x, y, z) => nz.fbm3(x * 34, y * 34, z * 34, 3) * 0.002);
   appendMesh(out, band);
@@ -789,7 +779,7 @@ export function plateCarrier(nz, p = {}) {
       [side * 0.104, 1.462, -0.036],
       [side * 0.092, 1.418, -0.120],
     ];
-    const s = ribbon(pts, 0.076, 0.030, { seg: 8, up: [0, 1, 0] });
+    const s = ribbon(pts, 0.076, 0.030, { seg: F(8), up: [0, 1, 0] });
     computeNormals(s);
     displace(s, (x, y, z) => nz.fbm3(x * 34, y * 34, z * 34, 3) * 0.002);
     appendMesh(out, s);
@@ -809,7 +799,7 @@ export function carrierWebbing() {
       const x = (t - 0.5) * 0.150;
       pts.push([x, y, 0.150 - (x * x) / 0.20]);
     }
-    const row = ribbon(pts, 0.013, 0.0035, { seg: 5, up: [0, 1, 0], upright: true });
+    const row = ribbon(pts, 0.013, 0.0035, { seg: F(5), up: [0, 1, 0], upright: true });
     computeNormals(row);
     appendMesh(out, row);
   }
@@ -823,7 +813,7 @@ export function carrierWebbing() {
     ],
     0.028,
     0.010,
-    { seg: 6, up: [0, 1, 0], upright: true }
+    { seg: F(6), up: [0, 1, 0], upright: true }
   );
   computeNormals(drag);
   appendMesh(out, drag);
@@ -842,7 +832,7 @@ export function sling(gripPoint, stockPoint) {
     [0.110, 1.235, 0.135],
     [gripPoint[0] + 0.02, gripPoint[1] + 0.03, gripPoint[2] + 0.02],
   ];
-  const m = ribbon(pts, 0.032, 0.009, { seg: 6, up: [0, 1, 0] });
+  const m = ribbon(pts, 0.032, 0.009, { seg: F(6), up: [0, 1, 0] });
   computeNormals(m);
   return m;
 }
@@ -856,7 +846,7 @@ export function belt(nz) {
     const a = (i / n) * Math.PI * 2;
     pts.push([Math.sin(a) * 0.158, 0.902, Math.cos(a) * 0.113 - 0.008]);
   }
-  const b = ribbon(pts, 0.056, 0.018, { seg: 7, up: [0, 1, 0], upright: true });
+  const b = ribbon(pts, 0.056, 0.018, { seg: F(7), up: [0, 1, 0], upright: true });
   computeNormals(b);
   displace(b, (x, y, z) => nz.fbm3(x * 40, y * 40, z * 40, 2) * 0.0018);
   appendMesh(out, b);
@@ -876,7 +866,7 @@ export function hipPouch(nz, side) {
 /** Knee pad: a curved cap with two elastic straps. */
 export function kneePad(nz, knee, side) {
   const out = emptyMesh();
-  const cap = boxRound(0.064, 0.080, 0.026, { n: 4.5, seg: 18, rows: 9, roundY: 0.42 });
+  const cap = boxRound(0.064, 0.080, 0.026, { n: 4.5, seg: F(18), rows: R(9), roundY: 0.42 });
   place(cap, 0, 0, 0.052, 0, 0, 0);
   bendY(cap, 0.075, 0.052);
   computeNormals(cap);
@@ -888,7 +878,7 @@ export function kneePad(nz, knee, side) {
       const a = (i / 14) * Math.PI * 2;
       pts.push([Math.sin(a) * 0.066, dy, Math.cos(a) * 0.058 + 0.006]);
     }
-    const s = ribbon(pts, 0.016, 0.006, { seg: 6, up: [0, 1, 0], upright: true });
+    const s = ribbon(pts, 0.016, 0.006, { seg: F(6), up: [0, 1, 0], upright: true });
     computeNormals(s);
     appendMesh(out, s);
   }
@@ -915,7 +905,7 @@ export function boot(nz, ankle, side) {
     [0.112, 0.040, 0.034, 0.030],
     [0.134, 0.028, 0.022, 0.024],
   ];
-  const seg = 18;
+  const seg = F(18);
   const rings = S.map(([z, hx, hy, cy]) => ({
     pts: superEllipse(hx, hy, 2.8, seg),
     o: [ax, ay - 0.088 + cy, az + z],
@@ -933,7 +923,7 @@ export function boot(nz, ankle, side) {
       [ax, ay + 0.070, az - 0.002],
       [ax, ay + 0.125, az + 0.002],
     ],
-    (t) => ellipseProfile(0.056 - 0.004 * t, 0.050 - 0.002 * t, 16),
+    (t) => ellipseProfile(0.056 - 0.004 * t, 0.050 - 0.002 * t, F(16)),
     { capStart: false, capEnd: false }
   );
   computeNormals(cuff);
@@ -955,14 +945,14 @@ export function bootSole(ankle) {
   ];
   const ax = ankle[0], ay = ankle[1], az = ankle[2];
   const rings = S.map(([z, hx, hy]) => ({
-    pts: superEllipse(hx, hy, 3.6, 16),
+    pts: superEllipse(hx, hy, 3.6, F(16)),
     o: [ax, ay - 0.088 + hy + 0.001, az + z],
     q: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2),
   }));
   const m = loft(rings, { capStart: true, capEnd: true });
   computeNormals(m);
   // heel block
-  const heel = boxRound(0.036, 0.011, 0.030, { n: 4, seg: 12, rows: 4, roundY: 0.4 });
+  const heel = boxRound(0.036, 0.011, 0.030, { n: 4, seg: F(12), rows: R(4), roundY: 0.4 });
   place(heel, ax, ay - 0.082, az - 0.056);
   appendMesh(m, heel);
   computeNormals(m);
@@ -986,7 +976,7 @@ export function bootLaces(ankle) {
       ],
       0.008,
       0.004,
-      { seg: 5, up: [0, 1, 0] }
+      { seg: F(5), up: [0, 1, 0] }
     );
     computeNormals(s);
     appendMesh(out, s);
@@ -1006,7 +996,7 @@ export function glove(nz, wrist, gripAxis, palmNormal, side) {
   const S = new THREE.Vector3().crossVectors(A, N).normalize(); // across the hand
 
   // palm block
-  const palm = boxRound(0.030, 0.048, 0.022, { n: 3.2, seg: 16, rows: 7, roundY: 0.4 });
+  const palm = boxRound(0.030, 0.048, 0.022, { n: 3.2, seg: F(16), rows: R(7), roundY: 0.4 });
   const m = new THREE.Matrix4().makeBasis(S, A, N);
   const pos = W.clone().addScaledVector(A, 0.030).addScaledVector(N, -0.006);
   m.setPosition(pos);
@@ -1029,7 +1019,7 @@ export function glove(nz, wrist, gripAxis, palmNormal, side) {
         .addScaledVector(S, side * (0.020 - t * 0.019));
       pts.push([p.x, p.y, p.z]);
     }
-    const fin = tube(pts, (u) => ellipseProfile(0.0115 - u * 0.002, 0.0105 - u * 0.002, 10), {
+    const fin = tube(pts, (u) => ellipseProfile(0.0115 - u * 0.002, 0.0105 - u * 0.002, F(10)), {
       capStart: true,
       capEnd: true,
     });
@@ -1046,7 +1036,7 @@ export function glove(nz, wrist, gripAxis, palmNormal, side) {
       .addScaledVector(S, side * (-0.026 - u * 0.004));
     tp.push([p.x, p.y, p.z]);
   }
-  const thumb = tube(tp, (u) => ellipseProfile(0.014 - u * 0.003, 0.013 - u * 0.003, 10), {
+  const thumb = tube(tp, (u) => ellipseProfile(0.014 - u * 0.003, 0.013 - u * 0.003, F(10)), {
     capStart: true,
     capEnd: true,
   });
@@ -1064,7 +1054,7 @@ export function knuckleGuard(wrist, gripAxis, palmNormal) {
   const A = new THREE.Vector3(...gripAxis).normalize();
   const N = new THREE.Vector3(...palmNormal).normalize();
   const S = new THREE.Vector3().crossVectors(A, N).normalize();
-  const g = boxRound(0.026, 0.024, 0.007, { n: 3.4, seg: 14, rows: 5, roundY: 0.5 });
+  const g = boxRound(0.026, 0.024, 0.007, { n: 3.4, seg: F(14), rows: R(5), roundY: 0.5 });
   const m = new THREE.Matrix4().makeBasis(S, A, N);
   m.setPosition(W.clone().addScaledVector(A, 0.050).addScaledVector(N, 0.020));
   computeNormals(g);
