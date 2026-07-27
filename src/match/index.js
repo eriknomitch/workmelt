@@ -6,11 +6,15 @@
  * Now every normal load opens on a menu and the match starts when somebody asks
  * for it, one of two ways:
  *
- *   BOTS         pick a garrison size, press start, deploy immediately.
+ *   BOTS         pick a garrison size, press play, deploy immediately.
  *   MULTIPLAYER  share the room link; once a second player is in the room both
  *                press READY, the relay fires one start signal (see
  *                `maybeStart()` in server/index.mjs) and both clients run the
  *                same countdown. No bots in this mode — it is players only.
+ *
+ * The lobby collapses both into ONE primary button whose meaning follows the
+ * room (see the header of ./ui.js); this system resolves a click on it against
+ * the live lobby state in `_primary()`.
  *
  * WHAT IT OWNS
  *   • `state`: 'setup' -> 'countdown' -> 'live', and the gating that goes with
@@ -33,6 +37,7 @@
  * EVENTS EMITTED
  *   match:start { bots, squads, perSquad, mode }   the match is live
  *   match:countdown { seconds }                    a countdown tick landed
+ *   match:end { reason }                           back out to the lobby
  */
 
 import * as THREE from 'three';
@@ -70,17 +75,23 @@ export class MatchSystem {
     // is only ever used for sending.
     this.net = ctx.peek('net');
 
-    this.ui = new MatchStartUI({ multiplayer: !!this.net });
+    this.ui = new MatchStartUI({
+      multiplayer: !!this.net,
+      invited: !!this.net?.arrivedByInvite,
+    });
     this.ui.onBots = (key) => this._setBots(key);
-    this.ui.onStartBots = () => this.start({ bots: this.bots, mode: 'bots' });
-    this.ui.onToggleReady = () => this._toggleReady();
-    this.ui.onDeploy = () => this.start({ bots: 'off', mode: 'join' });
-    this.ui.onCopyInvite = () => {
-      this.net?.copyInvite();
-      this.ui.flashCopied();
-    };
+    this.ui.onPrimary = () => this._primary();
+    this.ui.onStartSolo = () => this.start({ bots: this.bots, mode: 'bots' });
+    this.ui.onCopyInvite = () => this._share();
+    this.ui.onName = (n) => this.net?.setName(n);
+    // The settings menu is the same panel Escape opens in a match — one surface,
+    // reachable from both places, so nothing has to be learned twice.
+    this.ui.onSettings = () => this.uiSys.menu.show();
     this._setBots(this.bots);
-    if (this.net) this.ui.setRoom(this.net.room);
+    if (this.net) {
+      this.ui.setRoom(this.net.room);
+      this.ui.setName(this.net.name);
+    }
 
     const on = (t, fn) => this._off.push(ctx.events.on(t, fn));
     on('player:death', () => this._onPlayerDeath());
@@ -89,6 +100,7 @@ export class MatchSystem {
       this._lastAttackValid = !!e?.from;
     });
     on('net:lobby', (e) => this._onLobby(e));
+    on('net:name', (e) => this.ui.setName(e?.name ?? ''));
     on('net:countdown', (e) => this._onCountdown(e));
     on('net:join', () => this._sfx('join'));
     on('net:leave', () => this._sfx('leave', 0.7));
@@ -115,6 +127,10 @@ export class MatchSystem {
     this.ui.showCountdown(false);
     this.ui.setVisible(true);
     if (this.net) this._onLobby(null);
+    else this.ui.render({});
+    // Enter is the whole screen: land the focus ring on the one button that
+    // matters so a keyboard player never has to hunt for it.
+    requestAnimationFrame(() => this.ui.focusPrimary());
   }
 
   _setBots(key) {
@@ -122,13 +138,51 @@ export class MatchSystem {
     this.ui.setBots(this.bots);
   }
 
-  _toggleReady() {
+  /**
+   * The single primary button. Its meaning is whatever the room currently
+   * makes it — the lobby paints the label from the same four cases.
+   */
+  _primary() {
+    switch (this.ui.mode) {
+      case 'deploy':
+        return this.start({ bots: 'off', mode: 'join' });
+      case 'ready':
+        return this._setReady(true);
+      case 'unready':
+        return this._setReady(false);
+      default:
+        return this.start({ bots: this.bots, mode: 'bots' });
+    }
+  }
+
+  _setReady(on) {
     if (!this.net) return;
-    const next = !this.net.ready;
-    this.net.setReady(next);
-    this._sfx(next ? 'ready' : 'unready');
+    this.net.setReady(on);
+    this._sfx(on ? 'ready' : 'unready');
     // Optimistic paint; the relay's `lobby` frame confirms it a moment later.
     this._onLobby(null);
+  }
+
+  /**
+   * Share in one click. Native share where the platform has it (phones, and
+   * Safari on the desktop), clipboard everywhere else — either way the player
+   * pressed one button and the link is on its way.
+   */
+  _share() {
+    if (!this.net) return;
+    const url = this.net.inviteUrl();
+    const nav = typeof navigator !== 'undefined' ? navigator : null;
+    if (nav?.share && nav.canShare?.({ url })) {
+      nav
+        .share({ title: 'WORKMELT', text: 'Match starting — jump in.', url })
+        .then(() => this.ui.flashCopied('Link sent'))
+        .catch(() => {
+          /* the sheet was dismissed; nothing to report */
+        });
+      return;
+    }
+    this.net.copyInvite();
+    this.ui.flashCopied();
   }
 
   /** Repaint from whatever `net` currently holds (the event payload is a hint). */
@@ -197,13 +251,15 @@ export class MatchSystem {
     // player who just moved off the menu backdrop.
     this._deploy();
 
-    if (preset.squads > 0) {
-      try {
-        this.ai.populate({ squads: preset.squads, perSquad: preset.perSquad });
-      } catch (err) {
-        // A missing nav grid is not a reason to keep the player in a menu.
-        console.warn('[match] garrison spawn failed', err);
-      }
+    // `clearGarrison` makes this idempotent across a leave-and-restart: without
+    // it, going back to the lobby and pressing play again would stack a second
+    // garrison on top of the first.
+    try {
+      this.ai.clearGarrison?.();
+      if (preset.squads > 0) this.ai.populate({ squads: preset.squads, perSquad: preset.perSquad });
+    } catch (err) {
+      // A missing nav grid is not a reason to keep the player in a menu.
+      console.warn('[match] garrison spawn failed', err);
     }
 
     this.ui.showCountdown(false);
@@ -224,6 +280,27 @@ export class MatchSystem {
       mode,
     });
     console.info(`[match] start mode=${mode} bots=${preset.key}`);
+  }
+
+  /**
+   * Back out of a live match to the lobby — what "Leave match" in the pause
+   * menu does. The room survives it (the relay only ever hears that we stopped
+   * being ready), so leaving and playing again keeps the same invite link.
+   */
+  returnToSetup() {
+    if (this.state === 'setup') return;
+    this._respawnAt = 0;
+    try {
+      this.ai.clearGarrison?.();
+    } catch (err) {
+      console.warn('[match] garrison teardown failed', err);
+    }
+    // Tell the room we stepped out, or it stays LIVE and everyone who comes
+    // back here — including us — is offered "deploy now" instead of a setup.
+    this.net?.undeploy();
+    this._enterSetup();
+    this.ctx.events.emit('match:end', { reason: 'left' });
+    console.info('[match] returned to the lobby');
   }
 
   /* ==================================================================== */

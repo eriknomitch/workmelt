@@ -106,6 +106,15 @@ export class Room {
         this._sendLobby();
         break;
       }
+      case 'undeploy': {
+        // "I went back to the lobby" — the pause menu's Leave match. Mirrors
+        // the same case in server/index.mjs; without it a room stays LIVE
+        // forever after the first person plays.
+        peer.deployed = false;
+        peer.ready = false;
+        this._sendLobby();
+        break;
+      }
       case 'state': {
         peer.pstate = msg.s ?? null;
         if (peer.pstate && typeof peer.pstate.hp === 'number') peer.alive = peer.pstate.hp > 0;

@@ -3,68 +3,84 @@
  * join/leave + kill toasts, and a name field. Self-contained DOM + CSS so it
  * doesn't depend on the HUD subsystem's internals. Everything sits under the
  * game canvas' pointer-lock, so it only accepts clicks when the cursor is free.
+ *
+ * Styled from the brand tokens in `src/ui/brand.js` (DESIGN.md), so the bar the
+ * player sees in a match is the same material as the lobby they came from —
+ * Gunmetal panel, 1px Hairline, 8px radius, Melt Green kept to the online dot.
  */
+
+import { installBrand } from '../ui/brand.js';
 
 const CSS = `
 .cod-mp { position: fixed; inset: 0; pointer-events: none; z-index: 40;
-  font-family: "Inter","Helvetica Neue",Arial,sans-serif; color: #dfe7ee;
-  -webkit-font-smoothing: antialiased; }
-.cod-mp button { font-family: inherit; }
+  font-family: var(--wm-body); color: var(--wm-fg); -webkit-font-smoothing: antialiased; }
+.cod-mp *, .cod-mp *::before, .cod-mp *::after { box-sizing: border-box; }
+.cod-mp button, .cod-mp input { font-family: inherit; }
+.cod-mp :focus-visible { outline: 2px solid var(--wm-accent); outline-offset: 2px; }
 
 .cod-mp .bar { position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
   display: flex; align-items: center; gap: 10px; padding: 7px 10px 7px 12px;
-  background: rgba(10,14,18,0.72); border: 1px solid rgba(120,170,200,0.22);
-  border-radius: 10px; backdrop-filter: blur(8px); pointer-events: auto;
-  box-shadow: 0 6px 24px rgba(0,0,0,0.4); max-width: 92vw; }
-.cod-mp .dot { width: 9px; height: 9px; border-radius: 50%; background: #d9534f;
-  box-shadow: 0 0 8px currentColor; color: #d9534f; flex: none; transition: color .3s,background .3s; }
-.cod-mp .dot.on { background: #57d97a; color: #57d97a; }
-.cod-mp .dot.wait { background: #e6b34a; color: #e6b34a; }
-.cod-mp .room { font-size: 12px; letter-spacing: .5px; white-space: nowrap; }
-.cod-mp .room b { color: #7fd6ff; letter-spacing: 2px; font-weight: 700; text-transform: uppercase; }
-.cod-mp .count { font-size: 11px; color: #9fb0bd; white-space: nowrap; }
-.cod-mp .btn { pointer-events: auto; cursor: pointer; border: 1px solid rgba(120,170,200,0.3);
-  background: rgba(30,40,50,0.6); color: #cfe6f4; font-size: 11px; font-weight: 600;
-  letter-spacing: .4px; padding: 5px 9px; border-radius: 7px; white-space: nowrap;
-  transition: background .15s, border-color .15s; }
-.cod-mp .btn:hover { background: rgba(60,110,140,0.55); border-color: rgba(140,200,230,0.6); }
-.cod-mp .btn.copied { background: rgba(60,150,90,0.6); border-color: #57d97a; color: #eafff0; }
-.cod-mp .name-in { pointer-events: auto; width: 92px; background: rgba(20,26,32,0.85);
-  border: 1px solid rgba(120,170,200,0.25); border-radius: 7px; color: #eaf2f8;
-  font-size: 11px; padding: 5px 7px; }
-.cod-mp .name-in:focus { outline: none; border-color: #7fd6ff; }
+  background: var(--wm-panel); border: 1px solid var(--wm-border);
+  border-radius: var(--wm-r); backdrop-filter: blur(8px); pointer-events: auto;
+  box-shadow: var(--wm-shadow); max-width: 92vw; }
+/* Square dots: enterprise-software geometry, never a glowing orb. */
+.cod-mp .dot { width: 8px; height: 8px; border-radius: 2px; background: var(--wm-danger);
+  flex: none; transition: background var(--wm-t); }
+.cod-mp .dot.on { background: var(--wm-ok); }
+.cod-mp .dot.wait { background: var(--wm-warn); }
+.cod-mp .room { font-size: 12px; letter-spacing: .015em; white-space: nowrap;
+  color: var(--wm-muted-fg); }
+.cod-mp .room b { font-family: var(--wm-display); font-size: 17px; letter-spacing: .12em;
+  font-weight: 400; color: var(--wm-fg); text-transform: uppercase; }
+.cod-mp .count { font-size: 11px; color: var(--wm-muted-fg); white-space: nowrap; }
+.cod-mp .btn { pointer-events: auto; cursor: pointer; border: 1px solid var(--wm-border);
+  background: transparent; color: var(--wm-fg-dim); font-size: 12px; font-weight: 600;
+  letter-spacing: .02em; padding: 5px 10px; border-radius: var(--wm-r-sm); white-space: nowrap;
+  transition: color var(--wm-t), border-color var(--wm-t), background var(--wm-t); }
+.cod-mp .btn:hover { color: var(--wm-fg); border-color: var(--wm-accent); background: var(--wm-panel-2); }
+.cod-mp .btn.copied { color: var(--wm-ok); border-color: var(--wm-ok); background: transparent; }
+.cod-mp .name-in { pointer-events: auto; width: 104px; background: var(--wm-panel-2);
+  border: 1px solid var(--wm-border); border-radius: var(--wm-r-sm); color: var(--wm-fg);
+  font-size: 12px; font-weight: 600; padding: 5px 8px; transition: border-color var(--wm-t); }
+.cod-mp .name-in:hover { border-color: var(--wm-muted-fg); }
+.cod-mp .name-in:focus { outline: none; border-color: var(--wm-accent); }
 
 .cod-mp .toasts { position: absolute; top: 60px; left: 50%; transform: translateX(-50%);
-  display: flex; flex-direction: column; align-items: center; gap: 5px; width: max-content; }
-.cod-mp .toast { font-size: 12px; padding: 5px 12px; border-radius: 8px;
-  background: rgba(10,14,18,0.72); border: 1px solid rgba(120,170,200,0.18);
+  display: flex; flex-direction: column; align-items: center; gap: 6px; width: max-content; }
+.cod-mp .toast { font-size: 12px; padding: 6px 12px; border-radius: var(--wm-r-sm);
+  background: var(--wm-panel); border: 1px solid var(--wm-border); color: var(--wm-fg-dim);
   animation: cod-fade 3.2s ease forwards; }
-.cod-mp .toast b { color: #7fd6ff; }
-.cod-mp .toast .k { color: #ff8f6b; }
+.cod-mp .toast b { color: var(--wm-fg); font-weight: 600; }
+.cod-mp .toast .k { color: var(--wm-warn); font-weight: 600; }
 @keyframes cod-fade { 0%{opacity:0;transform:translateY(-6px)} 8%{opacity:1;transform:none}
   80%{opacity:1} 100%{opacity:0} }
 
 .cod-mp .board { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
-  min-width: 320px; max-width: 90vw; background: rgba(8,11,15,0.88);
-  border: 1px solid rgba(120,170,200,0.25); border-radius: 12px; padding: 16px 18px;
-  backdrop-filter: blur(10px); box-shadow: 0 20px 60px rgba(0,0,0,0.6); display: none; }
+  min-width: 360px; max-width: 90vw; background: var(--wm-panel);
+  border: 1px solid var(--wm-border); border-radius: var(--wm-r); padding: 18px 20px;
+  backdrop-filter: blur(10px); box-shadow: var(--wm-shadow-lift); display: none; }
 .cod-mp .board.show { display: block; }
-.cod-mp .board h2 { font-size: 13px; letter-spacing: 3px; color: #7fd6ff; margin: 0 0 4px;
-  text-transform: uppercase; font-weight: 700; }
-.cod-mp .board .rm { font-size: 11px; color: #9fb0bd; margin-bottom: 12px; }
+.cod-mp .board h2 { font-family: var(--wm-display); font-weight: 400; font-size: 22px;
+  letter-spacing: .08em; color: var(--wm-fg); margin: 0; text-transform: uppercase; }
+.cod-mp .board .rm { font-size: 11px; font-weight: 600; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--wm-muted-fg); margin: 5px 0 14px; }
 .cod-mp table { width: 100%; border-collapse: collapse; }
-.cod-mp th { font-size: 10px; letter-spacing: 1px; color: #8ea0ad; text-transform: uppercase;
-  text-align: right; padding: 4px 8px; border-bottom: 1px solid rgba(120,170,200,0.18); }
+.cod-mp th { font-size: 10px; font-weight: 600; letter-spacing: .08em; color: var(--wm-muted-fg);
+  text-transform: uppercase; text-align: right; padding: 0 8px 9px; }
 .cod-mp th.l { text-align: left; }
-.cod-mp td { font-size: 13px; padding: 6px 8px; text-align: right; }
-.cod-mp td.l { text-align: left; font-weight: 600; }
-.cod-mp tr.me td { color: #7fd6ff; }
-.cod-mp .hintkey { position: absolute; bottom: 12px; left: 12px; font-size: 10px;
-  color: #7d8b96; letter-spacing: .5px; }
+.cod-mp td { font-size: 13px; padding: 8px; text-align: right; color: var(--wm-fg-dim);
+  border-top: 1px solid var(--wm-border); font-variant-numeric: tabular-nums; }
+.cod-mp td.l { text-align: left; font-weight: 500; color: var(--wm-fg); }
+.cod-mp tr.me td { background: var(--wm-panel-2); color: var(--wm-fg); }
+.cod-mp .hintkey { position: absolute; bottom: 12px; left: 12px; font-size: 11px;
+  font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: var(--wm-muted-fg); }
+.cod-mp .hintkey .k { border: 1px solid var(--wm-border); border-radius: 3px;
+  padding: 1px 5px; margin-right: 4px; color: var(--wm-fg-dim); }
 `;
 
 export class NetUI {
   constructor() {
+    installBrand();
     if (!document.getElementById('cod-mp-style')) {
       const s = document.createElement('style');
       s.id = 'cod-mp-style';
@@ -89,11 +105,13 @@ export class NetUI {
         <h2>Scoreboard</h2>
         <div class="rm" data-board-room></div>
         <table>
-          <thead><tr><th class="l">Operator</th><th>Kills</th><th>Deaths</th><th>K/D</th></tr></thead>
+          <thead><tr><th class="l">Operative</th><th>Kills</th><th>Deaths</th><th>K/D</th></tr></thead>
           <tbody data-rows></tbody>
         </table>
       </div>
-      <div class="hintkey">TAB scoreboard · ENTER chat</div>
+      <div class="hintkey"><span class="k">Tab</span>Scoreboard
+        <span class="k" style="margin-left:10px">Enter</span>Chat
+        <span class="k" style="margin-left:10px">Esc</span>Menu</div>
     `;
 
     this.dot = this.root.querySelector('[data-dot]');
@@ -122,8 +140,8 @@ export class NetUI {
   }
 
   setRoom(code) {
-    this.roomEl.textContent = code;
-    this.boardRoom.textContent = `Room ${code.toUpperCase()} — free-for-all`;
+    this.roomEl.textContent = code.toUpperCase();
+    this.boardRoom.textContent = `Room ${code.toUpperCase()} · free-for-all`;
   }
   setName(name) {
     this.nameIn.value = name;

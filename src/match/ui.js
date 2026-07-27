@@ -1,342 +1,654 @@
 /**
- * The Match Start view: the screen the game now opens on instead of dropping
- * straight into a firefight.
+ * ===========================================================================
+ * The lobby — the screen WORKMELT opens on
+ * ===========================================================================
  *
- * Two ways in, side by side, because they answer different questions:
- *   • BOTS — pick a garrison size and go. No waiting, no second player.
- *   • MULTIPLAYER — share the room link, and when someone joins, both players
- *     press READY; the relay starts the countdown once everyone has.
+ * Styled from `DESIGN.md` through the tokens in `src/ui/brand.js`: Dark Slate
+ * canvas, one Gunmetal panel, Bebas Neue for display and Inter for every
+ * string, and Melt Green kept to the wordmark drip plus the ready/online dots.
+ *
+ * ---------------------------------------------------------------------------
+ * THE UX CONTRACT: ONE CLICK IN, ONE CLICK TO SHARE
+ * ---------------------------------------------------------------------------
+ * The screen this replaced asked the player to choose between a BOTS panel and
+ * a MULTIPLAYER panel before anything happened, which meant reading two blocks
+ * of copy to answer a question ("can I just play?") that has one right answer.
+ *
+ * Now there is exactly one primary button and it is always the best next move:
+ *
+ *   alone in the room        PLAY          deploy immediately vs the garrison
+ *   somebody else is here    READY UP      the relay starts when everyone is
+ *   already readied up       CANCEL READY  the only thing left to undo
+ *   the match is running     DEPLOY NOW    drop into it
+ *
+ * and exactly one secondary button, live in every one of those states:
+ *
+ *   COPY INVITE LINK / SHARE  one click, whatever else is on screen
+ *
+ * Nothing else on the screen is a required step. Garrison size is a segmented
+ * control with a sane default, the callsign is an inline field, and settings
+ * open over the top. `Enter` fires the primary button and `C` copies the link,
+ * so the whole screen is also two keystrokes.
  *
  * Self-contained DOM + CSS (same pattern as src/net/ui.js) so it does not reach
  * into the HUD subsystem's stylesheet. It renders a model and reports clicks —
  * every decision belongs to src/match/index.js.
  */
 
+import { installBrand, WORDMARK_HTML } from '../ui/brand.js';
+
 const CSS = `
-.cod-ms { position: fixed; inset: 0; z-index: 60; overflow-y: auto; cursor: default;
-  font-family: "Inter","Helvetica Neue",Arial,sans-serif; color: #e6eef4;
-  -webkit-font-smoothing: antialiased; letter-spacing: .04em;
-  background: radial-gradient(120% 100% at 50% 0%, rgba(6,10,14,0.72), rgba(3,5,8,0.93));
-  backdrop-filter: blur(3px); opacity: 0; transition: opacity .22s ease; }
-/* The panels centre in the viewport when they fit and scroll when they don't —
-   a laptop in a short window must still be able to reach the start button. */
-.cod-ms .wrap { min-height: 100%; display: flex; flex-direction: column; align-items: center;
-  justify-content: center; gap: 22px; padding: 24px; }
-.cod-ms.show { opacity: 1; }
-.cod-ms.hide { display: none; }
-.cod-ms * { box-sizing: border-box; }
-.cod-ms button { font-family: inherit; letter-spacing: .08em; }
+.wm-lobby {
+  position: fixed; inset: 0; z-index: 60; overflow-y: auto; cursor: default;
+  font-family: var(--wm-body); color: var(--wm-fg); -webkit-font-smoothing: antialiased;
+  /* 65% of the composition is the canvas. The scrim is Dark Slate over the live
+     scene, densest at the top where the display type sits. */
+  background: linear-gradient(180deg,
+    rgb(var(--wm-bg-rgb) / .97) 0%, rgb(var(--wm-bg-rgb) / .93) 46%, rgb(var(--wm-void-rgb) / .96) 100%);
+  opacity: 0; transition: opacity var(--wm-t-slow);
+}
+.wm-lobby.show { opacity: 1; }
+.wm-lobby.hidden { display: none; }
+.wm-lobby *, .wm-lobby *::before, .wm-lobby *::after { box-sizing: border-box; margin: 0; padding: 0; }
+.wm-lobby button, .wm-lobby input { font-family: inherit; color: inherit; }
+.wm-lobby :focus-visible { outline: 2px solid var(--wm-accent); outline-offset: 2px; }
+.wm-lobby .hide { display: none !important; }
 
-.cod-ms .head { text-align: center; }
-.cod-ms .head .game { font-size: 11px; color: #7d8b96; text-transform: uppercase;
-  letter-spacing: .34em; }
-.cod-ms .head h1 { font-size: 30px; font-weight: 800; text-transform: uppercase;
-  letter-spacing: .22em; margin: 6px 0 0; color: #f2f7fa;
-  text-shadow: 0 2px 18px rgba(0,0,0,.7); }
-.cod-ms .head .rule { width: 210px; height: 1px; margin: 12px auto 0;
-  background: linear-gradient(90deg, transparent, rgba(255,176,42,.75), transparent); }
+/* The document is a 3-row grid: bar / body / status strip, exactly as the
+   design export lays it out. min-height:100% rather than height, so a short
+   window scrolls to the buttons instead of clipping them. */
+.wm-lobby .shell {
+  min-height: 100%; display: grid; grid-template-rows: auto 1fr auto;
+}
 
-.cod-ms .panels { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center;
-  width: 100%; max-width: 900px; }
-.cod-ms .panel { flex: 1 1 320px; max-width: 430px; min-height: 268px; display: flex;
-  flex-direction: column; gap: 12px; padding: 18px 18px 16px;
-  background: rgba(9,13,18,0.82); border: 1px solid rgba(120,170,200,0.2);
-  border-radius: 12px; box-shadow: 0 18px 50px rgba(0,0,0,0.5); }
-.cod-ms .panel h2 { font-size: 11px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .24em; color: #ffb02a; margin: 0; }
-.cod-ms .panel.mp h2 { color: #7fd6ff; }
-.cod-ms .panel p { font-size: 12px; line-height: 1.5; color: #93a4b1; margin: 0; }
-.cod-ms .grow { flex: 1 1 auto; }
+/* ── top bar ─────────────────────────────────────────────────────────────── */
+.wm-lobby .bar {
+  display: flex; align-items: center; gap: 16px; padding: 0 24px; min-height: 60px;
+  background: var(--wm-panel); border-bottom: 1px solid var(--wm-border);
+}
+.wm-lobby .bar .wm-mark { font-size: 30px; }
+.wm-lobby .spacer { flex: 1 1 auto; }
+.wm-lobby .callsign {
+  display: flex; align-items: center; gap: 9px;
+}
+.wm-lobby .callsign label {
+  font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--wm-muted-fg);
+}
+.wm-lobby .callsign input {
+  width: 148px; background: var(--wm-panel-2); border: 1px solid var(--wm-border);
+  border-radius: var(--wm-r-sm); padding: 7px 9px; font-size: 13px; font-weight: 600;
+  letter-spacing: .01em; transition: border-color var(--wm-t);
+}
+.wm-lobby .callsign input:hover { border-color: var(--wm-muted-fg); }
+.wm-lobby .callsign input:focus { outline: none; border-color: var(--wm-accent); }
+.wm-lobby .icon-btn {
+  width: 34px; height: 34px; border-radius: var(--wm-r-sm); background: none;
+  border: 1px solid var(--wm-border); color: var(--wm-muted-fg); display: grid;
+  place-items: center; cursor: pointer; flex: none;
+  transition: color var(--wm-t), border-color var(--wm-t);
+}
+.wm-lobby .icon-btn:hover { color: var(--wm-fg); border-color: var(--wm-accent); }
 
-.cod-ms .seg { display: flex; gap: 6px; }
-.cod-ms .seg button { flex: 1 1 0; padding: 8px 4px; font-size: 11px; font-weight: 700;
-  text-transform: uppercase; cursor: pointer; color: #b9c8d4;
-  background: rgba(26,34,42,0.7); border: 1px solid rgba(120,170,200,0.22);
-  border-radius: 7px; transition: background .15s, border-color .15s, color .15s; }
-.cod-ms .seg button:hover { background: rgba(60,96,122,0.6); color: #eaf4fa; }
-.cod-ms .seg button.on { background: rgba(255,176,42,0.16); border-color: #ffb02a; color: #ffd48a; }
+/* ── body ────────────────────────────────────────────────────────────────── */
+.wm-lobby .body {
+  display: grid; grid-template-columns: minmax(0, 1fr) 372px; gap: 24px;
+  align-items: center; padding: 28px 24px; max-width: 1500px; width: 100%;
+  margin: 0 auto;
+}
+.wm-lobby .hero { display: flex; flex-direction: column; min-width: 0; padding: 0 4px; }
 
-.cod-ms .btn { width: 100%; padding: 11px 12px; font-size: 12px; font-weight: 800;
-  text-transform: uppercase; cursor: pointer; color: #dfeaf2;
-  background: rgba(30,42,52,0.8); border: 1px solid rgba(120,170,200,0.3);
-  border-radius: 8px; transition: background .15s, border-color .15s, color .15s; }
-.cod-ms .btn:hover:not(:disabled) { background: rgba(60,110,140,0.6); border-color: rgba(150,205,235,0.7); }
-.cod-ms .btn:disabled { opacity: .42; cursor: not-allowed; }
-.cod-ms .btn.amber { background: rgba(255,176,42,0.18); border-color: rgba(255,176,42,.75); color: #ffd48a; }
-.cod-ms .btn.amber:hover:not(:disabled) { background: rgba(255,176,42,0.3); }
-.cod-ms .btn.go { background: rgba(87,217,122,0.18); border-color: rgba(87,217,122,.7); color: #c9f7d7; }
-.cod-ms .btn.go:hover:not(:disabled) { background: rgba(87,217,122,0.3); }
-.cod-ms .btn.small { width: auto; padding: 7px 10px; font-size: 10px; font-weight: 700; }
+.wm-lobby .eyebrow {
+  font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--wm-muted-fg);
+}
+.wm-lobby .eyebrow .on { color: var(--wm-ok); }
+.wm-lobby .hero .eyebrow { margin-bottom: 18px; }
+.wm-lobby .hero .wm-mark {
+  font-size: clamp(56px, 8.4vw, 126px); letter-spacing: .055em; margin-bottom: 26px;
+}
+.wm-lobby .lede {
+  font-size: 16px; line-height: 1.55; color: var(--wm-fg-dim); max-width: 56ch;
+  margin-bottom: 30px; text-wrap: balance;
+}
+.wm-lobby .lede b { color: var(--wm-fg); font-weight: 600; }
 
-.cod-ms .room { display: flex; align-items: center; gap: 10px; padding: 9px 11px;
-  background: rgba(4,8,12,0.7); border: 1px solid rgba(120,170,200,0.18); border-radius: 8px; }
-.cod-ms .room .lbl { font-size: 10px; color: #7d8b96; text-transform: uppercase; letter-spacing: .2em; }
-.cod-ms .room .code { font-size: 17px; font-weight: 800; color: #7fd6ff; letter-spacing: .18em;
-  text-transform: uppercase; }
-.cod-ms .room .grow { text-align: right; }
+/* garrison picker — 4 chips, one click, no drilling */
+.wm-lobby .opts { margin-bottom: 22px; }
+.wm-lobby .opts .eyebrow { display: block; margin-bottom: 9px; }
+.wm-lobby .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.wm-lobby .chip {
+  font-size: 12px; font-weight: 500; letter-spacing: .015em; padding: 7px 13px;
+  border-radius: var(--wm-r-sm); border: 1px solid var(--wm-border);
+  background: var(--wm-panel-2); color: var(--wm-muted-fg); cursor: pointer;
+  transition: color var(--wm-t), border-color var(--wm-t), background var(--wm-t);
+}
+.wm-lobby .chip:hover { color: var(--wm-fg); border-color: var(--wm-accent); }
+.wm-lobby .chip[aria-pressed="true"] {
+  color: var(--wm-bg); background: var(--wm-fg); border-color: var(--wm-fg); font-weight: 600;
+}
+.wm-lobby .note {
+  font-size: 12px; line-height: 1.5; color: var(--wm-muted-fg); margin-top: 10px; min-height: 18px;
+}
 
-.cod-ms .roster { display: flex; flex-direction: column; gap: 4px; min-height: 74px; }
-.cod-ms .row { display: flex; align-items: center; gap: 9px; padding: 6px 9px; font-size: 12px;
-  background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 7px; }
-.cod-ms .row .dot { width: 8px; height: 8px; border-radius: 50%; flex: none;
-  background: #6c7a86; box-shadow: 0 0 7px currentColor; color: transparent; }
-.cod-ms .row.ready .dot { background: #57d97a; color: #57d97a; }
-.cod-ms .row.deployed .dot { background: #ffb02a; color: #ffb02a; }
-.cod-ms .row .who { flex: 1 1 auto; font-weight: 600; overflow: hidden;
-  text-overflow: ellipsis; white-space: nowrap; }
-.cod-ms .row.me .who { color: #7fd6ff; }
-.cod-ms .row .st { font-size: 10px; text-transform: uppercase; letter-spacing: .14em; color: #7d8b96; }
-.cod-ms .row.ready .st { color: #57d97a; }
-.cod-ms .row.deployed .st { color: #ffb02a; }
-.cod-ms .empty { font-size: 12px; color: #7d8b96; padding: 6px 9px; }
+/* ── buttons ─────────────────────────────────────────────────────────────── */
+.wm-lobby .cta { display: grid; grid-template-columns: minmax(0,1fr) 260px; gap: 12px; max-width: 820px; }
+.wm-lobby .btn {
+  font-family: var(--wm-display); text-transform: uppercase; letter-spacing: .08em;
+  cursor: pointer; border-radius: var(--wm-r); border: 1px solid transparent;
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  transition: background var(--wm-t), border-color var(--wm-t), color var(--wm-t), transform 90ms linear;
+}
+/* Primary: Ice White fill, Graphite text — 14.91:1. Hovering warms it toward
+   Melt Green rather than filling with it (green fill + white text fails AA). */
+.wm-lobby .btn-primary {
+  background: var(--wm-fg); color: var(--wm-bg); font-size: 26px; padding: 16px 28px 13px; width: 100%;
+}
+.wm-lobby .btn-primary:hover:not(:disabled) { background: var(--wm-fg-warm); }
+.wm-lobby .btn-primary:active:not(:disabled) { transform: translateY(2px); }
+.wm-lobby .btn-ghost {
+  background: transparent; color: var(--wm-fg); border-color: var(--wm-fg);
+  font-size: 19px; padding: 12px 22px 10px; width: 100%;
+}
+.wm-lobby .btn-ghost:hover:not(:disabled) { border-color: var(--wm-accent); }
+.wm-lobby .btn-ghost:active:not(:disabled) { transform: translateY(2px); }
+.wm-lobby .btn-ghost.done { border-color: var(--wm-ok); color: var(--wm-ok); }
+.wm-lobby .btn:disabled { opacity: .42; cursor: not-allowed; }
+.wm-lobby .btn .k {
+  font-family: var(--wm-body); font-size: 10px; font-weight: 600; letter-spacing: .08em;
+  border: 1px solid currentColor; border-radius: 3px; padding: 1px 4px; opacity: .55;
+  position: relative; top: -1px;
+}
+.wm-lobby .btn-sm {
+  font-family: var(--wm-body); font-size: 12px; font-weight: 600; letter-spacing: .02em;
+  background: transparent; color: var(--wm-fg-dim); border: 1px solid var(--wm-border);
+  border-radius: var(--wm-r-sm); padding: 5px 10px; cursor: pointer;
+  transition: color var(--wm-t), border-color var(--wm-t), background var(--wm-t);
+}
+.wm-lobby .btn-sm:hover { color: var(--wm-fg); border-color: var(--wm-accent); background: var(--wm-panel-2); }
+.wm-lobby .btn-sm.done { color: var(--wm-ok); border-color: var(--wm-ok); }
 
-.cod-ms .status { font-size: 11px; color: #9fb0bd; min-height: 15px; }
-.cod-ms .status b { color: #7fd6ff; }
-.cod-ms .hint { font-size: 10px; color: #6f7d88; letter-spacing: .14em; text-transform: uppercase; }
+/* The escape hatch under the primary button, only shown when the primary is
+   waiting on somebody else. A link, not a third button — it must not compete. */
+.wm-lobby .alt {
+  /* flex-start, or the rule under it stretches the whole hero column wide and
+     stops reading as a link. */
+  align-self: flex-start;
+  margin-top: 13px; font-size: 13px; color: var(--wm-muted-fg); background: none;
+  border: 0; padding: 0; cursor: pointer; text-align: left;
+  border-bottom: 1px solid var(--wm-border); transition: color var(--wm-t), border-color var(--wm-t);
+}
+.wm-lobby .alt:hover { color: var(--wm-fg); border-color: var(--wm-accent); }
 
-.cod-ms .count { text-align: center; }
-.cod-ms .count .n { font-size: 92px; font-weight: 800; line-height: 1; color: #ffb02a;
-  text-shadow: 0 6px 40px rgba(255,150,20,.35); font-variant-numeric: tabular-nums; }
-.cod-ms .count .n.beat { animation: cod-ms-beat .55s ease-out; }
-.cod-ms .count .lbl { margin-top: 14px; font-size: 12px; letter-spacing: .34em;
-  text-transform: uppercase; color: #cfe0ec; }
-@keyframes cod-ms-beat { 0% { transform: scale(1.5); opacity: .25 } 40% { transform: none; opacity: 1 }
-  100% { transform: none; opacity: 1 } }
+/* ── room panel ──────────────────────────────────────────────────────────── */
+.wm-lobby .panel {
+  background: var(--wm-panel); border: 1px solid var(--wm-border); border-radius: var(--wm-r);
+  box-shadow: var(--wm-shadow); display: flex; flex-direction: column; min-width: 0;
+  max-height: min(560px, 78vh);
+}
+.wm-lobby .panel-hd {
+  display: flex; align-items: center; gap: 12px; padding: 14px 18px;
+  border-bottom: 1px solid var(--wm-border); flex: none;
+}
+.wm-lobby .h-sec {
+  font-family: var(--wm-display); font-size: 22px; letter-spacing: .08em;
+  text-transform: uppercase; line-height: 1; white-space: nowrap;
+}
+.wm-lobby .code {
+  font-family: var(--wm-display); font-size: 24px; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--wm-fg); line-height: 1;
+}
+.wm-lobby .panel-bd { padding: 8px 0; overflow-y: auto; min-height: 96px; flex: 1 1 auto; }
+.wm-lobby .panel-ft {
+  padding: 12px 18px; border-top: 1px solid var(--wm-border); flex: none;
+  display: flex; align-items: center; gap: 10px;
+}
 
-/* Utility, last and !important on purpose: it has to beat the display value of
-   whatever it is put on (.panels is a flex row of equal specificity). */
-.cod-ms .hide { display: none !important; }
+.wm-lobby .row {
+  display: flex; align-items: center; gap: 12px; padding: 10px 18px;
+  transition: background var(--wm-t);
+}
+.wm-lobby .row + .row { border-top: 1px solid var(--wm-border); }
+.wm-lobby .row:hover { background: var(--wm-hover); }
+/* Square dots, not circles: the icon language is enterprise-software geometry. */
+.wm-lobby .dot { width: 8px; height: 8px; border-radius: 2px; flex: none; background: var(--wm-muted); }
+.wm-lobby .row.ready .dot { background: var(--wm-ok); }
+.wm-lobby .row.deployed .dot { background: var(--wm-fg); }
+.wm-lobby .row .who {
+  flex: 1 1 auto; min-width: 0; font-size: 13px; font-weight: 600; letter-spacing: .01em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.wm-lobby .row.me .who { color: var(--wm-fg); }
+.wm-lobby .row .st {
+  font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--wm-muted-fg); flex: none;
+}
+.wm-lobby .row.ready .st { color: var(--wm-ok); }
+.wm-lobby .row.deployed .st { color: var(--wm-fg-dim); }
+.wm-lobby .empty {
+  padding: 18px; font-size: 13px; line-height: 1.55; color: var(--wm-muted-fg);
+}
+.wm-lobby .status { font-size: 12px; line-height: 1.45; color: var(--wm-muted-fg); flex: 1 1 auto; }
+.wm-lobby .status b { color: var(--wm-fg); font-weight: 600; }
 
-/* Short windows: trade the display type and the panel floor for the buttons. */
-@media (max-height: 620px) {
-  .cod-ms .wrap { gap: 14px; padding: 16px; }
-  .cod-ms .head h1 { font-size: 22px; }
-  .cod-ms .head .rule { margin-top: 8px; }
-  .cod-ms .panel { min-height: 0; padding: 14px; gap: 9px; }
-  .cod-ms .count .n { font-size: 68px; }
+/* ── status strip ────────────────────────────────────────────────────────── */
+.wm-lobby .strip {
+  display: flex; align-items: center; gap: 22px; flex-wrap: wrap; padding: 10px 24px;
+  min-height: 36px; background: var(--wm-panel); border-top: 1px solid var(--wm-border);
+  font-size: 11px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--wm-muted-fg);
+}
+.wm-lobby .strip b { color: var(--wm-fg-dim); font-weight: 600; }
+.wm-lobby .strip .key {
+  border: 1px solid var(--wm-border); border-radius: 3px; padding: 1px 5px;
+  margin-right: 5px; color: var(--wm-fg-dim);
+}
+
+/* ── countdown ───────────────────────────────────────────────────────────── */
+/* Shares .body for its padding and grid row, so it has to reset the two-column
+   template or the number lands in the hero column instead of the middle. */
+.wm-lobby .count {
+  display: grid; grid-template-columns: minmax(0, 1fr); place-items: center;
+  text-align: center; padding: 40px 24px;
+}
+.wm-lobby .count .n {
+  font-family: var(--wm-display); font-size: clamp(96px, 17vh, 190px); line-height: 1;
+  letter-spacing: .04em; color: var(--wm-fg); font-variant-numeric: tabular-nums;
+}
+/* The one place motion overshoots — a panel-open beat, per DESIGN.md. */
+.wm-lobby .count .n.beat { animation: wm-beat 180ms cubic-bezier(.2,.85,.3,1); }
+@keyframes wm-beat { from { transform: scale(1.12); opacity: .35 } to { transform: none; opacity: 1 } }
+.wm-lobby .count .lbl {
+  margin-top: 18px; font-family: var(--wm-display); font-size: 26px; letter-spacing: .16em;
+  text-transform: uppercase; color: var(--wm-fg-dim);
+}
+.wm-lobby .count .sub { margin-top: 10px; font-size: 13px; color: var(--wm-muted-fg); }
+
+/* ── responsive ──────────────────────────────────────────────────────────── */
+/* Semantic thresholds, not device names: the room panel drops under the hero as
+   soon as a 372px rail would squeeze the display type. */
+@media (max-width: 1080px) {
+  /* align-content, not just align-items: two auto rows in a taller grid stretch
+     by default, which opens a dead gap between the CTA and the room panel on a
+     portrait tablet. Centre the pair as one block instead. */
+  .wm-lobby .body {
+    grid-template-columns: minmax(0, 1fr); align-items: start; align-content: center; gap: 20px;
+  }
+  .wm-lobby .panel { max-height: none; }
+}
+@media (max-width: 720px) {
+  .wm-lobby .bar { gap: 10px; padding: 10px 16px; flex-wrap: wrap; }
+  .wm-lobby .bar .wm-mark { font-size: 24px; }
+  .wm-lobby .callsign input { width: 116px; }
+  .wm-lobby .body { padding: 20px 16px; }
+  .wm-lobby .cta { grid-template-columns: minmax(0, 1fr); }
+  .wm-lobby .lede { font-size: 14px; margin-bottom: 22px; }
+  .wm-lobby .strip { gap: 12px; padding: 9px 16px; }
+}
+/* Short windows: the display type yields to the buttons, never the other way. */
+@media (max-height: 680px) {
+  .wm-lobby .body { padding: 16px 24px; gap: 16px; }
+  .wm-lobby .hero .wm-mark { font-size: clamp(44px, 6vw, 68px); margin-bottom: 16px; }
+  .wm-lobby .hero .eyebrow { margin-bottom: 10px; }
+  .wm-lobby .lede { font-size: 14px; margin-bottom: 18px; }
+  .wm-lobby .opts { margin-bottom: 16px; }
+  .wm-lobby .btn-primary { font-size: 22px; padding: 12px 24px 10px; }
+  .wm-lobby .btn-ghost { font-size: 17px; padding: 10px 18px 8px; }
 }
 `;
 
 /** Sizes offered for the bot garrison; `squads` × `perSquad` hostiles. */
 export const BOT_PRESETS = [
-  { key: 'off', label: 'None', squads: 0, perSquad: 0, note: 'Players only — nobody but whoever joins your room.' },
-  { key: 'light', label: 'Light', squads: 1, perSquad: 3, note: 'One patrol of 3. A quiet map with something to shoot.' },
+  { key: 'off', label: 'No bots', squads: 0, perSquad: 0, note: 'Players only — nobody but whoever joins your room.' },
+  { key: 'light', label: 'Light', squads: 1, perSquad: 3, note: 'One patrol of 3. A quiet floor with something to shoot.' },
   { key: 'standard', label: 'Standard', squads: 2, perSquad: 3, note: 'Two squads of 3 on patrol routes — the default garrison.' },
   { key: 'heavy', label: 'Heavy', squads: 3, perSquad: 4, note: 'Three squads of 4. Contact almost everywhere.' },
 ];
 
+const GEAR_SVG = `<svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+  stroke-width="1.5" aria-hidden="true"><path d="M3 6h14M3 10h14M3 14h14"/>
+  <circle cx="7" cy="6" r="1.8"/><circle cx="13" cy="10" r="1.8"/><circle cx="8" cy="14" r="1.8"/></svg>`;
+
 export class MatchStartUI {
-  constructor({ multiplayer = true } = {}) {
-    if (!document.getElementById('cod-ms-style')) {
+  constructor({ multiplayer = true, invited = false } = {}) {
+    installBrand();
+    if (!document.getElementById('wm-lobby-style')) {
       const s = document.createElement('style');
-      s.id = 'cod-ms-style';
+      s.id = 'wm-lobby-style';
       s.textContent = CSS;
       document.head.appendChild(s);
     }
     const host = document.getElementById('ui') ?? document.body;
     this.root = document.createElement('div');
-    this.root.className = 'cod-ms hide';
+    this.root.className = 'wm-lobby wm-scroll hidden';
     host.appendChild(this.root);
 
     this.multiplayer = multiplayer;
-    this.onStartBots = null;
-    this.onToggleReady = null;
-    this.onDeploy = null;
+    this.invited = invited;
+
+    /** Callbacks — every one of them is owned by src/match/index.js. */
+    this.onPrimary = null; // the single dominant CTA, whatever it means now
+    this.onStartSolo = null; // the "start on your own" escape hatch
     this.onCopyInvite = null;
     this.onBots = null;
+    this.onName = null;
+    this.onSettings = null;
 
     this.root.innerHTML = `
-     <div class="wrap">
-      <div class="head">
-        <div class="game">Workmelt</div>
-        <h1>Match Start</h1>
-        <div class="rule"></div>
-      </div>
-      <div class="panels" data-panels>
-        <div class="panel">
-          <h2>Bots</h2>
-          <p>Deploy on your own against the garrison AI. Starts the moment you press it.</p>
-          <div class="seg" data-bots></div>
-          <p data-bot-note></p>
-          <div class="grow"></div>
-          <button type="button" class="btn amber" data-start>Start match</button>
+      <div class="shell">
+        <header class="bar">
+          <span class="wm-mark">${WORDMARK_HTML}</span>
+          <span class="spacer"></span>
+          <span class="callsign">
+            <label for="wm-callsign">Callsign</label>
+            <input id="wm-callsign" data-name maxlength="20" spellcheck="false" autocomplete="off" />
+          </span>
+          <button type="button" class="icon-btn" data-settings title="Settings (Esc)"
+            aria-label="Settings">${GEAR_SVG}</button>
+        </header>
+
+        <div class="body" data-body>
+          <section class="hero">
+            <span class="eyebrow" data-eyebrow></span>
+            <span class="wm-mark">${WORDMARK_HTML}</span>
+            <p class="lede">A tactical arena built out of the floor you already work on.
+              <b>Browser-first</b>, no install — send a link and your co-workers are in.</p>
+            <div class="opts">
+              <span class="eyebrow">Garrison</span>
+              <div class="chips" data-bots role="group" aria-label="Garrison size"></div>
+              <p class="note" data-bot-note></p>
+            </div>
+            <div class="cta">
+              <button type="button" class="btn btn-primary" data-primary>Play</button>
+              <button type="button" class="btn btn-ghost" data-copy>Copy invite link</button>
+            </div>
+            <button type="button" class="alt hide" data-alt>Start on your own instead</button>
+          </section>
+
+          <aside class="panel" data-room-panel>
+            <div class="panel-hd">
+              <span class="h-sec">Room</span>
+              <span class="spacer"></span>
+              <span class="code" data-room>------</span>
+              <button type="button" class="btn-sm" data-copy-2>Copy</button>
+            </div>
+            <div class="panel-bd wm-scroll" data-roster></div>
+            <div class="panel-ft"><span class="status" data-status>Connecting to the relay…</span></div>
+          </aside>
         </div>
-        <div class="panel mp">
-          <h2>Multiplayer</h2>
-          <div class="room">
-            <span class="lbl">Room</span>
-            <span class="code" data-room>------</span>
-            <span class="grow"><button type="button" class="btn small" data-copy>Copy invite link</button></span>
+
+        <div class="body count hide" data-count>
+          <div>
+            <div class="n" data-count-n>3</div>
+            <div class="lbl" data-count-lbl>Match starting</div>
+            <div class="sub" data-count-sub>Deploying to the floor</div>
           </div>
-          <div class="roster" data-roster></div>
-          <div class="grow"></div>
-          <div class="status" data-status>Connecting…</div>
-          <button type="button" class="btn" data-ready disabled>Ready</button>
         </div>
+
+        <footer class="strip">
+          <span data-strip-room>Room <b>------</b></span>
+          <span data-strip-net>Relay <b>connecting</b></span>
+          <span class="spacer"></span>
+          <span><span class="key">Enter</span><b data-strip-primary>Play</b></span>
+          <span><span class="key">C</span>Copy invite</span>
+          <span><span class="key">Esc</span>Settings</span>
+        </footer>
       </div>
-      <div class="count hide" data-count>
-        <div class="n" data-count-n>3</div>
-        <div class="lbl" data-count-lbl>Match starting</div>
-      </div>
-      <div class="hint" data-hint>Bots start instantly · Multiplayer waits for both players to ready up</div>
-     </div>
     `;
 
-    this.panels = this.root.querySelector('[data-panels]');
-    this.botSeg = this.root.querySelector('[data-bots]');
-    this.botNote = this.root.querySelector('[data-bot-note]');
-    this.startBtn = this.root.querySelector('[data-start]');
-    this.roomEl = this.root.querySelector('[data-room]');
-    this.copyBtn = this.root.querySelector('[data-copy]');
-    this.rosterEl = this.root.querySelector('[data-roster]');
-    this.statusEl = this.root.querySelector('[data-status]');
-    this.readyBtn = this.root.querySelector('[data-ready]');
-    this.countEl = this.root.querySelector('[data-count]');
-    this.countN = this.root.querySelector('[data-count-n]');
-    this.countLbl = this.root.querySelector('[data-count-lbl]');
-    this.hintEl = this.root.querySelector('[data-hint]');
-    this.mpPanel = this.root.querySelector('.panel.mp');
+    const q = (sel) => this.root.querySelector(sel);
+    this.bodyEl = q('[data-body]');
+    this.eyebrowEl = q('[data-eyebrow]');
+    this.botChips = q('[data-bots]');
+    this.botNote = q('[data-bot-note]');
+    this.primaryBtn = q('[data-primary]');
+    this.altBtn = q('[data-alt]');
+    this.copyBtn = q('[data-copy]');
+    this.copyBtn2 = q('[data-copy-2]');
+    this.nameIn = q('[data-name]');
+    this.roomEl = q('[data-room]');
+    this.roomPanel = q('[data-room-panel]');
+    this.rosterEl = q('[data-roster]');
+    this.statusEl = q('[data-status]');
+    this.countEl = q('[data-count]');
+    this.countN = q('[data-count-n]');
+    this.countLbl = q('[data-count-lbl]');
+    this.countSub = q('[data-count-sub]');
+    this.stripRoom = q('[data-strip-room]');
+    this.stripNet = q('[data-strip-net]');
+    this.stripPrimary = q('[data-strip-primary]');
 
-    this.botBtns = new Map();
+    this.chipEls = new Map();
     for (const p of BOT_PRESETS) {
       const b = document.createElement('button');
       b.type = 'button';
+      b.className = 'chip';
+      b.setAttribute('aria-pressed', 'false');
       b.textContent = p.label;
       b.addEventListener('click', () => this.onBots?.(p.key));
-      this.botSeg.appendChild(b);
-      this.botBtns.set(p.key, b);
+      this.botChips.appendChild(b);
+      this.chipEls.set(p.key, b);
     }
 
-    this.startBtn.addEventListener('click', () => this.onStartBots?.());
-    this.readyBtn.addEventListener('click', () => this._readyClick());
+    this.primaryBtn.addEventListener('click', () => this.onPrimary?.());
+    this.altBtn.addEventListener('click', () => this.onStartSolo?.());
     this.copyBtn.addEventListener('click', () => this.onCopyInvite?.());
-    // Keys typed at this screen are menu input, not gameplay input.
-    this.root.addEventListener('keydown', (e) => e.stopPropagation());
+    this.copyBtn2.addEventListener('click', () => this.onCopyInvite?.());
+    q('[data-settings]').addEventListener('click', () => this.onSettings?.());
+    this.nameIn.addEventListener('change', () => this.onName?.(this.nameIn.value.trim()));
+    this.nameIn.addEventListener('blur', () => this.onName?.(this.nameIn.value.trim()));
+
+    // Keys typed at this screen are menu input, never gameplay input. The
+    // shortcuts live here rather than on window so they die with the view.
+    this.root.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      const typing = e.target === this.nameIn;
+      if (e.key === 'Enter') {
+        if (typing) {
+          this.nameIn.blur();
+          return;
+        }
+        if (!this.primaryBtn.disabled) {
+          e.preventDefault();
+          this.onPrimary?.();
+        }
+        return;
+      }
+      if (typing) return;
+      if (e.key === 'c' || e.key === 'C') {
+        e.preventDefault();
+        this.onCopyInvite?.();
+      }
+    });
 
     if (!multiplayer) {
-      this.mpPanel.remove();
-      this.hintEl.textContent = 'Multiplayer disabled by ?mp=0';
+      this.roomPanel.remove();
+      this.copyBtn.remove();
+      this.stripRoom.remove();
+      this.stripNet.textContent = 'Offline — multiplayer disabled by ?mp=0';
+      this.bodyEl.style.gridTemplateColumns = 'minmax(0, 1fr)';
+      this.bodyEl.style.maxWidth = '980px';
     }
-    /** What the ready button currently does; render() keeps it honest. */
-    this._mode = 'none';
+    this._setEyebrow();
+
+    /** What the primary button currently does; render() keeps it honest. */
+    this._mode = 'solo';
+  }
+
+  /** 'solo' | 'ready' | 'unready' | 'deploy' — what a primary click means now. */
+  get mode() {
+    return this._mode;
+  }
+
+  _setEyebrow(text) {
+    if (text) {
+      this.eyebrowEl.innerHTML = text;
+      return;
+    }
+    this.eyebrowEl.textContent = this.invited
+      ? 'You were invited — join the room below'
+      : 'Season 1 · Live operations';
   }
 
   setBots(key) {
-    for (const [k, b] of this.botBtns) b.classList.toggle('on', k === key);
-    const p = BOT_PRESETS.find((x) => x.key === key);
-    this.botNote.textContent = p?.note ?? '';
-    this.startBtn.textContent = p && p.squads ? `Start match vs ${p.squads * p.perSquad} bots` : 'Start match';
+    for (const [k, b] of this.chipEls) b.setAttribute('aria-pressed', String(k === key));
+    this.botNote.textContent = BOT_PRESETS.find((p) => p.key === key)?.note ?? '';
+    this._botKey = key;
+    if (this._mode === 'solo') this._paintPrimary();
   }
 
   setRoom(code) {
-    this.roomEl.textContent = code ?? '------';
+    const shown = (code ?? '------').toUpperCase();
+    this.roomEl.textContent = shown;
+    if (this.stripRoom.isConnected) this.stripRoom.innerHTML = `Room <b>${escapeHtml(shown)}</b>`;
   }
 
-  flashCopied() {
-    this.copyBtn.textContent = 'Copied!';
+  setName(name) {
+    if (document.activeElement !== this.nameIn) this.nameIn.value = name ?? '';
+  }
+
+  /** Both copy buttons confirm together — they are the same action. */
+  flashCopied(label = 'Link copied') {
     clearTimeout(this._copyT);
+    if (this.copyBtn.isConnected) {
+      this.copyBtn.textContent = label;
+      this.copyBtn.classList.add('done');
+    }
+    this.copyBtn2.textContent = 'Copied';
+    this.copyBtn2.classList.add('done');
     this._copyT = setTimeout(() => {
-      this.copyBtn.textContent = 'Copy invite link';
-    }, 1400);
+      if (this.copyBtn.isConnected) {
+        this.copyBtn.textContent = 'Copy invite link';
+        this.copyBtn.classList.remove('done');
+      }
+      this.copyBtn2.textContent = 'Copy';
+      this.copyBtn2.classList.remove('done');
+    }, 1600);
   }
 
   /**
-   * @param {object} m { connected, live, players:[{id,name,ready,deployed}],
-   *                     myId, ready }
+   * Repaint from the lobby model.
+   *
+   * @param {object} m { connected, everConnected, live, players:[{id,name,ready,
+   *                     deployed}], myId, ready }
    */
   render(m) {
-    if (!this.multiplayer) return;
+    if (!this.multiplayer) {
+      this._mode = 'solo';
+      this._paintPrimary();
+      return;
+    }
     const players = m.players ?? [];
     const others = players.filter((p) => p.id !== m.myId);
 
-    this.rosterEl.innerHTML = '';
+    this.rosterEl.textContent = '';
     if (!players.length) {
       const d = document.createElement('div');
       d.className = 'empty';
-      d.textContent = m.connected ? 'Nobody here yet.' : 'Not connected.';
+      d.textContent = m.connected
+        ? 'Nobody here yet. Send the invite link and they land in this room.'
+        : 'Waiting on the relay. You can play the garrison right now — co-workers can still join later.';
       this.rosterEl.appendChild(d);
     }
     for (const p of players) {
-      const row = document.createElement('div');
       const state = p.deployed ? 'deployed' : p.ready ? 'ready' : 'waiting';
+      const row = document.createElement('div');
       row.className = `row ${state}${p.id === m.myId ? ' me' : ''}`;
-      row.innerHTML =
-        `<span class="dot"></span>` +
-        `<span class="who">${escapeHtml(p.name)}${p.id === m.myId ? ' (you)' : ''}</span>` +
-        `<span class="st">${state === 'deployed' ? 'in match' : state === 'ready' ? 'ready' : 'not ready'}</span>`;
+      const dot = document.createElement('span');
+      dot.className = 'dot';
+      const who = document.createElement('span');
+      who.className = 'who';
+      who.textContent = p.name + (p.id === m.myId ? ' (you)' : '');
+      const st = document.createElement('span');
+      st.className = 'st';
+      st.textContent = state === 'deployed' ? 'In match' : state === 'ready' ? 'Ready' : 'Not ready';
+      row.append(dot, who, st);
       this.rosterEl.appendChild(row);
     }
 
-    if (!m.connected) {
-      this._mode = 'none';
-      this.statusEl.textContent = m.everConnected
-        ? 'Offline — reconnecting to the relay…'
-        : 'Connecting to the relay…';
-      this.readyBtn.textContent = 'Ready';
-      this.readyBtn.disabled = true;
-      this.readyBtn.className = 'btn';
-      return;
-    }
+    this.stripNet.innerHTML = m.connected
+      ? `Relay <b>online</b> · <b>${players.length}</b> in room`
+      : `Relay <b>${m.everConnected ? 'reconnecting' : 'connecting'}</b>`;
+
+    // ---- what is the single best next move? -------------------------------
     if (m.live) {
       this._mode = 'deploy';
-      this.statusEl.innerHTML = 'Match already in progress — drop in whenever you like.';
-      this.readyBtn.textContent = 'Deploy now';
-      this.readyBtn.disabled = false;
-      this.readyBtn.className = 'btn go';
-      return;
-    }
-    if (!others.length) {
-      // Alone in the room. Readying up early is allowed and sticks — the match
-      // then starts as soon as whoever joins presses ready — so the button stays
-      // live when it is the way to undo that.
-      this._mode = m.ready ? 'ready' : 'wait';
+      this.statusEl.innerHTML = 'Match already running — drop in whenever you like.';
+    } else if (!m.connected) {
+      // The relay is not a gate on playing. Falling back to the solo CTA is why
+      // a cold start, a dropped connection and a first-ever load all still get
+      // the player into a match with one click.
+      this._mode = 'solo';
+      this.statusEl.textContent = m.everConnected
+        ? 'Offline — reconnecting to the relay.'
+        : 'Connecting to the relay…';
+    } else if (!others.length) {
+      this._mode = m.ready ? 'unready' : 'solo';
       this.statusEl.innerHTML = m.ready
-        ? 'You are ready — the match starts when someone joins and readies up.'
-        : 'Waiting for another player — send them the invite link.';
-      this.readyBtn.textContent = m.ready ? 'Cancel ready' : 'Ready';
-      this.readyBtn.disabled = !m.ready;
-      this.readyBtn.className = 'btn';
-      return;
+        ? 'Standing by — the match starts the moment someone joins and readies up.'
+        : 'Alone in this room. Play now, or send the link and wait for company.';
+    } else {
+      const readyCount = players.filter((p) => p.ready).length;
+      this._mode = m.ready ? 'unready' : 'ready';
+      this.statusEl.innerHTML = m.ready
+        ? `You are ready — <b>${readyCount}/${players.length}</b> standing by.`
+        : `<b>${readyCount}/${players.length}</b> ready. Ready up to start the countdown.`;
     }
-    this._mode = 'ready';
-    const readyCount = players.filter((p) => p.ready).length;
-    this.statusEl.innerHTML = m.ready
-      ? `You are ready — <b>${readyCount}/${players.length}</b> standing by.`
-      : `<b>${readyCount}/${players.length}</b> ready. Press ready to start the countdown.`;
-    this.readyBtn.textContent = m.ready ? 'Cancel ready' : 'Ready';
-    this.readyBtn.disabled = false;
-    this.readyBtn.className = m.ready ? 'btn' : 'btn go';
+    this._paintPrimary();
   }
 
-  _readyClick() {
-    if (this._mode === 'deploy') this.onDeploy?.();
-    else if (this._mode === 'ready') this.onToggleReady?.();
+  /** One button, four labels. `_mode` is the only thing that decides. */
+  _paintPrimary() {
+    const preset = BOT_PRESETS.find((p) => p.key === this._botKey);
+    const bots = preset && preset.squads ? preset.squads * preset.perSquad : 0;
+    const label = {
+      deploy: 'Deploy now',
+      ready: 'Ready up',
+      unready: 'Cancel ready',
+      solo: bots ? `Play vs ${bots} bots` : 'Play',
+    }[this._mode];
+
+    this.primaryBtn.textContent = label;
+    this.primaryBtn.disabled = false;
+    this.primaryBtn.className = this._mode === 'unready' ? 'btn btn-ghost' : 'btn btn-primary';
+    this.stripPrimary.textContent = label;
+    // The escape hatch only exists while the primary is waiting on other people.
+    this.altBtn.classList.toggle('hide', this._mode !== 'ready' && this._mode !== 'unready');
   }
 
   setVisible(on) {
-    this.root.classList.toggle('hide', !on);
+    this.root.classList.toggle('hidden', !on);
     // Let the display change land before the opacity transition starts.
     if (on) requestAnimationFrame(() => this.root.classList.add('show'));
     else this.root.classList.remove('show');
   }
 
-  /** Swap the two panels for the big countdown number. */
+  /** Swap the lobby body for the countdown. */
   showCountdown(on) {
-    this.panels.classList.toggle('hide', on);
+    this.bodyEl.classList.toggle('hide', on);
     this.countEl.classList.toggle('hide', !on);
-    this.hintEl.classList.toggle('hide', on);
   }
 
-  setCountdown(n, label = 'Match starting') {
+  setCountdown(n, label = 'Match starting', sub = 'Deploying to the floor') {
     const text = n > 0 ? String(n) : 'GO';
     if (this.countN.textContent !== text) {
       this.countN.textContent = text;
-      // Restart the pulse: the class has to leave the element for one frame.
+      // Restart the beat: the class has to leave the element for one frame.
       this.countN.classList.remove('beat');
       void this.countN.offsetWidth;
       this.countN.classList.add('beat');
     }
     this.countLbl.textContent = label;
+    this.countSub.textContent = sub;
+  }
+
+  /** Move keyboard focus onto the primary button so Enter/Tab work immediately. */
+  focusPrimary() {
+    try {
+      this.primaryBtn.focus({ preventScroll: true });
+    } catch {
+      /* focus is a nicety, never a requirement */
+    }
   }
 
   dispose() {

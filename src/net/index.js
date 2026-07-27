@@ -26,7 +26,14 @@
  */
 import * as THREE from 'three';
 import { NetUI } from './ui.js';
-import { resolveRoom, resolveServerUrl, resolveName, saveName, inviteLink } from './config.js';
+import {
+  arrivedByInvite,
+  resolveRoom,
+  resolveServerUrl,
+  resolveName,
+  saveName,
+  inviteLink,
+} from './config.js';
 
 const SEND_HZ = 20; // local snapshot rate
 const INTERP_MS = 110; // render remote players this far in the past
@@ -91,6 +98,8 @@ export class NetSystem {
     this.fx = ctx.peek('fx');
 
     this.room = resolveRoom();
+    /** True when the URL already named a room — i.e. somebody invited us. */
+    this.arrivedByInvite = arrivedByInvite;
     this.name = resolveName();
     this.serverUrl = resolveServerUrl();
     const variants = this.ai.variantNames ?? ['vanguard'];
@@ -107,7 +116,7 @@ export class NetSystem {
     this.ui.setName(this.name);
     this.ui.setStatus('wait');
     this.ui.onCopy = () => this._copyInvite();
-    this.ui.onName = (n) => this._setName(n);
+    this.ui.onName = (n) => this.setName(n);
 
     // ---- input: Tab scoreboard, Enter chat ----
     this._onKey = (e) => this._handleKey(e);
@@ -678,6 +687,19 @@ export class NetSystem {
     this._send({ t: 'deploy' });
   }
 
+  /**
+   * "I went back to the lobby" — the pause menu's Leave match.
+   *
+   * The room is LIVE for as long as anybody in it is deployed, and a live room
+   * skips the ready flow entirely. Without telling the relay we stepped out,
+   * the first match anyone ever plays would leave the room live forever and
+   * every return to the lobby would offer "deploy now" instead of a real setup.
+   */
+  undeploy() {
+    this.ready = false;
+    this._send({ t: 'undeploy' });
+  }
+
   /** The lobby list with myself filled in even before the first `lobby` frame. */
   lobbyPlayers() {
     const list = this.lobby.players;
@@ -688,6 +710,21 @@ export class NetSystem {
   /** Copy the invite link; resolves through the same clipboard fallbacks as the bar. */
   copyInvite() {
     this._copyInvite();
+  }
+
+  /** The shareable link for this room — what `copyInvite` puts on the clipboard. */
+  inviteUrl() {
+    return inviteLink(this.room);
+  }
+
+  /**
+   * Rename this operator. Public because the lobby owns a callsign field too,
+   * and both fields have to agree — hence the `net:name` echo.
+   */
+  setName(n) {
+    const before = this.name;
+    this._setName(n);
+    if (this.name !== before) this.ctx.events.emit('net:name', { name: this.name });
   }
 
   /** Hide the invite bar / toasts while another view (the lobby) owns the screen. */

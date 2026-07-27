@@ -101,7 +101,11 @@ export class UiSystem {
     this.perfLayer = el('div', 'ow-layer', this.root);
     this.perf = ctx.config.deterministic ? null : new PerfHud(this.perfLayer, this._perfOpts());
 
-    this.menu = new PauseMenu(this.root, ctx);
+    // The settings panel is a modal over the whole app, not HUD chrome: it has
+    // to sit above the lobby (z-index 60) as well as the HUD, and `.ow-hud`'s
+    // own z-index would trap it underneath. Mounted on the shared host instead,
+    // with `position: fixed` and its own layer in src/ui/style.js.
+    this.menu = new PauseMenu(host, ctx);
 
     this.health.onBeat = (i) => this.sfx('heartbeat', 0.35 + i * 0.5);
 
@@ -145,6 +149,9 @@ export class UiSystem {
     this._lastKillAt = -10;
     this._regenTimer = 0;
     this._hadPointerLock = false;
+    this._menuWasOpen = false;
+    /** Seconds to wait after a resume before nagging about the missing lock. */
+    this._lockGrace = 0;
     this._bakeFrame = 0;
 
     this._pos = new THREE.Vector3();
@@ -450,6 +457,23 @@ export class UiSystem {
     }
 
     // ---- pause -----------------------------------------------------------
+    //
+    // The lost-lock watchdog is the reason Escape used to fight back: browsers
+    // refuse a pointer-lock request for about a second after a user-initiated
+    // exit, so "Resume" would leave the game unlocked and the watchdog would
+    // read that as another pause and re-open the menu on the very next frame.
+    //
+    // It now DISARMS whenever the menu closes and only re-arms once lock has
+    // actually been observed. Until then the click-to-resume target is on
+    // screen (see `setLockHint` in menu.js) — one click, and it is also the
+    // gesture the browser needs to grant the lock.
+    if (this._menuWasOpen && !this.menu.open) {
+      this._hadPointerLock = false;
+      this._lockGrace = 0.6;
+    }
+    this._menuWasOpen = this.menu.open;
+    this._lockGrace = Math.max(0, this._lockGrace - rawDt);
+
     if (ctx.input.enabled && !ctx.input.frozen) {
       if (ctx.input.actionPressed('pause')) this.menu.toggle();
       // Losing pointer lock mid-match is the same intent as pressing Escape.
@@ -459,6 +483,16 @@ export class UiSystem {
         this.menu.show();
       }
     }
+    // Live match, menu closed, no lock, and the grace window has run out: the
+    // browser is not going to hand it over without another gesture.
+    this.menu.setLockHint(
+      ctx.input.enabled &&
+        !ctx.input.frozen &&
+        !ctx.config.deterministic &&
+        !ctx.input.pointerLocked &&
+        !this.menu.open &&
+        this._lockGrace <= 0
+    );
     if (this.menu.open) this.menu.setQualityStatus(ctx.peek('quality')?.getStatus());
     this.menu.update(rawDt);
 
