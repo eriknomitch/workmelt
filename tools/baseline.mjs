@@ -44,17 +44,28 @@ const portOpen = (p) => new Promise((res) => {
 
 let server = null;
 if (!(await portOpen(PORT))) {
-  server = spawn(resolve(ROOT, 'node_modules/.bin/vite'), ['--port', String(PORT), '--strictPort'], { cwd: ROOT, stdio: 'ignore' });
+  // OW_NO_HMR: this is the regression GATE, and it runs for minutes. A file
+  // saved by a concurrently-working agent would otherwise hot-reload the page
+  // mid-capture — either failing with "Execution context was destroyed" or,
+  // worse, silently finishing the run against two different builds. drawcalls
+  // .mjs already did this; the gate needs it more than any other harness.
+  server = spawn(resolve(ROOT, 'node_modules/.bin/vite'), ['--port', String(PORT), '--strictPort'], { cwd: ROOT, stdio: 'ignore', env: { ...process.env, OW_NO_HMR: '1' } });
   let up = false;
   for (let i = 0; i < 160 && !up; i++) { await new Promise((r) => setTimeout(r, 250)); up = await portOpen(PORT); }
   if (!up) { server.kill(); throw new Error('vite failed to start'); }
 }
 
-const browser = await chromium.launch({
+const launch = {
   headless: true,
   args: ['--use-angle=metal', '--ignore-gpu-blocklist', '--force-color-profile=srgb',
          '--force-device-scale-factor=1', '--hide-scrollbars', '--mute-audio', '--disable-frame-rate-limit'],
-});
+};
+// Same escape hatch tools/drawcalls.mjs has: point at a browser playwright did
+// not install itself (cloud sandboxes ship one that its version does not match).
+// Both sides of a comparison must use the SAME binary for the diff to mean
+// anything — this only exists so a run is possible at all, never to mix them.
+if (args.chrome) launch.executablePath = String(args.chrome);
+const browser = await chromium.launch(launch);
 
 mkdirSync(OUTDIR, { recursive: true });
 const report = { ok: true, outDir: OUTDIR, size: `${W}x${H}`, isolated: true, settle: SETTLE, shots: [], errors: [] };
