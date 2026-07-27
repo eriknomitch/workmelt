@@ -1,6 +1,6 @@
 # Workmelt
 
-Get updates [here](https://shumer.dev/newsletter).
+Forked from [mshumer/Claude-of-Duty]([url](https://github.com/mshumer/Claude-of-Duty))
 
 A first-person shooter built in the browser with Three.js r180 and WebGL2. Roughly
 55k lines across 13 subsystems, written by a fleet of AI agents under orchestration.
