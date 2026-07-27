@@ -99,6 +99,8 @@ Emit and listen via `ctx.events`. Payloads are plain objects. The canonical set:
 | ↳ | means *damage dealt **to** `target`*. `target` is the local player when an enemy round connects (`'player'`, the player system, or anything with `isPlayer === true`) — filter it out before drawing a hitmarker. Damage is applied by the target's own listener, never by the emitter as well. | |
 | `damage:taken` | `{ amount, from: Vector3, health }` | player |
 | `actor:death` | `{ actor, point, impulse }` | ai |
+| `actor:footstep` | `{ actor, position, surface, speed, running, crouched, left }` — a bot or a remote player planted a foot | ai |
+| ↳ | NOT interchangeable with `player:footstep`, which means *the local player* stepped and is what `ai` perception and `fx` dust read. Only `audio` consumes this one; anything that would react to the player moving must keep listening to `player:footstep`. `ai` gates emission on range, so an inaudible body is silent, not merely quiet. | |
 | `player:spawn` | `{ position, yaw, zone }` — the local player entered the map at a spawn point chosen by `world.spawns` | player |
 | `player:land` | `{ velocity, surface }` | player |
 | `player:footstep` | `{ position, surface, running }` | player |

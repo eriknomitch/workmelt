@@ -161,6 +161,9 @@ export class NetPuppet {
       suppress: 0,
     });
     this.animator.update(dt, this.ctx.time.elapsed);
+    if (this.animator.footPlant && !this.dead) {
+      this.ai.actorFootstep(this, this.animator.footPlant);
+    }
   }
 
   setVisible(v) {

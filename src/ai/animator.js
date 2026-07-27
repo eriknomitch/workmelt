@@ -94,6 +94,14 @@ export class Animator {
     };
 
     this.phase = 0;
+    /**
+     * Foot contact for the frame just evaluated: 0 none, -1 left, +1 right.
+     * Read it after update() — Agent and NetPuppet turn it into `actor:footstep`.
+     * The animator itself stays event-free so it can run in the model preview
+     * and the selftests with no ctx at all.
+     */
+    this.footPlant = 0;
+    this._stepHalf = null; // which half of the stride we were in last update
     this.prevClip = 'idle';
     this.blend = 1; // weight of the current clip vs the previous one
     this.time = 0;
@@ -237,6 +245,25 @@ export class Animator {
             : 0.19; // idle breathing rate
     this.phase = (this.phase + dt * strideHz) % 1;
     if (this.blend < 1) this.blend = Math.min(1, this.blend + dt / 0.18);
+
+    /* --- foot contact -------------------------------------------------------
+     * gait() puts the pelvis bob at cos(2t), so it bottoms out a quarter and
+     * three quarters through the stride — the same instants the thigh reaches
+     * full forward swing. That is the weight transfer, so it is where a step
+     * sounds. Tracking which half of [0.25, 0.75) we are in survives the phase
+     * wrap and the animation-rate LOD, which hands us an accumulated dt rather
+     * than skipping phase. Idle clips still advance phase (breathing), so only
+     * a locomotion clip may plant. */
+    this.footPlant = 0;
+    const half = ((this.phase - 0.25 + 1) % 1) < 0.5 ? 0 : 1;
+    if (half !== this._stepHalf) {
+      // null on the first update and after a rig reset: sync without planting,
+      // so a body never steps on the frame it appears.
+      if (this._stepHalf !== null && (clip === 'walk' || clip === 'run' || clip === 'crouchWalk')) {
+        this.footPlant = half === 0 ? 1 : -1;
+      }
+      this._stepHalf = half;
+    }
 
     /* --- layer 1: locomotion, crossfaded --- */
     P.reset();
