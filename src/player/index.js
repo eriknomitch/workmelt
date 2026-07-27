@@ -708,6 +708,9 @@ export class PlayerSystem {
         }) ?? world?.spawn?.(0);
     }
     this.health.reset(true);
+    // Toggle-mode ADS is a latch, not a held button: without this a player who
+    // died aiming comes back scoped in without having asked for it.
+    this.ctx.input?.clearAdsToggle?.();
     if (!sp?.position) return null;
     const gy = this.physics.groundHeight(sp.position.x, sp.position.z, sp.position.y + 6);
     const feetY = Number.isFinite(gy) ? gy + 0.03 : sp.position.y;
