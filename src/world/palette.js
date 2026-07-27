@@ -503,7 +503,7 @@ export const PALETTE = {
   el_steel: {
     name: 'metal_painted',
     surface: 'metal',
-    opts: { vertexMasks: true, tint: 0x4d4a41, scale: 0.8, normalStrength: 1.2, weather: [0.6, 0.45, 0.55, 0.55] },
+    opts: { vertexMasks: true, tint: 0x3b3831, scale: 0.8, normalStrength: 1.2, weather: [0.6, 0.45, 0.55, 0.55] },
   },
   /** Road paint: the dashed centreline and the transit lane. */
   paint_yellow: {
