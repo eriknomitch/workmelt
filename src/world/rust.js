@@ -155,6 +155,17 @@ export const CONTAINERS = [
   [0.0, 20.6, 0, 0, 'cont_green'],
   [-9.0, 22.2, 0, 0, 'cont_blue'],
   [9.5, 21.0, 0, 0, 'cont_sand'],
+
+  /**
+   * THE GATE BLOCKS. The perimeter has an opening at each end of the yard,
+   * which is right — a sealed box of fence reads as a box of fence. But an
+   * opening is a hole a player walks out of, and there is nothing outside but
+   * desert. So the yard is sealed the way a real disused yard is sealed: a
+   * container parked across the gap. 6.06 m of box across a 4.6 m opening,
+   * held far enough inside the fence line to stay in the yard.
+   */
+  [0.0, -26.0, 0, 0, 'cont_red'],
+  [0.0, 26.0, 0, 0, 'cont_green'],
 ];
 
 /** Vertical storage silos: `[x, z, radius, height]`. */
@@ -292,15 +303,26 @@ export function isOpenRust(x, z, m = 0.3) {
 
 /**
  * Analytic floor height. The yard is a poured slab, so this is flat inside the
- * fence; outside it the desert rolls away and props that land there need to
- * follow it. Physics owns the exact answer — this is the hint props are
- * dropped on.
+ * fence; outside it the desert rolls away and then climbs into a ridge line.
+ *
+ * The ridge is not scenery for its own sake. The camera sits above a 3.5 m
+ * fence the moment you are on any deck, and without it the whole horizon is
+ * the terrain plane meeting the sky in a straight pale band — the flat cut-out
+ * read the quality bar exists to prevent. Doing it in the height field rather
+ * than with geometry costs nothing: the terrain mesh already samples this, so
+ * the ridge is free and the collision comes with it.
+ *
+ * Physics owns the exact answer — this is the hint props are dropped on.
  */
 export function groundYRust(x, z) {
   const out = Math.max(Math.abs(x), Math.abs(z)) - RUST.half;
   if (out <= 0) return 0.02;
   const t = Math.min(1, out / 12);
-  return 0.02 + (fbm3(x * 0.05, 11.7, z * 0.05, 3) - 0.5) * 1.3 * t;
+  const roll = (fbm3(x * 0.05, 11.7, z * 0.05, 3) - 0.5) * 1.3 * t;
+  // Starts 8 m beyond the fence and takes 26 m to reach full height, so the
+  // near desert still reads as flat ground and the climb is all in the distance.
+  const ridge = Math.min(1, Math.max(0, (out - 8) / 26));
+  return 0.02 + roll + ridge * ridge * (4.5 + fbm3(x * 0.02, 4.1, z * 0.02, 2) * 8.5);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────── */
@@ -1289,7 +1311,12 @@ export const RUST_MAP = {
    * faces.
    */
   transform: { yaw: 0.42, tx: 0, tz: 0 },
-  bounds: [-46, -2, -46, 46, 22, 46],
+  /**
+   * Tight to the fence plus a skirt. `ai` builds its nav grid over this, and
+   * there is no reason to sample cells out on the ridge: the perimeter is
+   * sealed, so nothing walkable out there is reachable anyway.
+   */
+  bounds: [-34, -2, -34, 34, 24, 34],
   spawnPoints: RUST_SPAWNS,
   standable: standableAtRust,
   groundY: groundYRust,

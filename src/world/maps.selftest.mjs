@@ -241,7 +241,20 @@ const footOpen =
   rust.isOpen(DERRICK.x + DERRICK.stairX, DERRICK.z + DERRICK.stairFootZ + 2.0);
 ok(footOpen, 'the derrick stair has open ground to start from');
 ok(!rust.isOpen(0, RUST.half + 3), 'outside the fence is not playable ground');
-ok(rust.isOpen(0, RUST.half - 3), 'inside the fence is');
+// Not a single lucky point: a container parked where the probe happens to look
+// would fail a spot check and prove nothing. Sample the yard and ask how much
+// of it a player can actually stand on — that catches an inverted occupancy
+// test or a blocker that swallowed the map, and survives moving a container.
+let open = 0;
+let total = 0;
+for (let x = -RUST.half; x <= RUST.half; x += 1)
+  for (let z = -RUST.half; z <= RUST.half; z += 1) {
+    total++;
+    if (rust.isOpen(x, z)) open++;
+  }
+const frac = open / total;
+ok(frac > 0.45 && frac < 0.9, 'most of the yard inside the fence is walkable',
+  `${(frac * 100).toFixed(0)}% open`);
 
 console.log(
   fail === 0
