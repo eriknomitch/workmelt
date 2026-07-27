@@ -272,9 +272,11 @@ export class PauseMenu {
     // Don't stomp the prompt while the player is mid-rebind.
     if (!this._rebinding && this._keyFlash <= 0)
       setText(this.adsKeyBtn, keyLabel(cfg.adsKey ?? null));
-    const aimKey = cfg.adsKey ? `${keyLabel(cfg.adsKey)}/RMB` : 'RMB';
-    const aim = `${aimKey} ADS${adsMode === 'toggle' ? ' (TAP)' : ''}`;
-    setText(this.hint, `ESC RESUME · WASD MOVE · SHIFT SPRINT · ${aim} · R RELOAD · F USE`);
+    // One line at the menu's width, so the aim entry costs the ESC hint — the
+    // Resume button sits directly above it saying the same thing. Hold/toggle
+    // is not spelled out here either; the row above already shows it.
+    const aim = cfg.adsKey ? `${keyLabel(cfg.adsKey)}/RMB ADS` : 'RMB ADS';
+    setText(this.hint, `WASD MOVE · SHIFT SPRINT · ${aim} · R RELOAD · F USE`);
   }
 
   setQualityStatus(status) {
