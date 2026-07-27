@@ -39,6 +39,18 @@ import {
   inSolidWilmot,
   groundYWilmot,
 } from './wilmot.js';
+import {
+  LOOP,
+  EL,
+  STATION,
+  TRAIN,
+  SCAFFOLD,
+  STRUCTURES as LOOP_STRUCTURES,
+  ALLEYS,
+  MOUTHS,
+  COLUMNS,
+  inSolidLoop,
+} from './loop.js';
 
 let pass = 0;
 let fail = 0;
@@ -374,6 +386,108 @@ for (const g of GATES) {
   }
   ok(leaks.length === 0, `the ${g.side === 'n' ? 'drive' : 'service'} gate is sealed`,
     leaks.length ? `open at x=${leaks.join(',')}` : `${g.w} m of opening covered`);
+}
+
+/* ─────────────────────────────────────────────────────── loop: the corner ── */
+console.log(B('\nloop — the corner'));
+
+// Blocks and columns must not intersect each other: buildings own the
+// quadrants, columns stand in the streets, the two never meet.
+const lRects = [];
+for (const s of LOOP_STRUCTURES) lRects.push([s.id, s.x - s.w / 2, s.z - s.d / 2, s.x + s.w / 2, s.z + s.d / 2]);
+for (const [x, z] of COLUMNS) lRects.push([`column(${x},${z})`, x - 0.4, z - 0.4, x + 0.4, z + 0.4]);
+lRects.push(['station-stair', STATION.stair.x0, STATION.stair.z0, STATION.stair.x1, STATION.stair.z1]);
+lRects.push(['scaffold', SCAFFOLD.x - 0.85, SCAFFOLD.topZ - 1.6, SCAFFOLD.x + 0.85, SCAFFOLD.footZ + 0.3]);
+const lOverlaps = [];
+for (let i = 0; i < lRects.length; i++) {
+  for (let j = i + 1; j < lRects.length; j++) {
+    const a = lRects[i];
+    const b = lRects[j];
+    if (a[1] < b[3] && a[3] > b[1] && a[2] < b[4] && a[4] > b[2]) lOverlaps.push(`${a[0]} ∩ ${b[0]}`);
+  }
+}
+ok(lOverlaps.length === 0, 'nothing solid is inside anything else solid', lOverlaps.slice(0, 3).join(', '));
+
+const lOut = lRects.filter(
+  (r) => r[1] < -LOOP.half - 0.01 || r[2] < -LOOP.half - 0.01 || r[3] > LOOP.half + 0.01 || r[4] > LOOP.half + 0.01
+);
+ok(lOut.length === 0, 'everything solid is inside the block', lOut.map((r) => r[0]).join(' '));
+
+// The streets are streets: every bent column stands in a roadway (the L's
+// legs famously do), except the platform legs, which stand on the south
+// sidewalk under the platform they carry.
+ok(
+  COLUMNS.every(([x, z]) => {
+    const inRoad = Math.min(Math.abs(x), Math.abs(z)) + 0.25 < LOOP.road;
+    const underPlatform = z > LOOP.road && z < LOOP.walk && x > STATION.x0 && x < STATION.x1;
+    return inRoad || underPlatform;
+  }),
+  'every column stands in a street or under the platform'
+);
+
+// The elevated structure is the landmark and the second storey.
+ok(EL.deckY > 5.5, 'the tracks are a real second storey', `${EL.deckY} m`);
+ok(EL.girderH > 0.8 && EL.girderH < 1.4, 'the guard girders are crouch cover', `${EL.girderH} m`);
+// The curve actually joins the two runs: its ends sit on both centrelines.
+const c0 = EL.curve[0];
+const c1 = EL.curve[EL.curve.length - 1];
+ok(c0[0] === 0 && c1[1] === 0, 'the curve joins the north run to the east run',
+  `(${c0}) -> (${c1})`);
+// The stalled train is stopped AT the platform, on the deck, north track.
+ok(TRAIN.x0 < STATION.x1 && TRAIN.x1 > STATION.x0, 'the train is stalled at the platform');
+ok(TRAIN.z < 0 && Math.abs(TRAIN.z) + TRAIN.w / 2 < EL.deckHalf, 'on the north track, inside the deck');
+// And the deck lane past it stays wide enough to walk.
+ok(STATION.z0 - (TRAIN.z + TRAIN.w / 2) > 1.2, 'the platform lane squeezes past the train',
+  `${(STATION.z0 - (TRAIN.z + TRAIN.w / 2)).toFixed(1)} m`);
+
+const loop = getMap('loop');
+// Both stair feet start from open ground, or the second storey is scenery.
+// The station flight is entered from the intersection's sidewalk to its west,
+// the scaffold flight from the roadway south of it.
+const sf = STATION.stair;
+ok(
+  loop.isOpen(sf.x0 - 1.4, 5.7) && loop.isOpen(sf.x0 - 3.4, 5.7),
+  'the station stair has open ground to start from'
+);
+ok(
+  loop.isOpen(SCAFFOLD.x, SCAFFOLD.footZ + 1.5) && loop.isOpen(SCAFFOLD.x, SCAFFOLD.footZ + 3.5),
+  'the scaffold stair has open ground to start from'
+);
+ok(!loop.isOpen(0, LOOP.half + 3), 'outside the block is not playable ground');
+
+// Sample the block: the plus of streets and the two alleys should leave the
+// map far tighter than Wilmot's lawns but still leave real room to move.
+let lOpen = 0;
+let lTotal = 0;
+for (let x = -LOOP.half; x <= LOOP.half; x += 1)
+  for (let z = -LOOP.half; z <= LOOP.half; z += 1) {
+    lTotal++;
+    if (loop.isOpen(x, z)) lOpen++;
+  }
+const lFrac = lOpen / lTotal;
+ok(lFrac > 0.28 && lFrac < 0.6, 'the streets and alleys are walkable', `${(lFrac * 100).toFixed(0)}% open`);
+
+/**
+ * THE MOUTHS ARE SEALED — same probe as Rust's gates, for the same reason.
+ * Two streets and two alleys hit the map edge in eight places, and hoarding,
+ * barriers or a dumpster line is the only thing between each one and empty
+ * backdrop. Walk every line across each mouth and require something solid
+ * within the first 3 m.
+ */
+for (const m of MOUTHS) {
+  const leaks = [];
+  for (let u = m.u - m.w / 2 + 0.2; u <= m.u + m.w / 2 - 0.2; u += 0.2) {
+    let solid = false;
+    for (let d = 0; d <= 3 && !solid; d += 0.2) {
+      const along = LOOP.half - d;
+      const [x, z] =
+        m.side === 'n' ? [u, -along] : m.side === 's' ? [u, along] : m.side === 'w' ? [-along, u] : [along, u];
+      if (inSolidLoop(x, z, 0)) solid = true;
+    }
+    if (!solid) leaks.push(u.toFixed(1));
+  }
+  ok(leaks.length === 0, `the ${m.side}${m.u !== 0 ? ` alley (${m.u})` : ' street'} mouth is sealed`,
+    leaks.length ? `open at u=${leaks.join(',')}` : `${m.w} m of opening covered`);
 }
 
 console.log(
