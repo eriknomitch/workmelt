@@ -100,7 +100,8 @@ Two more findings the baseline forced:
 Chromium's SwiftShader backend runs the real WebGL2 shaders and produces the
 real image. Verified in this repo: the game boots, renders and screenshots
 correctly under `--use-angle=swiftshader` on a 4-core container with no GPU at
-all. It is slow — roughly 2 s per frame at 640x360, 4 s at 960x540 — and it is
+all. It is slow — roughly 2 s per frame at 640x360, 4 s at 960x540, so a full
+five-tier `--quick` scorecard is about 50 minutes on 4 cores — and it is
 *wrong about time*, but it is right about pixels.
 
 So the split is:

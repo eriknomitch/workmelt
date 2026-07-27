@@ -20,9 +20,13 @@ a session.** Also read `ARCHITECTURE.md` — subsystem ownership is not optional
 
 1. **Score.**
    ```bash
-   node tools/goal.mjs --quick          # 640x360, ~15 min, use this while iterating
-   node tools/goal.mjs                  # 960x540, the real gate, before you claim done
+   node tools/goal.mjs --quick          # 640x360, ~50 min on 4 cores — the iteration pass
+   node tools/goal.mjs                  # 960x540, ~3x that — the real gate, before you claim done
    ```
+   Measured cost of the `--quick` pass, per tier: performance 5 min, low 10,
+   medium 17, high 23, ultra 18, two tiers at a time. Narrow it while you work
+   (`--tiers=performance,ultra` is ~20 min) and widen it before you conclude.
+   `--jobs=N` sets the concurrency; on 4 cores 2 is about right.
    Exit code 0 means met. Anything else prints exactly which criteria failed and
    by how much. `--score-only` re-scores the last measurement without re-running it.
 
@@ -85,7 +89,9 @@ Therefore:
 
 ## Unattended running
 
-`node tools/goal.mjs --quick` takes ~15 minutes, so a hands-off session looks
-like `/loop 30m /goal`. Each firing must end in one of three states, and must
-say which: a committed iteration, a reverted hypothesis with the numbers that
-killed it, or blocked-on-hardware.
+A scored iteration costs the better part of an hour, so a hands-off session
+looks like `/loop 60m /goal` — and each firing should spend that budget on a
+narrowed run plus one hypothesis, not on re-measuring tiers it did not touch.
+Every firing must end in one of three states, and must say which: a committed
+iteration, a reverted hypothesis with the numbers that killed it, or
+blocked-on-hardware.
