@@ -1,4 +1,10 @@
 import { QUALITY_PRESETS } from './config.js';
+import {
+  GRAPHICS_OPTIONS_BY_ID,
+  applyOptionLive,
+  needsRestart,
+  sanitizeOverrides,
+} from './graphics.js';
 
 const quantizeScale = (value) => Math.round(value * 20) / 20;
 const REFRESH_BUCKETS = [30, 60, 75, 90, 100, 120, 144, 165, 240, 360];
@@ -6,9 +12,11 @@ const LOWER_TIER = { ultra: 'high', high: 'medium', medium: 'low', low: 'perform
 export const GRAPHICS_STORAGE_KEY = 'cod_graphics_v1';
 export const GRAPHICS_MODES = ['auto', 'low', 'medium', 'high', 'ultra'];
 export const FPS_TARGETS = [30, 60, 90, 120, 144, 165, 240];
+const STORED_VERSIONS = [1, 2, 3];
+const CURRENT_VERSION = 3;
 
 const DEFAULT_GRAPHICS = Object.freeze({
-  version: 2,
+  version: CURRENT_VERSION,
   mode: 'auto',
   targetFps: 'display',
   tier: null,
@@ -16,7 +24,12 @@ const DEFAULT_GRAPHICS = Object.freeze({
   refreshHz: null,
   signature: null,
   calibrated: false,
+  /** Per-option advanced overrides. See `src/core/graphics.js`. */
+  overrides: null,
 });
+
+/** Never hand out the frozen literal: `overrides` is a mutable object. */
+const defaultGraphics = () => ({ ...DEFAULT_GRAPHICS, overrides: {} });
 
 function browserStorage() {
   try {
@@ -31,9 +44,9 @@ export function loadGraphicsSettings(storage = browserStorage()) {
   try {
     raw = JSON.parse(storage?.getItem?.(GRAPHICS_STORAGE_KEY) ?? 'null');
   } catch {
-    return { ...DEFAULT_GRAPHICS };
+    return defaultGraphics();
   }
-  if (!raw || (raw.version !== 1 && raw.version !== 2)) return { ...DEFAULT_GRAPHICS };
+  if (!raw || !STORED_VERSIONS.includes(raw.version)) return defaultGraphics();
   const migrated = raw.version === 1;
   const mode = GRAPHICS_MODES.includes(raw.mode) ? raw.mode : 'auto';
   const targetFps =
@@ -61,7 +74,7 @@ export function loadGraphicsSettings(storage = browserStorage()) {
     signature = null;
   }
   return {
-    version: 2,
+    version: CURRENT_VERSION,
     mode,
     targetFps,
     tier,
@@ -69,11 +82,15 @@ export function loadGraphicsSettings(storage = browserStorage()) {
     refreshHz,
     signature,
     calibrated,
+    // v1/v2 profiles predate the advanced options, so they migrate to "none set"
+    // and keep rendering exactly what they rendered before.
+    overrides: sanitizeOverrides(raw.overrides),
   };
 }
 
 export function saveGraphicsSettings(settings, storage = browserStorage()) {
-  const value = { ...DEFAULT_GRAPHICS, ...settings, version: 2 };
+  const value = { ...defaultGraphics(), ...settings, version: CURRENT_VERSION };
+  value.overrides = sanitizeOverrides(value.overrides);
   try {
     storage?.setItem?.(GRAPHICS_STORAGE_KEY, JSON.stringify(value));
   } catch {
@@ -296,8 +313,17 @@ export class AdaptiveQualitySystem {
   static deps = ['render'];
 
   constructor({ settings, enabled = true, storage, location, now, isActive } = {}) {
-    this.settings = { ...DEFAULT_GRAPHICS, ...settings };
+    this.settings = { ...defaultGraphics(), ...settings };
+    this.settings.overrides = sanitizeOverrides(this.settings.overrides);
     this.enabled = enabled;
+    /**
+     * A hand-set Resolution Scale is not a suggestion: the adaptive scaler stops
+     * touching it, and the tier walk-down (which only ever fires once scaling has
+     * bottomed out) can never trigger.
+     */
+    this.scaleLocked = this.settings.overrides.renderScale !== undefined;
+    /** Set by `setOption` when the change cannot land without a reload. */
+    this.pendingRestart = false;
     this.storage = storage ?? browserStorage();
     this.location = location ?? globalThis.location;
     this.now = now ?? (() => performance.now());
@@ -344,6 +370,14 @@ export class AdaptiveQualitySystem {
         return;
       }
       this._calibrate(nowMs, ctx);
+      return;
+    }
+    // Calibration still runs with a pinned resolution — it is measuring what the
+    // machine can hold AT that resolution, which is exactly the right question.
+    // Only the scaler itself stands down.
+    if (this.scaleLocked) {
+      this._status.state = 'pinned';
+      this._status.renderScale = this.settings.overrides.renderScale;
       return;
     }
     const active = this.isActive(ctx);
@@ -476,7 +510,82 @@ export class AdaptiveQualitySystem {
       tier: null,
       calibrated: false,
       renderScale: 1,
+      overrides: {},
     });
+    this._reloadPending = true;
+    this.location?.reload?.();
+    return true;
+  }
+
+  /* ------------------------------------------------ advanced options ---- */
+
+  /** The sparse override map, as persisted. Treat it as read-only. */
+  getOverrides() {
+    return this.settings.overrides ?? {};
+  }
+
+  /**
+   * Set (or, with `undefined`/`'auto'`, clear) one advanced option.
+   *
+   * The value is persisted immediately either way — a player who tunes shadows
+   * and then alt-F4s should not lose the setting because they never pressed
+   * Apply. What Apply does is reload, and only options that cannot take effect
+   * without one set `pendingRestart`.
+   *
+   * @returns {{ ok: boolean, live: boolean, restart: boolean }}
+   */
+  setOption(id, value, ctx = this.ctx) {
+    const opt = GRAPHICS_OPTIONS_BY_ID[id];
+    if (!this.enabled || !opt) return { ok: false, live: false, restart: false };
+
+    const next = { ...this.getOverrides() };
+    if (value === undefined || value === null || value === 'auto') delete next[id];
+    else next[id] = value;
+    const clean = sanitizeOverrides(next);
+    // sanitizeOverrides drops a value the schema does not offer; refusing here
+    // rather than silently persisting "unchanged" keeps the menu honest.
+    if (value !== undefined && value !== null && value !== 'auto' && clean[id] === undefined)
+      return { ok: false, live: false, restart: false };
+
+    this._persist({ overrides: clean });
+    this.scaleLocked = clean.renderScale !== undefined;
+
+    // Clearing an override cannot be pushed live: the preset value it falls back
+    // to for a pass or a texture bake only exists at boot.
+    const cleared = clean[id] === undefined;
+    const live = !cleared && !needsRestart(id) && applyOptionLive(opt, clean[id], ctx);
+    if (!live) this.pendingRestart = true;
+    return { ok: true, live, restart: !live };
+  }
+
+  /**
+   * Apply an option to the running renderer WITHOUT persisting it.
+   *
+   * This is the slider-drag path. Writing localStorage on every pointer sample
+   * is a synchronous JSON serialise per frame; the matching `change` event
+   * calls `setOption` with the value the player actually settled on.
+   */
+  previewOption(id, value, ctx = this.ctx) {
+    const opt = GRAPHICS_OPTIONS_BY_ID[id];
+    if (!this.enabled || !opt || needsRestart(id)) return { ok: false, live: false, restart: true };
+    const clean = sanitizeOverrides({ [id]: value })[id];
+    if (clean === undefined) return { ok: false, live: false, restart: false };
+    const live = applyOptionLive(opt, clean, ctx);
+    return { ok: live, live, restart: !live };
+  }
+
+  /** Drop every advanced override, keeping mode/target. Always needs a reload. */
+  resetOptions() {
+    if (!this.enabled) return false;
+    this._persist({ overrides: {} });
+    this.scaleLocked = false;
+    this.pendingRestart = true;
+    return true;
+  }
+
+  /** Reload so the restart-only options take effect. */
+  applyPending() {
+    if (!this.enabled || !this.pendingRestart) return false;
     this._reloadPending = true;
     this.location?.reload?.();
     return true;
@@ -484,6 +593,8 @@ export class AdaptiveQualitySystem {
 
   getStatus() {
     this._status.target = this.settings.targetFps;
+    this._status.pendingRestart = this.pendingRestart;
+    this._status.scaleLocked = this.scaleLocked;
     return this._status;
   }
 }

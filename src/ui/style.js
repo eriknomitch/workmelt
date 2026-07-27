@@ -624,12 +624,44 @@ const CSS = `
   margin: calc(var(--u) * 5) 0 calc(var(--u) * 2); height:1px;
   background: linear-gradient(to right, rgba(255,255,255,.28), rgba(255,255,255,0));
 }
+/* Tab strip. The General tab is the shipped menu; the rest are generated from
+   the option table in src/core/graphics.js, which is long enough that one flat
+   list would run off the bottom of a 1080p screen. */
+.ow-tabs {
+  display:flex; flex-wrap:wrap; gap: calc(var(--u) * 0.6);
+  margin-bottom: calc(var(--u) * 2);
+}
+.ow-tab {
+  appearance:none; border:1px solid var(--hair); background: rgba(255,255,255,.03);
+  color: var(--ink-3); font-family: var(--ff); font-weight:600; text-transform:uppercase;
+  font-size: calc(9.5px * var(--k)); letter-spacing:.16em;
+  padding: calc(var(--u) * 1.2) calc(var(--u) * 2.2);
+  cursor:pointer; transition: color .12s, background .12s, border-color .12s;
+}
+.ow-tab:hover { color: var(--ink); background: rgba(255,255,255,.08); }
+.ow-tab.on { color: #0b0d0f; background: var(--amber); border-color: var(--amber); }
+/* The advanced tabs are taller than General, so the panel scrolls rather than
+   pushing the Resume button off the screen. */
+.ow-panels { max-height: calc(58vh); overflow-y: auto; overflow-x: hidden; }
+.ow-panels::-webkit-scrollbar { width: calc(3px * var(--k)); }
+.ow-panels::-webkit-scrollbar-thumb { background: rgba(255,255,255,.22); }
+.ow-panel-blurb {
+  font-size: calc(9px * var(--k)); letter-spacing:.22em; color: var(--ink-3);
+  padding: calc(var(--u) * 1.2) 0 calc(var(--u) * 0.6);
+}
 .ow-row {
   display:flex; align-items:center; justify-content:space-between;
   gap: calc(var(--u) * 4); padding: calc(var(--u) * 3.2) 0;
   border-bottom: 1px solid var(--hair-2);
 }
 .ow-row > .name { font-size: calc(11.5px * var(--k)); letter-spacing:.2em; color: var(--ink); }
+/* An option the player has moved off its preset value. */
+.ow-row-set > .name { color: var(--amber); }
+.ow-tag {
+  margin-left: calc(var(--u) * 1.2); padding: 0 calc(var(--u) * 0.8);
+  font-family: var(--fm); font-size: calc(7.5px * var(--k)); letter-spacing:.14em;
+  color: var(--ink-3); border:1px solid var(--hair); vertical-align: middle;
+}
 .ow-row > .val { font-family: var(--fm); font-size: calc(11px * var(--k)); color: var(--amber);
   letter-spacing:.04em; min-width: calc(46px * var(--k)); text-align:right; }
 .ow-seg { display:flex; gap:0; }
@@ -698,6 +730,9 @@ const CSS = `
 .ow-btn:hover { background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.4); }
 .ow-btn.primary { background: var(--amber); border-color: var(--amber); color:#100b02; }
 .ow-btn.primary:hover { background:#ffc251; }
+/* Only visible while a restart-only graphics option is waiting to take effect. */
+.ow-btn.warn { border-color: rgba(255,176,42,.55); color: var(--amber); }
+.ow-btn.warn:hover { background: rgba(255,176,42,.16); border-color: var(--amber); }
 .ow-menu .hint {
   margin-top: calc(var(--u) * 4); font-size: calc(9.5px * var(--k));
   letter-spacing:.2em; color: var(--ink-3);

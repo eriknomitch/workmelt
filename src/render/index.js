@@ -73,6 +73,13 @@ const REF_DAYLIGHT = 4.6;
  *   r.displaySize             { width, height } of the canvas backbuffer
  *   r.setRenderScale(scale)   resize internal targets, clamped to the active
  *                             preset's minimum (0.2 for Auto Performance)
+ *   r.setRenderScaleLimits(min, max)
+ *                             widen that clamp — the advanced menu's manual
+ *                             Resolution Scale goes to 2x (supersampling)
+ *   r.setPixelRatioCap(cap)   ceiling on devicePixelRatio for the backbuffer
+ *                             (shipped default 1.5; 2.0 is native Retina)
+ *   r.applySettings(patch?)   push `settings` at the passes that cache them
+ *   r.setAmbientFill(k)       scale every indirect term at once ("Shadow Lift")
  *   r.depthTexture            R32F linear view depth in METRES (positive)
  *   r.velocityTexture         RG16F screen-space velocity as a UV delta
  *   r.normalTexture           RGBA16F oct-encoded VIEW normal (xy), coverage (z:
@@ -210,15 +217,21 @@ export class RenderSystem {
       quality: q.shadowQuality ?? this.qLevel,
     });
 
+    // Anti-aliasing is a three-way choice now ('taa' | 'fxaa' | 'off'), settable
+    // from the advanced graphics menu. `q.taa` remains the boolean the rest of
+    // the engine and the presets speak, and is authoritative when `q.antialias`
+    // is absent.
+    const aa = q.antialias ?? (q.taa ? 'taa' : 'fxaa');
+
     this.gbuffer = new GBuffer();
     this.gtao = q.gtao ? new Gtao() : null;
-    this.contact = this.qLevel >= 1 ? new ContactShadows() : null;
+    this.contact = (q.contactShadows ?? this.qLevel >= 1) ? new ContactShadows() : null;
     this.ssr = q.ssr ? new Ssr() : null;
-    this.taa = q.taa ? new Taa() : null;
+    this.taa = aa === 'taa' ? new Taa() : null;
     this.motionBlur = q.motionBlur ? new MotionBlur() : null;
     // ADS depth of field. Cheap (half-res gather, 32 taps) and only ever runs
     // while the sights are actually up, so it costs nothing in hipfire.
-    this.dof = this.qLevel >= 1 ? new DepthOfField() : null;
+    this.dof = (q.dof ?? this.qLevel >= 1) ? new DepthOfField() : null;
     this.bloom = q.bloom ? new Bloom(this.qLevel >= 2 ? 6 : 5) : null;
     this.exposure = new AutoExposure();
     // Headroom for a physically-scaled sky (sunlit scenes reach ~5000 cd/m2).
@@ -230,11 +243,13 @@ export class RenderSystem {
     this.lut = createGradeLut('default');
     this.composite = createComposite(this.lut);
     this.viewComposite = createViewComposite();
-    this.fxaa = q.taa ? null : createFxaa();
+    this.fxaa = aa === 'fxaa' ? createFxaa() : null;
     // MSAA on the viewmodel target only. It is the one buffer whose geometric
     // edges no longer get a temporal filter, and 4x on a single small pass is
     // far cheaper than any spatial substitute at the same quality.
-    this._viewSamples = this.qLevel >= 2 ? 4 : this.qLevel >= 1 ? 2 : 0;
+    this._viewSamples = q.viewSamples ?? (this.qLevel >= 2 ? 4 : this.qLevel >= 1 ? 2 : 0);
+    /** Ceiling on devicePixelRatio for the canvas backbuffer; see resize(). */
+    this._pixelRatioCap = q.pixelRatioCap ?? 1.5;
 
     // Always on: depthTexture/velocityTexture are part of the public contract
     // (soft particles, SSR, motion blur) even when our own effects are off.
@@ -484,7 +499,29 @@ export class RenderSystem {
       shadowStrength: q.shadows === false ? 0 : 1.0,
       sunSoftness: 0.024,
     };
+
+    // ---- advanced graphics overrides --------------------------------------
+    // `src/core/graphics.js` parks a sparse patch of THIS object on the config
+    // rather than duplicating the defaults above, which is the only way the two
+    // can be guaranteed not to drift. Unknown keys are dropped: a stale
+    // localStorage entry must not be able to invent a uniform.
+    for (const [key, value] of Object.entries(cfg.renderSettings ?? {})) {
+      if (key in this.settings && typeof value === typeof this.settings[key])
+        this.settings[key] = value;
+    }
+    if (q.autoExposure !== undefined) this.settings.autoExposure = q.autoExposure;
+    // Base indirect terms, captured before any Shadow Lift multiplier so the
+    // multiplier is always applied to the authored values and never compounds.
+    this._fillBase = {
+      skyFill: this.settings.skyFill,
+      groundFill: this.settings.groundFill,
+      bounceFill: this.settings.bounceFill,
+      iblDiffuse: this.settings.iblDiffuse,
+      interiorIndirect: this.settings.interiorIndirect,
+    };
+    this._ambientFill = 1;
     this._applySettings();
+    if (q.ambientFill !== undefined && q.ambientFill !== 1) this.setAmbientFill(q.ambientFill);
 
     this.probe = new RenderProbeScene(this.rng.fork());
     this.probeActive = false;
@@ -507,7 +544,9 @@ export class RenderSystem {
 
     console.info(
       `[render] WebGL2 · ${cfg.quality} · ${this.csm.cascades}x${this.csm.mapSize} CSM · ` +
-        `taa:${!!this.taa} gtao:${!!this.gtao} ssr:${!!this.ssr} mb:${!!this.motionBlur}`
+        `aa:${aa} gtao:${!!this.gtao} ssr:${!!this.ssr} mb:${!!this.motionBlur} · ` +
+        `${this.screenSize.width}x${this.screenSize.height} ` +
+        `(${Math.round(this._renderScale * 100)}% @ ${renderer.getPixelRatio()}x dpr)`
     );
   }
 
@@ -873,6 +912,62 @@ export class RenderSystem {
     return { cols, rows, cells: res };
   }
 
+  /**
+   * Push `settings` at the passes that cache them. Public because the advanced
+   * graphics menu writes `render.settings.<key>` directly (that surface is
+   * already documented above) and then has to ask for it to be picked up.
+   *
+   * @param {object} [patch] optional key/value patch applied first
+   */
+  applySettings(patch) {
+    if (patch) Object.assign(this.settings, patch);
+    this._applySettings();
+    return this.settings;
+  }
+
+  /**
+   * Scale every indirect term at once — sky fill, ground bounce, the warm wrap,
+   * IBL diffuse and the interior floor. Always applied to the values authored in
+   * `init()`, never to the current ones, so repeated calls cannot compound.
+   *
+   * This is the "Shadow Lift" setting: the one knob that answers "there is
+   * someone in that doorway and I cannot see him" without flattening the tone
+   * curve or lifting the black point of the whole frame.
+   */
+  setAmbientFill(multiplier) {
+    const k = Math.max(0, Number(multiplier) || 0);
+    this._ambientFill = k;
+    const base = this._fillBase;
+    if (!base) return k;
+    for (const key of Object.keys(base)) this.settings[key] = base[key] * k;
+    this._applySettings();
+    return k;
+  }
+
+  /** Widen (or narrow) the range `setRenderScale` clamps to. */
+  setRenderScaleLimits(min, max) {
+    this._minRenderScale = Math.max(0.1, Math.min(min, max));
+    this._maxRenderScale = Math.max(this._minRenderScale, max);
+    this.q.minRenderScale = this._minRenderScale;
+    this.q.maxRenderScale = this._maxRenderScale;
+    return [this._minRenderScale, this._maxRenderScale];
+  }
+
+  /**
+   * Ceiling on the canvas backbuffer's device-pixel ratio. On a 2x panel the
+   * shipped 1.5 cap throws away a third of the physical pixels; this is how the
+   * player buys them back (or gives more away on a weak GPU).
+   */
+  setPixelRatioCap(cap) {
+    const next = Math.max(0.5, Math.min(4, Number(cap) || 1.5));
+    if (Math.abs(next - this._pixelRatioCap) < 0.001) return this._pixelRatioCap;
+    this._pixelRatioCap = next;
+    this.q.pixelRatioCap = next;
+    const canvas = this.ctx.canvas;
+    this.resize(canvas.clientWidth || innerWidth, canvas.clientHeight || innerHeight, this.ctx);
+    return this._pixelRatioCap;
+  }
+
   _applySettings() {
     const s = this.settings;
     const cu = this.composite.uniforms;
@@ -915,7 +1010,7 @@ export class RenderSystem {
   }
 
   resize(w, h, ctx) {
-    const pr = Math.min(globalThis.devicePixelRatio || 1, 1.5);
+    const pr = Math.min(globalThis.devicePixelRatio || 1, this._pixelRatioCap ?? 1.5);
     this.renderer.setPixelRatio(pr);
     this.renderer.setSize(w, h, false);
 

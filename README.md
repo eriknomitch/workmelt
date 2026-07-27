@@ -33,6 +33,32 @@ within that tier to pursue stable p95 frame pacing. Open the pause menu to
 choose a fixed preset or a target from 30–240 FPS; settings are stored locally
 and never synchronized in multiplayer.
 
+### Advanced graphics
+
+Auto is a starting point, not a ceiling. The pause menu's graphics tabs expose
+every knob the renderer has, each of which follows the preset until you touch
+it: **Display** (internal resolution scale up to 200% supersampling, the
+device-pixel-ratio cap, anti-aliasing, weapon MSAA), **Textures & Detail**
+(world bake resolution, character bake resolution, anisotropic filtering,
+parallax occlusion, micro detail, particle and decal budgets), **Shading &
+Lighting** (cascade count and resolution, shadow distance and density, ambient
+occlusion, contact shadows, screen-space reflections, volumetrics),
+**Post-Processing** (bloom, motion blur, ADS depth of field, sharpening, grain,
+chromatic aberration, vignette, grade strength) and **Visibility** (brightness,
+auto-exposure lock, exposure key, shadow lift, lamp brightness, FOV).
+
+Anything the renderer can take mid-frame is applied as you move it. Anything
+that is built once at boot — a post pass, a render target, a texture bake — is
+marked `RESTART`, saved immediately, and applied when you press **Apply &
+Restart**. The Auto Status row reports the resolution you are actually
+rendering at, in pixels, which is usually the answer to "why does this look
+soft": if you are on a 2x display, Auto caps the backbuffer at 1.5x and then
+the adaptive scaler takes its own cut on top.
+
+If distant players are hard to pick out, the settings that move the needle most
+are Resolution Scale, Display Sharpness, Character Textures and Shadow Lift —
+in that order.
+
 ## Maps
 
 Two levels ship, and the Match Start screen picks between them. Both are

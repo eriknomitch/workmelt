@@ -15,7 +15,10 @@ The browser client lives in `src/`. Features are divided into subsystem director
 - `npm run serve` builds, then serves the client and Node relay.
 - `node src/physics/selftest.js` and `node src/ai/selftest.mjs` run subsystem checks.
 - `npm run test:input` checks input aggregation and the persisted control binds.
+- `node src/core/graphics.selftest.mjs` checks the advanced graphics option schema, including that an empty override set is a bit-exact no-op on every preset.
+- `node src/core/selftest.mjs` covers adaptive quality and the option persistence/live-apply contract.
 - `npm run playtest:ads` drives the pause menu and ADS binds in a real browser.
+- `npm run playtest:graphics` drives the advanced graphics menu in a real browser, including a reload that carries the overrides back into `config.q`.
 - `node server/map.selftest.mjs` walks the relay's room-map protocol against a real server on a real socket.
 - `node src/world/maps.selftest.mjs` builds every map headlessly and checks the map-descriptor contract, spawn tables and layout invariants.
 - `node src/world/spawns.selftest.mjs` checks the spawn director's scoring headlessly; `node src/world/spawns.probe.mjs` verifies spawn placement, the bot garrison and 30 respawns inside the real built level (needs a browser).
