@@ -54,7 +54,7 @@ const CSS = `
   border-radius: 10px; transition: background .15s, border-color .15s, color .15s; }
 .cod-ms .mapcard:hover:not(:disabled) { background: rgba(60,96,122,0.5); border-color: rgba(150,205,235,0.6); }
 .cod-ms .mapcard.on { background: rgba(255,176,42,0.13); border-color: #ffb02a; }
-.cod-ms .mapcard:disabled { opacity: .5; cursor: progress; }
+.cod-ms .mapcard:disabled { opacity: .5; cursor: not-allowed; }
 .cod-ms .mapcard .nm { font-size: 15px; font-weight: 800; letter-spacing: .14em;
   text-transform: uppercase; color: #dfeaf2; }
 .cod-ms .mapcard.on .nm { color: #ffd48a; }
@@ -239,6 +239,9 @@ export class MatchStartUI {
     this.mapBtns = new Map();
     this.mapId = null;
     this.mapBusy = false;
+    /** The room is already playing, so its level is no longer up for a vote. */
+    this.mapLocked = false;
+    this.mapNoteIdle = '';
 
     this.botBtns = new Map();
     for (const p of BOT_PRESETS) {
@@ -300,13 +303,34 @@ export class MatchStartUI {
    */
   setMapBusy(on) {
     this.mapBusy = !!on;
-    for (const b of this.mapBtns.values()) b.disabled = !!on;
     this.startBtn.disabled = !!on;
-    if (on) this.setMapNote('Loading…');
+    this._syncMap();
   }
 
+  /**
+   * A live room's level is settled: the relay refuses a change once anybody is
+   * deployed, so offering the cards would be offering a button that does
+   * nothing. Say so rather than failing silently.
+   */
+  setMapLocked(on) {
+    this.mapLocked = !!on;
+    this._syncMap();
+  }
+
+  /** The caller's line — what the strip says when nothing is overriding it. */
   setMapNote(text) {
-    this.mapNote.textContent = text ?? '';
+    this.mapNoteIdle = text ?? '';
+    this._syncMap();
+  }
+
+  _syncMap() {
+    const off = this.mapBusy || this.mapLocked;
+    for (const b of this.mapBtns.values()) b.disabled = off;
+    this.mapNote.textContent = this.mapBusy
+      ? 'Loading…'
+      : this.mapLocked
+        ? 'Locked — the match is already running'
+        : this.mapNoteIdle ?? '';
   }
 
   setBots(key) {
@@ -364,6 +388,7 @@ export class MatchStartUI {
       this.readyBtn.className = 'btn';
       return;
     }
+    this.setMapLocked(!!m.live);
     if (!m.connected) {
       this._mode = 'none';
       this.statusEl.textContent = m.everConnected
