@@ -23,8 +23,17 @@ import net from 'node:net';
 
 const args = Object.fromEntries(
   process.argv.slice(2).map((a) => {
-    const m = a.match(/^--([^=]+)(?:=(.*))?$/);
-    return m ? [m[1], m[2] ?? true] : [a, true];
+    // `[\s\S]` rather than `.`, because `.` stops at the first newline and a
+    // `--eval` spanning lines is the normal case here. When it failed to match,
+    // the whole expression silently became a KEY with the value `true`, `EXPR`
+    // fell back to its default, and the probe printed a well-formed answer to a
+    // question nobody asked. An unparsed argument is now loud.
+    const m = a.match(/^--([^=\s]+)(?:=([\s\S]*))?$/);
+    if (!m) {
+      console.error(`[probe] ignoring unrecognised argument: ${a.slice(0, 60)}`);
+      return ['_unparsed', true];
+    }
+    return [m[1], m[2] ?? true];
   })
 );
 const PORT = Number(args.port ?? 5206);
