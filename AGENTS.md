@@ -6,6 +6,7 @@ The browser client lives in `src/`. Features are divided into subsystem director
 
 ## Build, Test, and Development Commands
 
+- `./scripts/setup.sh` bootstraps a fresh machine or cloud sandbox: dependencies, the Chromium build playwright expects, and a headless WebGL2 check.
 - `npm install` installs the pinned dependencies.
 - `npm run dev` starts the Vite client at `http://127.0.0.1:5173`.
 - `npm run dev:mp` starts both the client and local multiplayer relay.
