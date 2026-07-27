@@ -1,4 +1,4 @@
-# Claude of Duty
+# Workmelt
 
 Get updates [here](https://shumer.dev/newsletter).
 

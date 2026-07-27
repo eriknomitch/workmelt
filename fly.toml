@@ -1,6 +1,6 @@
 # Fly.io config — builds from the Dockerfile and serves the relay + host.
 # Deploy:  fly launch --copy-config --now   (or `fly deploy` after `fly launch`)
-app = "claude-of-duty"
+app = "workmelt"
 primary_region = "iad"
 
 [build]

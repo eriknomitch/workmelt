@@ -148,7 +148,7 @@ export class MatchStartUI {
     this.root.innerHTML = `
      <div class="wrap">
       <div class="head">
-        <div class="game">Claude of Duty</div>
+        <div class="game">Workmelt</div>
         <h1>Match Start</h1>
         <div class="rule"></div>
       </div>

@@ -1,6 +1,6 @@
 # Multiplayer
 
-Claude of Duty now has web multiplayer: a room-based free-for-all you invite
+Workmelt now has web multiplayer: a room-based free-for-all you invite
 friends to with a link. No accounts, no matchmaking — open the game, copy the
 URL, send it to a friend, and you're in the same match.
 
