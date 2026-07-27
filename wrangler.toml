@@ -6,14 +6,25 @@
 # The relay is a Durable Object (one instance per room). SQLite-class DOs run on
 # the Workers free plan, so this deploys without a paid plan.
 
-name = "claude-of-duty"
+name = "workmelt"
 main = "worker/index.js"
-compatibility_date = "2025-06-01"
+compatibility_date = "2026-07-26"
 
 # Pinned so a token with access to several accounts can't silently deploy to the
 # wrong one (or stall on the interactive account picker in CI).
 # Enomitch@gmail.com's Account — override with CLOUDFLARE_ACCOUNT_ID if needed.
 account_id = "3fdb49d7f76218ba98904d566623dcea"
+
+# Custom domain. `custom_domain = true` makes `wrangler deploy` create the DNS
+# record and issue the cert itself — the zone must be on the account above.
+routes = [
+  { pattern = "workmelt.com", custom_domain = true }
+]
+
+# Adding `routes` would otherwise infer `workers_dev = false` and retire the
+# workers.dev URL. Keep it explicit so both hostnames serve the game; set this
+# to false if workmelt.com should be the only way in.
+workers_dev = true
 
 # Serve the built client. Non-asset paths fall through to the Worker (which
 # handles /ws and /healthz); unknown asset paths fall back to index.html so

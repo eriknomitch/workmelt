@@ -96,7 +96,7 @@ npx wrangler login          # once
 npm run cf:deploy           # = npm run build && wrangler deploy
 ```
 
-That prints a URL like `https://claude-of-duty.<you>.workers.dev`. Open it, copy
+That prints a URL like `https://workmelt.<you>.workers.dev`. Open it, copy
 the invite link, done. Local edge test: `npm run cf:dev` (runs the Worker + DO in
 workerd on :8788).
 

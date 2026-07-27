@@ -32,7 +32,7 @@ npm run cf:deploy           # builds the client, then `wrangler deploy`
 Wrangler prints a URL like:
 
 ```
-https://claude-of-duty.<your-subdomain>.workers.dev
+https://workmelt.<your-subdomain>.workers.dev
 ```
 
 Open it — a `?room=CODE` is added automatically. Click **Copy invite link** and
@@ -53,10 +53,27 @@ This is the same runtime Cloudflare uses, so if it works here it works deployed.
 
 ## Custom domain
 
-In the Cloudflare dashboard: **Workers & Pages → claude-of-duty → Settings →
-Domains & Routes → Add** your domain (it must be on Cloudflare). The client is
-origin-relative, so the invite links switch to your domain automatically — no
-code change.
+`wrangler.toml` already claims **workmelt.com**:
+
+```toml
+routes = [
+  { pattern = "workmelt.com", custom_domain = true }
+]
+```
+
+`custom_domain = true` means `wrangler deploy` creates the DNS record and issues
+the cert for you — the zone just has to be on the same account as `account_id`.
+The client is origin-relative, so invite links (and the `wss://` connection)
+switch to the domain automatically — no code change.
+
+Note the `workers_dev = true` next to it. Declaring any `routes` makes Wrangler
+infer `workers_dev = false` and retire the `workers.dev` URL on the next deploy,
+so the flag is set explicitly to keep both hostnames live. Set it to `false` if
+`workmelt.com` should be the only entrypoint.
+
+To use a different or additional hostname, edit that list (each entry needs its
+own `pattern`), or add it in the dashboard under **Workers & Pages → workmelt →
+Settings → Domains & Routes**.
 
 ## Tuning
 
