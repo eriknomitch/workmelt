@@ -105,13 +105,45 @@ non-capture run (disable with `?mp=0`). It:
 | C→S | `fire {o,d,w,seed}` | a shot (origin, dir) |
 | C→S | `hit {target,dmg,part,o,w}` | shooter's damage claim |
 | C→S | `kill {by,headshot}` | victim confirms its own death |
+| C→S | `spawn {p}` | "I am coming in here" — a spawn claim, relayed to the room |
 | C→S | `name` / `chat` / `respawn` / `ping` | misc |
 | S→C | `welcome {id,room,live,peers}` | you joined; who's here; is the match already live |
 | S→C | `peer_join` / `peer_leave` | roster changes |
 | S→C | `lobby {live,players}` | match-start lobby: `[{id,name,ready,deployed}]` |
 | S→C | `match_start {in}` | everyone readied up — count down `in` ms and deploy |
 | S→C | `snapshot {states:[…]}` | everyone's latest transform |
+| S→C | `spawn {id,p}` | somebody else claimed that ground to spawn on |
 | S→C | `fire` / `hit` / `kill` / `score` / `chat` | relayed events + scoreboard |
+
+## Spawning
+
+Nobody in a Workmelt match — player, remote player or bot — gets a random
+spawn point. `src/world/spawns.js` holds ~45 authored points grouped into
+zones and scores every one of them against the live state of the room before
+handing one out: a hard no-spawn bubble around every enemy, no line of sight,
+a penalty for standing in somebody's view cone, and a memory of recent deaths,
+recently-used points and the man who just killed you. Read the header of that
+file for the full model.
+
+Two parts of it exist only because this is multiplayer:
+
+- **Per-client tie-breaking.** The director draws no random numbers at all (a
+  spawn must not perturb any other subsystem's stream), so ties are broken by a
+  salt. `net` sets it to the peer id the relay assigned — the only value
+  guaranteed distinct inside a room — so two clients scoring the same map
+  cannot arrive at the same answer.
+- **Spawn claims.** Each client scores against the peer positions it already
+  receives at 20 Hz, but two respawn timers can expire on the same tick, before
+  either player exists at his new position. So a client announces its pick
+  (`spawn {p}`) and the relay fans it out; everyone else treats that ground as
+  reserved for 2.5 s. Advisory, like every other gameplay claim on this relay.
+
+Bots go through the same director: a garrison's squad anchors are scored
+against the player exactly as a respawn is (so a squad can never appear inside
+the player's bubble or in his line of sight), anchors repel each other, and
+reinforcements come back in near their surviving squadmates. `ai.populate({…,
+respawn: true})` — the default — keeps the garrison at strength as it is
+killed, retiring each body once its ragdoll has settled.
 
 ## Deploying so friends can join over the internet
 
