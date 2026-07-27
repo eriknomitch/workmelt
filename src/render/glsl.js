@@ -1,5 +1,5 @@
 /**
- * Shared GLSL building blocks for the OVERWATCH render pipeline.
+ * Shared GLSL building blocks for the WORKMELT render pipeline.
  *
  * Every post pass is a full-screen *triangle* (not a quad) — one primitive,
  * no diagonal seam, better quad utilisation on tiled GPUs.

@@ -22,7 +22,7 @@ export class PauseMenu {
 
     const h = el('h1', null, inner, 'Paused');
     h.textContent = 'PAUSED';
-    el('div', 'sub', inner, 'OVERWATCH — TACTICAL OPERATIONS');
+    el('div', 'sub', inner, 'WORKMELT — TACTICAL OPERATIONS');
     el('div', 'rule', inner);
 
     this.rows = el('div', null, inner);

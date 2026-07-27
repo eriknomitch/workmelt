@@ -1,4 +1,4 @@
-# Claude of Duty — multiplayer build.
+# Workmelt — multiplayer build.
 # One image builds the client and runs the relay+host on a single port.
 FROM node:22-slim AS build
 WORKDIR /app

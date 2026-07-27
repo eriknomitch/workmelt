@@ -39,7 +39,7 @@ const H = Number(args.h ?? 1080);
 const FPS = Number(args.fps ?? 60);
 const FRAMES = Number(args.frames ?? 1200);
 const TIME_OF_DAY = args.time !== undefined ? Number(args.time) : 17.4;
-const OUT = resolve(args.out ?? 'demo/overwatch-demo.mp4');
+const OUT = resolve(args.out ?? 'demo/workmelt-demo.mp4');
 const TMP = resolve(args.tmp ?? '.tmp-demo');
 const QUALITY = Number(args.jpeg ?? 94);
 

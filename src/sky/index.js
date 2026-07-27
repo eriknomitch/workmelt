@@ -55,7 +55,7 @@ const SKY_AMBIENT_FRACTION = 0.15;
 const NIGHT_AMBIENT_HUE = [0.35, 0.5, 1.0];
 
 /**
- * OVERWATCH sky, atmosphere and global lighting.
+ * WORKMELT sky, atmosphere and global lighting.
  *
  * ---------------------------------------------------------------------------
  * WHAT THIS OWNS

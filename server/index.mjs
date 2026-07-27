@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Claude of Duty — multiplayer relay + static host.
+ * Workmelt — multiplayer relay + static host.
  *
  * One process does two jobs so a deploy is a single service and the invite
  * link is same-origin:
