@@ -83,9 +83,15 @@ async function findPeak(file) {
  *
  * `whole: true` skips the transient window and keeps the file end to end. That
  * is what spoken lines need: their loudest sample is a stressed syllable in the
- * middle, so a peak window would cut the first word off.
+ * middle, so a peak window would cut the first word off. A master that already
+ * starts on its transient needs it too — `peak - lead` would eat the attack.
+ *
+ * `application` is libopus' signal hint. It tracks content, not windowing:
+ * speech wants `voip`, a percussive one-shot wants `audio` even when it is
+ * kept whole, because `voip` shapes the band around a vocal tract.
  */
-async function encodeOne(file, dest, { lead, dur, bitrate, whole = false }) {
+async function encodeOne(file, dest, { lead, dur, bitrate, whole = false, application }) {
+  const app = application ?? (whole ? 'voip' : 'audio');
   let start = 0;
   if (!whole) {
     const peak = await findPeak(file);
@@ -114,7 +120,7 @@ async function encodeOne(file, dest, { lead, dur, bitrate, whole = false }) {
     '-ac', '1',
     '-af', filters,
     '-c:a', 'libopus', '-b:a', bitrate, '-vbr', 'on',
-    '-application', whole ? 'voip' : 'audio',
+    '-application', app,
     dest,
   ]);
 
@@ -126,7 +132,7 @@ async function encodeOne(file, dest, { lead, dur, bitrate, whole = false }) {
     await run('ffmpeg', [
       '-v', 'error', '-y', '-i', dest,
       '-af', `volume=${gain.toFixed(3)}dB`,
-      '-c:a', 'libopus', '-b:a', bitrate, '-vbr', 'on', '-application', 'audio',
+      '-c:a', 'libopus', '-b:a', bitrate, '-vbr', 'on', '-application', app,
       tmp,
     ]);
     await rm(dest);

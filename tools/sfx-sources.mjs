@@ -23,6 +23,12 @@ const SHOT_BIG = { lead: 0.02, dur: 1.7, bitrate: '96k' };
 const STEP = { lead: 0.01, dur: 0.5, bitrate: '64k' };
 const IMPACT = { lead: 0.01, dur: 0.7, bitrate: '72k' };
 const UI = { lead: 0.005, dur: 1.0, bitrate: '64k' };
+/* Hit confirms are hand-split one-shots that already begin on their transient,
+ * so `whole` keeps them end to end — a peak window would start the clip 40-90 ms
+ * in and eat the attack. `audio`, not the `voip` that `whole` otherwise implies:
+ * these are clicks, not speech. 72k because the bright ones carry real content
+ * up past 6 kHz. */
+const HIT = { whole: true, application: 'audio', bitrate: '72k' };
 /* Announcer lines are already tight, so `whole` keeps the file end to end: a
  * peak window would start the clip at the loudest syllable and eat the first
  * word. 56k mono is transparent for speech. */
@@ -89,13 +95,21 @@ export const SOURCES = [
   { group: 'impact', key: 'dirt', ...IMPACT,
     src: kn('impact-sounds', ...range('impactSoft_heavy', 5)) },
 
+  /* ── hit confirms ──────────────────────────────────────────────────────
+   * The four kinds src/ui/index.js hitmarker() dispatches on, in ascending
+   * order of how much the shot is worth. Single-variant on purpose: a
+   * hitmarker that changes timbre shot to shot reads as a bug, so the variety
+   * is across kinds, never within one. Masters are ours (assets-src/
+   * hitmarkers/, committed) — hand-split from one take, which is why they
+   * sound like a set. Length carries the reward: 84 ms for a body hit, 2.4 s
+   * for a kill. */
+  { group: 'ui', key: 'hitmarker', ...HIT, src: ['hitmarkers/hitmarker-1.wav'] },
+  { group: 'ui', key: 'headshot', ...HIT, src: ['hitmarkers/hitmarker-6.wav'] },
+  { group: 'ui', key: 'armour', ...HIT, src: ['hitmarkers/hitmarker-4.wav'] },
+  { group: 'ui', key: 'kill', ...HIT, src: ['hitmarkers/hitmarker-8.wav'] },
+
   /* ── ui / indicators ───────────────────────────────────────────────────
-   * Keys are the canonical names in UI_ALIAS / BUS_FOR. Single-variant on
-   * purpose: a hitmarker that changes timbre shot to shot reads as a bug. */
-  { group: 'ui', key: 'hitmarker', ...UI, src: kn('interface-sounds', 'tick_002') },
-  { group: 'ui', key: 'headshot', ...UI, src: kn('interface-sounds', 'confirmation_001') },
-  { group: 'ui', key: 'kill', ...UI, src: kn('interface-sounds', 'confirmation_003') },
-  { group: 'ui', key: 'armour', ...UI, src: kn('impact-sounds', 'impactMetal_light_000') },
+   * Keys are the canonical names in UI_ALIAS / BUS_FOR. */
   { group: 'ui', key: 'damage', ...UI, src: kn('impact-sounds', 'impactSoft_heavy_002') },
   { group: 'ui', key: 'grenade_warn', ...UI, src: kn('interface-sounds', 'error_003') },
   { group: 'ui', key: 'regen', ...UI, src: kn('interface-sounds', 'confirmation_004') },
@@ -146,7 +160,7 @@ export const CREDITS = [
     authors: 'Kenney (kenney.nl)',
     license: 'CC0 1.0 (public domain)',
     url: 'https://kenney.nl/assets/impact-sounds',
-    used: 'bullet impacts, sand/fabric footsteps, armour + damage indicators',
+    used: 'bullet impacts, sand/fabric footsteps, damage indicator',
   },
   {
     pack: 'Kenney — Interface Sounds',
@@ -154,6 +168,13 @@ export const CREDITS = [
     license: 'CC0 1.0 (public domain)',
     url: 'https://kenney.nl/assets/interface-sounds',
     used: 'UI and match-flow indicators',
+  },
+  {
+    pack: 'Hit confirms',
+    authors: 'ours',
+    license: 'no third-party rights — masters in assets-src/hitmarkers/',
+    url: 'assets-src/hitmarkers/',
+    used: 'hit confirms: body, headshot, armour, kill',
   },
   {
     pack: 'Announcer lines (text-to-speech)',

@@ -14,8 +14,10 @@ shots/
 # (`assets-src/*`, not `assets-src/`: git will not look inside an excluded
 # directory, so the re-include below would never be reached.)
 assets-src/*
-# ...except the announcer lines: ours, tiny, and not fetchable from anywhere.
+# ...except the announcer lines and the hit confirms: ours, tiny, and not
+# fetchable from anywhere, so `encode-sfx.mjs ui vox` works on a fresh clone.
 !assets-src/vox/
+!assets-src/hitmarkers/
 
 # Goal scorecard output — measurements and their PNGs. Regenerate with
 # `node tools/goal.mjs`; the criteria themselves live in tools/lib/criteria.mjs.

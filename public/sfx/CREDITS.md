@@ -23,7 +23,7 @@ from the packs below — trimmed, normalized, downmixed to mono and encoded to
 - **Author:** Kenney (kenney.nl)
 - **License:** CC0 1.0 (public domain)
 - **Source:** https://kenney.nl/assets/impact-sounds
-- **Used for:** bullet impacts, sand/fabric footsteps, armour + damage indicators
+- **Used for:** bullet impacts, sand/fabric footsteps, damage indicator
 
 ## Kenney — Interface Sounds
 
@@ -31,6 +31,13 @@ from the packs below — trimmed, normalized, downmixed to mono and encoded to
 - **License:** CC0 1.0 (public domain)
 - **Source:** https://kenney.nl/assets/interface-sounds
 - **Used for:** UI and match-flow indicators
+
+## Hit confirms
+
+- **Author:** ours
+- **License:** no third-party rights — masters in assets-src/hitmarkers/
+- **Source:** assets-src/hitmarkers/
+- **Used for:** hit confirms: body, headshot, armour, kill
 
 ## Announcer lines (text-to-speech)
 
