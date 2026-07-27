@@ -266,14 +266,17 @@ ok(frac > 0.45 && frac < 0.9, 'most of the yard inside the fence is walkable',
  * once; this is the same question asked of the layout tables, in 2 ms.
  *
  * For every line across the opening, walk in from the fence and require
- * something solid within the first few metres.
+ * something solid within the GATE MOUTH — the first 3 m. The depth matters:
+ * at 8 m the probe reaches past the mouth and finds the north/south edge
+ * container rows, so it passed with the gate blocks deleted. An assertion that
+ * cannot fail is worse than no assertion, because it reads as coverage.
  */
 const GATE_HALF = 2.3;
 for (const [name, sign] of [['north', -1], ['south', 1]]) {
   const leaks = [];
   for (let x = -GATE_HALF + 0.2; x <= GATE_HALF - 0.2; x += 0.2) {
     let solid = false;
-    for (let d = 0; d <= 8 && !solid; d += 0.2) if (inSolid(x, sign * (RUST.half - d), 0)) solid = true;
+    for (let d = 0; d <= 3 && !solid; d += 0.2) if (inSolid(x, sign * (RUST.half - d), 0)) solid = true;
     if (!solid) leaks.push(x.toFixed(1));
   }
   ok(leaks.length === 0, `the ${name} gate is sealed`,
