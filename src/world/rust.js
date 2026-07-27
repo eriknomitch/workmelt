@@ -736,8 +736,11 @@ function buildDerrick(A, rng) {
   const mid = 0.22 + (D.deck - 0.22) * 0.5;
   const f1 = flight(A, stairX, 0.22, D.z + D.stairFootZ, Math.PI, mid, 1.4);
   deck(A, 'steel_grate', stairX + 0.75, mid, f1.z - 0.9, 3.2, 1.8, {
-    rails: 'sew', t: 0.16, beams: false,
+    // North is open for the second flight, and the south rail stops short of
+    // the first one — a rail across the top step is a stair that ends in a wall.
+    rails: 'ew', t: 0.16, beams: false,
   });
+  railRun(A, stairX + 0.85, f1.z - 0.05, stairX + 2.3, f1.z - 0.05, mid);
   flight(A, stairX, mid, f1.z - 1.8, Math.PI, D.deck, 1.4);
 
   // ------------------------------------------------------ crow's nest --
