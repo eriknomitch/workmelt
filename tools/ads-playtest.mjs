@@ -169,10 +169,21 @@ try {
   await settle();
   eq('the latch survives the release', await ads(), true);
 
-  const seen = await page.evaluate(
-    '({player: window.__ENGINE__.ctx.get("player").adsRequested, hud: window.__ENGINE__.ctx.get("ui").state.ads})'
-  );
-  check('player and HUD follow the latch', seen.player && seen.hud, JSON.stringify(seen));
+  // `adsRequested` is gated on more than the button, so report the whole gate
+  // — a dead or mantling player failing here is not an input bug.
+  const seen = await page.evaluate(() => {
+    const p = window.__ENGINE__.ctx.get('player');
+    return {
+      adsRequested: p.adsRequested,
+      adsAmount: Number(p.adsAmount?.toFixed(2)),
+      hud: window.__ENGINE__.ctx.get('ui').state.ads,
+      controlEnabled: p.controlEnabled,
+      dead: p.dead,
+      mantling: p.movement.mantleMotion.active,
+      sliding: p.movement.sliding,
+    };
+  });
+  check('player and HUD follow the latch', seen.adsRequested && seen.hud, JSON.stringify(seen));
 
   await tap('KeyB');
   await settle();
