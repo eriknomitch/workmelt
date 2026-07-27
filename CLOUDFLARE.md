@@ -1,4 +1,4 @@
-# Host Claude of Duty on Cloudflare
+# Host Workmelt on Cloudflare
 
 Everything you need is already in the repo. Cloudflare runs the whole game —
 static client **and** multiplayer relay — from one Worker, on the **free plan**,

@@ -5,7 +5,7 @@
 # "New +" → "Blueprint" and point it at the repo. Or use the Docker path.
 services:
   - type: web
-    name: claude-of-duty
+    name: workmelt
     runtime: node
     plan: free
     buildCommand: npm ci && npm run build
