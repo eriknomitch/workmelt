@@ -227,6 +227,18 @@ high-frequency detail the normal map does not already carry.
 
 ## 5. The player models specifically
 
+> **Superseded for characters.** The character texture system this section is
+> about no longer exists. `src/ai/textures.js` was deleted and replaced by
+> `src/ai/livery.js`: characters are flat-shaded, untextured, one saturated hue
+> per player. That takes items 1 and 2 below off the table by removing the thing
+> they were optimising — the 3.27 s bake is now ~9 ms of material construction,
+> character texture memory is 0 MB, and a character fragment issues no texture
+> fetches at all. Item 3 (atlasing the nine slots) is unchanged and still open.
+> Item 4 is smaller than it was: the sections in `parts.js` now go through the
+> `F`/`R` scales, which took a soldier from 25,698 triangles to 7,287, but there
+> is still no distance LOD. Everything in sections 1-4 above, which is about the
+> world library, stands as measured.
+
 Beyond (A), which is the big one:
 
 1. **The character bake belongs on the GPU.** `src/ai/textures.js` reimplements, in

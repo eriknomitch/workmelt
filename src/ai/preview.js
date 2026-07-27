@@ -10,7 +10,7 @@
 
 import * as THREE from 'three';
 import { Rng } from '../core/rng.js';
-import { SoldierMaterials } from './textures.js';
+import { SoldierMaterials, liveryFor } from './livery.js';
 import { buildSoldier, VARIANTS } from './soldier.js';
 import { RIG } from './rig.js';
 import { Animator } from './animator.js';
@@ -83,11 +83,7 @@ scene.add(new THREE.HemisphereLight(0x9ab4d0, 0x2a231b, 0.55));
 
 /* ---- characters ---- */
 const rng = new Rng(0xa11ce);
-const materials = new SoldierMaterials(rng.fork(), {
-  size: 512,
-  anisotropy: 8,
-  camo: ['arid', 'woodland', 'urban'],
-});
+const materials = new SoldierMaterials();
 
 const view = q.get('view') ?? 'front';
 const variantName = q.get('variant') ?? 'vanguard';
@@ -95,7 +91,9 @@ const names = view === 'line' ? Object.keys(VARIANTS) : [variantName];
 const actors = [];
 
 for (let i = 0; i < names.length; i++) {
-  const def = buildSoldier(names[i], { rng: rng.fork(), materials });
+  // One livery per body in the line-up, so the preview shows the palette doing
+  // the job it exists for rather than three bodies in the same colour.
+  const def = buildSoldier(names[i], { rng: rng.fork(), materials, livery: liveryFor(i) });
   const { bones, skeleton, root } = RIG.createSkeleton();
   const mesh = new THREE.SkinnedMesh(def.geometry, def.materials);
   mesh.castShadow = true;

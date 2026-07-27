@@ -171,24 +171,6 @@ export const GRAPHICS_OPTIONS = [
     },
   },
   {
-    id: 'characterTextureSize',
-    label: 'Character Textures',
-    group: 'textures',
-    kind: 'enum',
-    restart: true,
-    hint: 'Camo, webbing and skin are baked on the CPU, so this is the one texture knob that costs LOADING time rather than frame time. 1024 is what makes a soldier read as kit rather than as a coloured blob.',
-    values: vals([
-      [AUTO, 'Auto (512)'],
-      [256, '256 (fast load)'],
-      [512, '512'],
-      [1024, '1024 (slow load)'],
-    ]),
-    preset: (q) => q.characterTextureSize ?? 512,
-    apply(q, v) {
-      q.characterTextureSize = v;
-    },
-  },
-  {
     id: 'anisotropy',
     label: 'Anisotropic Filter',
     group: 'textures',

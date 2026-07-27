@@ -9,23 +9,20 @@ import { RIG, GRIP_R, GRIP_L, BORE_DIR } from './rig.js';
 import { CharacterBuilder, Noise, appendMesh, computeNormals, emptyMesh } from './geo.js';
 import * as P from './parts.js';
 import { buildWeapon } from './weapon.js';
-import { CLOTH_TILE } from './textures.js';
+import { liveryFor } from './livery.js';
 
 /**
- * Metres of surface per texture tile. `cloth` is deliberately large: it is the
- * tile that has to carry the 0.2-0.4 m camo macro blotches, and the 1.5 mm weave
- * it can no longer resolve is supplied by the shader detail layer instead.
+ * Metres of surface per UV tile. Nothing samples a texture any more — the
+ * character materials are flat and untextured (see `livery.js`) — but the
+ * builder still writes a UV set, and keeping the tile sizes means the attribute
+ * layout the prewarm stand-in mimics is unchanged.
  */
 const MATERIALS = {
-  cloth: { tile: CLOTH_TILE },
+  cloth: { tile: 0.78 },
   plate: { tile: 0.42 },
   gear: { tile: 0.26 },
-  // Boots and gloves share the cordura bake with the pouches but NOT its
-  // roughness: leather-and-rubber footwear is markedly smoother than webbing,
-  // and having the whole kit sit at one gloss is half of why the figure reads as
-  // one extruded blob. Own material name -> own geometry group -> own roughness.
   boot: { tile: 0.26 },
-  skin: { tile: 0.20 },
+  accent: { tile: 0.20 },
   polymer: { tile: 0.15 },
   steel: { tile: 0.18 },
   rubber: { tile: 0.11 },
@@ -33,90 +30,54 @@ const MATERIALS = {
 };
 
 /**
- * Roughness multiplier per material set, applied on top of the baked roughness
- * map so the *relative* variation the bake carries is preserved.
+ * VALUE STEPS (vertex colour, multiplied into the livery albedo)
  *
- *   cloth 0.85   matte ripstop, map averages 0.905
- *   plate 0.55   laminate over foam, map averages 0.62
- *   boot  0.70   waxed leather / rubber, cordura map averages 0.79
+ * A livery gives a figure ONE hue, so every piece of kit on it would land on
+ * one flat value if nothing separated them — the "single extruded blob" read
+ * that the old camo bake spent an albedo budget escaping. The escape now is
+ * pure value: each part multiplies its material's livery colour by a step
+ * below, and the baked capsule AO multiplies that again. Cloth is the
+ * reference at 1.0 and everything else sits under it.
  *
- * These three are the values the silhouette needs: at 25 m the only thing that
- * separates a plate carrier from the jacket under it is the width of its
- * specular lobe.
- */
-const ROUGH = { cloth: 0.85 / 0.905, plate: 0.55 / 0.62, boot: 0.7 / 0.79 };
-
-/** Detail tile size in metres — must match `bakeDetail` in textures.js. */
-const DETAIL_TILE = 0.05;
-
-/**
- * ALBEDO BUDGET (linear, after the vertex tint multiplies the map)
- *
- * MEASURED, not asserted — `node src/ai/selftest.mjs` prints this table from the
- * geometry and the real bakes, and `SoldierMaterials` prints the cloth map's mean
- * and range at boot. Current values:
- *
- *   uniform cloth      0.092-0.094   map mean 0.104, every texel in 0.040-0.152
- *   helmet cover       0.064         deliberately off the uniform value
- *   mag/admin pouches  0.058-0.076
- *   knee + elbow pads  0.057-0.063
- *   carrier            0.047         laminate, and smoother than the cloth
- *   webbing / sling    0.051-0.054
- *   boots              0.032
- *   gloves             0.032-0.048
- *   skin               0.152-0.190
- *
- * Real desert multicam is 0.18-0.32 and that is what this used to target, but the
- * environment it stands in currently behaves like 0.05-0.09 albedo on screen
- * (see the measurement table in textures.js), so a physically-honest uniform
- * rendered brighter than sunlit plaster and read as a white mannequin. The whole
- * kit is therefore scaled by one documented constant, `KIT_CAL`, which keeps the
- * *hierarchy* — cloth brightest, pouches under it, carrier under that, boots and
- * gloves darkest — because that internal value structure is what breaks the "one
- * extruded blob" read at 25 m. Raise `CLOTH_BUDGET.mean` and `KIT_CAL` together
- * if the world's albedo is ever brought up to physical values.
+ * These are neutral by construction. A tint here would fight the livery, which
+ * is the only thing in the frame allowed to say what colour a player is.
  */
 const GEAR = {
-  webbing: [0.70, 0.70, 0.70],
-  sling: [0.70, 0.70, 0.70],
-  pouch: [0.84, 0.84, 0.84],
-  pouchAlt: [0.76, 0.76, 0.76],
-  dump: [0.72, 0.72, 0.72],
-  belt: [0.62, 0.61, 0.57],
-  pad: [0.55, 0.55, 0.55],
-  strap: [0.56, 0.56, 0.56],
-  wrap: [0.56, 0.54, 0.50],
-  glove: [0.38, 0.372, 0.363],
-  boot: [0.22, 0.209, 0.198],
-  lace: [0.21, 0.204, 0.198],
-  // A hard ballistic mask is moulded polymer, not webbing: near-black with a
-  // clean sheen, which is what makes the lower face read as a mask at 35 m
-  // instead of another patch of tan cloth.
-  mask: [0.62, 0.63, 0.66],
+  webbing: [0.86, 0.86, 0.86],
+  sling: [0.86, 0.86, 0.86],
+  pouch: [1.00, 1.00, 1.00],
+  pouchAlt: [0.90, 0.90, 0.90],
+  dump: [0.94, 0.94, 0.94],
+  belt: [0.74, 0.74, 0.74],
+  pad: [0.64, 0.64, 0.64],
+  strap: [0.66, 0.66, 0.66],
+  wrap: [0.80, 0.80, 0.80],
+  glove: [0.95, 0.95, 0.95],
+  boot: [0.88, 0.88, 0.88],
+  lace: [0.62, 0.62, 0.62],
+  // A hard ballistic mask is moulded polymer, not webbing: it keeps the head
+  // reading as a mask rather than another facet of the accent colour.
+  mask: [0.92, 0.92, 0.92],
 };
 
 /**
- * Visual variants. Each is a different silhouette, not a recolour: helmet vs
- * wrapped head, full plate vs chest rig, carbine vs long rifle.
+ * Visual variants. Each is a different SILHOUETTE, never a recolour: helmet vs
+ * wrapped head, full plate vs chest rig, carbine vs long rifle. Colour is the
+ * livery's job and a variant must not touch it — two players who happen to draw
+ * the same variant still have to be told apart instantly, and two players on the
+ * same livery never happens (see `liveryFor` and the relay's slot assignment).
  *
- * The three tints are hue shifts at roughly unit luminance — value is set per
- * part by the table above, so a variant can change colour family without
- * dragging every piece of its kit out of the albedo budget.
+ * `helmetTint` is the one survivor of the old tint set, and it is a VALUE step
+ * rather than a hue: the head has to separate from the torso at 35 m.
  */
 export const VARIANTS = {
   vanguard: {
-    camo: 'arid',
-    clothTint: [1.03, 1.0, 0.94],
-    gearTint: [1.08, 0.98, 0.80], // coyote brown
-    plateTint: [1.02, 0.96, 0.84],
-    skinTint: [1.0, 0.94, 0.88],
     helmet: true,
     helmetCover: true,
-    helmetTint: [0.72, 0.72, 0.68],
+    helmetTint: [0.80, 0.80, 0.80],
     goggles: true,
     gogglesDown: true,
     faceWrap: true,
-    beard: false,
     kneePads: true,
     fullCarrier: true,
     weapon: 'carbine',
@@ -124,11 +85,6 @@ export const VARIANTS = {
     scale: 1.0,
   },
   irregular: {
-    camo: 'woodland',
-    clothTint: [0.98, 1.02, 0.94],
-    gearTint: [0.92, 0.96, 0.74], // olive drab
-    plateTint: [0.90, 0.94, 0.80],
-    skinTint: [0.86, 0.80, 0.74],
     helmet: false,
     headWrap: true,
     goggles: false,
@@ -136,7 +92,6 @@ export const VARIANTS = {
     // dark band at the eye line or it is a featureless egg at 35 m
     shades: true,
     faceWrap: true,
-    beard: true,
     kneePads: false,
     fullCarrier: false,
     weapon: 'ak',
@@ -144,21 +99,15 @@ export const VARIANTS = {
     scale: 0.985,
   },
   breacher: {
-    camo: 'urban',
-    clothTint: [0.98, 0.99, 1.02],
-    gearTint: [0.84, 0.86, 0.90], // wolf grey
-    plateTint: [0.86, 0.88, 0.92],
-    skinTint: [1.06, 0.98, 0.92],
     helmet: true,
-    helmetCover: false, // bare painted shell instead of a cloth cover
-    helmetTint: [0.82, 0.83, 0.86],
+    helmetCover: false, // bare shell on the carrier laminate instead of cloth
+    helmetTint: [0.90, 0.90, 0.90],
     // goggles parked on the shell (not over the eyes like vanguard) plus a hard
     // ballistic half-mask: same helmet family, completely different head read
     goggles: true,
     gogglesDown: false,
     faceWrap: true,
     maskHard: true,
-    beard: true,
     kneePads: true,
     fullCarrier: true,
     weapon: 'carbine',
@@ -173,13 +122,23 @@ const bp = (name) => {
 };
 
 /**
- * Build one variant.
- * @returns { geometry, materials: THREE.Material[], weapon, stats }
+ * Build one variant. The geometry is shared by every character of that variant
+ * regardless of livery; `materials` here is only the default set, because colour
+ * lives entirely in the material and never in the mesh.
+ *
+ * @returns { geometry, materialNames, materials: THREE.Material[], weapon, stats }
  */
-export function buildSoldier(name, { rng, materials }) {
+export function buildSoldier(name, { rng, materials, livery = liveryFor(0) }) {
   const V = VARIANTS[name] ?? VARIANTS.vanguard;
   const nz = new Noise(rng.fork());
-  const B = new CharacterBuilder(RIG, { noise: nz, materials: MATERIALS });
+  // `weathering: 0` — the grime / ground dirt / settled dust / edge wear terms
+  // in the vertex bake all pull toward warm neutrals, which is exactly what a
+  // photoreal uniform wants and exactly what a livery cannot survive: a neon
+  // suit dragged 30 % toward brown is a muddy suit, and the colour is the only
+  // thing identifying the player wearing it. The per-part amounts are left in
+  // the table below so the realistic bake is one constant away. Baked AO and
+  // the broad value mottle are unaffected and still carry the form.
+  const B = new CharacterBuilder(RIG, { noise: nz, materials: MATERIALS, weathering: 0 });
 
   const shR = bp('UpperArmR'), elR = bp('ForearmR'), wrR = bp('HandR');
   const shL = bp('UpperArmL'), elL = bp('ForearmL'), wrL = bp('HandL');
@@ -528,31 +487,25 @@ export function buildSoldier(name, { rng, materials }) {
   /* ---------------- head --------------------------------------------- */
   const wrapped = V.faceWrap;
   B.add(P.headMesh(nz, head, {}), {
-    material: 'skin',
+    material: 'accent',
     bone: 'Head',
     colour: [1, 1, 1],
     grime: 0.3,
     dirt: 0.06,
     name: 'head',
   });
-  B.add(P.nose(nz, head), { material: 'skin', bone: 'Head', grime: 0.25, name: 'nose' });
-  B.add(P.ear(nz, head, -1), { material: 'skin', bone: 'Head', grime: 0.45, name: 'earR' });
-  B.add(P.ear(nz, head, 1), { material: 'skin', bone: 'Head', grime: 0.45, name: 'earL' });
-  for (const side of [-1, 1]) {
-    B.add(P.eyeball(head, side), {
-      material: 'polymer',
-      bone: 'Head',
-      colour: [0.55, 0.5, 0.45],
-      grime: 0.2,
-      name: 'eye',
-    });
-  }
+  // NO FACE. The nose, the ears and the two eyeballs that used to go on here
+  // are gone, and `headMesh` no longer warps a brow, sockets, cheekbones or a
+  // chin into the skull. A head is a faceted block in the accent colour, and
+  // what makes it read as a head is the helmet, the visor band and the mask —
+  // silhouette, not anatomy. Seven fewer parts, and the four smallest, most
+  // triangle-dense meshes on the whole character are the ones that went.
   // neck
   B.add(
     P.limbTube(nz, [head[0], head[1] - 0.10, head[2] - 0.012], [head[0], head[1] - 0.05, head[2] - 0.008], [head[0], head[1], head[2]],
       [0.058, 0.056, 0.054], { rings: 5, seg: 14, fold: 0.001 }),
     {
-      material: 'skin',
+      material: 'accent',
       bones: ['Neck', 'Head', 'Spine2'],
       bias: [1, 0.7, 0.4],
       grime: 0.5,
@@ -579,12 +532,17 @@ export function buildSoldier(name, { rng, materials }) {
   }
 
   if (V.helmet) {
-    // A covered helmet is CLOTH, not plastic: the camo cover is the single
-    // biggest reason a helmet reads as a helmet rather than a bowling ball. Its
-    // tint deliberately lands off the uniform value so the head separates from
-    // the torso at range. A bare shell goes on the laminate set instead.
+    // A COVERED helmet goes on the accent, with the head and the neck. That is
+    // what makes the accent colour worth having: every variant covers the skull
+    // completely, so a livery whose accent only reached the head mesh was
+    // paying for a colour nobody could ever see. On the accent, the helmet is
+    // the hot version of the player's hue sitting a value step above the
+    // uniform — the head separates from the torso at 35 m, which is exactly
+    // what the old camo-cover tint was for, done with hue instead of pattern.
+    // A bare shell stays on the carrier laminate: that dark head is the whole
+    // point of the breacher silhouette.
     B.add(P.helmet(nz, head, V), {
-      material: V.helmetCover ? 'cloth' : 'plate',
+      material: V.helmetCover ? 'accent' : 'plate',
       bone: 'Head',
       colour: V.helmetTint ?? [1, 1, 1],
       grime: 0.6,
@@ -632,11 +590,13 @@ export function buildSoldier(name, { rng, materials }) {
   } else if (V.headWrap) {
     const wrap = P.headScarf(nz, head);
     B.add(wrap, {
-      // hue comes from the variant's cloth tint; the VALUE sits below the uniform
-      // so the head is never the brightest thing on the figure
-      material: 'cloth',
+      // On the accent for the same reason the helmet cover is: it is the whole
+      // head, and the head is where a livery has to read. The value step keeps
+      // it a shade under the helmet's, so a wrapped head and a helmeted one are
+      // still two different silhouettes AND two different values.
+      material: 'accent',
       bone: 'Head',
-      colour: [0.82, 0.80, 0.76],
+      colour: [0.88, 0.88, 0.88],
       grime: 0.8,
       dirt: 0.25,
       dust: 0.4,
@@ -729,10 +689,11 @@ export function buildSoldier(name, { rng, materials }) {
         'update MATERIAL_SLOTS or prewarmMaterials will reorder opaque draws'
     );
   }
-  const mats = resolveMaterials(name, built.materialNames, materials);
+  const mats = resolveMaterials(built.materialNames, materials, livery);
 
   return {
     geometry: built.geometry,
+    materialNames: built.materialNames,
     materials: mats,
     parts: built.parts,
     weapon: W,
@@ -756,82 +717,28 @@ export function buildSoldier(name, { rng, materials }) {
  * the pixel gate. `buildSoldier` asserts the order below still matches.
  */
 export const MATERIAL_SLOTS = Object.freeze([
-  'cloth', 'gear', 'boot', 'rubber', 'plate', 'polymer', 'skin', 'glass', 'steel',
+  'cloth', 'gear', 'boot', 'rubber', 'plate', 'polymer', 'accent', 'glass', 'steel',
 ]);
 
 /**
- * Resolve a variant's material slot names to real materials.
+ * Resolve a geometry's material slot names to real materials for one livery.
  *
  * Split out of `buildSoldier` on purpose: `AiSystem.prewarmMaterials()` needs
- * every material a variant will ever ask for so their shader programs can be
+ * every material a character will ever ask for so their shader programs can be
  * compiled while a loading screen is up, and it must be able to get them WITHOUT
  * building a single triangle (geometry construction draws from the shared RNG
  * stream, so doing it early would move every downstream random draw and change
- * the picture). `SoldierMaterials.get()` is a pure function of its key and opts,
- * so calling it early is free of side effects.
+ * the picture). `SoldierMaterials.get()` is a pure function of its arguments, so
+ * calling it early is free of side effects.
  *
- * `detail` is the second half of the two-scale system: the base tile carries the
- * macro camo and the garment seams, this tile carries the weave and the webbing
- * ribbing. `scale` converts the base tile's UVs (metres / tile) into the detail
- * tile's, so the physical size of a thread is identical on a sleeve, a pouch and
- * a boot without any per-part tuning.
+ * The variant name is no longer an input, and that is the point: the geometry
+ * decides the silhouette, the livery decides the colour, and the two are
+ * independent. One prewarm covers every livery because colour is a uniform and
+ * not a program permutation — see the note on `customProgramCacheKey`.
+ *
+ * `slots` MUST arrive in the builder's own order (`MATERIAL_SLOTS`); see the
+ * note there for why.
  */
-export function resolveMaterials(name, slots, materials) {
-  const V = VARIANTS[name] ?? VARIANTS.vanguard;
-  const detail = (set, matName, normal, rough) => ({
-    set,
-    scale: MATERIALS[matName].tile / DETAIL_TILE,
-    normal,
-    rough,
-  });
-  return slots.map((n) => {
-    switch (n) {
-      case 'cloth':
-        return materials.get(`camo_${V.camo}`, {
-          key: name,
-          tint: V.clothTint,
-          rough: ROUGH.cloth,
-          metal: 1,
-          // 1.15, not 1.0: the base tile now carries a 1-2 cm crease field and
-          // the folds have to actually catch the key light at 25 m.
-          normalScale: 1.15,
-          detail: detail('cloth', 'cloth', 0.45, 0.16),
-        });
-      case 'plate':
-        return materials.get('plate', {
-          key: name,
-          tint: V.plateTint,
-          rough: ROUGH.plate,
-          normalScale: 1.0,
-          detail: detail('nylon', 'plate', 0.45, 0.10),
-        });
-      case 'gear':
-        return materials.get('nylon', {
-          key: name,
-          tint: V.gearTint,
-          normalScale: 1.1,
-          detail: detail('nylon', 'gear', 0.5, 0.14),
-        });
-      case 'boot':
-        return materials.get('nylon', {
-          key: `${name}_boot`,
-          tint: V.gearTint,
-          rough: ROUGH.boot,
-          normalScale: 1.1,
-          detail: detail('nylon', 'boot', 0.5, 0.10),
-        });
-      case 'skin':
-        return materials.get('skin', { key: name, tint: V.skinTint, normalScale: 0.8, ao: 0.6 });
-      case 'polymer':
-        return materials.get('polymer', { key: name, normalScale: 1.0 });
-      case 'steel':
-        return materials.get('steel', { key: name, normalScale: 1.0 });
-      case 'rubber':
-        return materials.get('rubber', { key: name, normalScale: 1.2 });
-      case 'glass':
-        return materials.glass();
-      default:
-        return materials.get('polymer', { key: name });
-    }
-  });
+export function resolveMaterials(slots, materials, livery = liveryFor(0)) {
+  return slots.map((n) => materials.get(n, livery));
 }

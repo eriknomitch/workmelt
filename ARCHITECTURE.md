@@ -260,6 +260,14 @@ full requirements below.
 
 - **No flat/untextured surfaces.** Every material needs albedo variation, a
   normal map, roughness variation, and a detail layer visible at 0.5 m.
+  **Characters are the standing exception**, deliberately and by direction:
+  `src/ai/livery.js` renders them flat-shaded and untextured in one saturated
+  hue per player, and `src/ai/parts.js` builds them at a fraction of the
+  sections the anatomy was authored at. A player is identified by COLOUR and
+  SILHOUETTE at 30 m, which a camo pattern actively works against, and that
+  read is worth more than surface detail nobody resolves past 5 m. The
+  first-person arms (`src/weapons/hands.js`) took the same trade first. Do not
+  "fix" either back to textured without changing this line.
 - **No uniform lighting.** Contact shadows, bounce, ambient occlusion, and a
   clear key/fill/rim separation.
 - **Physically plausible values.** Albedo in 0.02–0.9, metals are 0 or 1,

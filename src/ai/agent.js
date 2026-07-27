@@ -99,12 +99,19 @@ export class Agent {
     const def = ai.variant(this.variantName);
     this.def = def;
     this.scale = def.variant.scale ?? 1;
+    /**
+     * Colour slot. `ai.spawn` hands bots one out of the bot range; a caller can
+     * pin one (the staged debug tableau does, so a capture stays deterministic).
+     * The geometry is shared with every other character of this variant — only
+     * the material array differs.
+     */
+    this.livery = opts.livery ?? 0;
 
     /* ---------------- body ---------------- */
     const { bones, skeleton, root } = RIG.createSkeleton();
     this.bones = bones;
     this.skeleton = skeleton;
-    this.mesh = new THREE.SkinnedMesh(def.geometry, def.materials);
+    this.mesh = new THREE.SkinnedMesh(def.geometry, ai.materialsFor(this.variantName, this.livery));
     this.mesh.castShadow = true;
     this.mesh.receiveShadow = true;
     this.mesh.frustumCulled = true;
