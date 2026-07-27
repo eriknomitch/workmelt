@@ -21,8 +21,21 @@ export const TARGET_SHOT = 'combat';
 /**
  * Per-tier floors, expressed as a fraction of the same measurement at `ultra`.
  * A tier is allowed to be cheaper. It is not allowed to stop being readable.
+ *
+ * Calibrated against the 2026-07 baseline, where the shipped presets measured
+ * 0.53-0.65x (performance), 0.68-0.78x (low), 0.69-0.75x (medium) and 0.99x
+ * (high) of ultra's `microDetail`. The floors below are therefore a demand for
+ * improvement at the three cheap tiers, not a description of today.
  */
-export const SHARPNESS_FLOOR = { performance: 0.6, low: 0.8, medium: 0.92, high: 0.98, ultra: 1 };
+export const SHARPNESS_FLOOR = { performance: 0.65, low: 0.8, medium: 0.88, high: 0.97, ultra: 1 };
+/** Same shape, for local contrast retained inside the darkest quartile. */
+export const SHADOW_FLOOR = { performance: 0.6, low: 0.75, medium: 0.85, high: 0.95, ultra: 1 };
+/**
+ * Absolute ceiling on near-black pixels, any tier, any shot. The baseline put
+ * the night shot at 11.6% at ultra and 6.8% at performance — the top tier is
+ * the one that turns a tenth of the frame into a hole you cannot see into.
+ */
+export const CRUSH_CAP_PCT = 8;
 /**
  * costIndex ceiling as a fraction of `ultra`. This is where the FPS comes from.
  * Note that at the cheap tiers the model is dominated by geometry, not pixels —
@@ -38,7 +51,6 @@ export const ENEMY_MIN_WEBER = 0.15;
 export const ENEMY_PX_RETENTION = 0.5;
 export const ENEMY_WEBER_RETENTION = 0.8;
 export const CRUSH_MARGIN_PCT = 1.0;
-export const SHADOW_DETAIL_FLOOR = 0.75;
 export const TONE_DRIFT_MAX = 8;
 export const TIER_SEPARATION = 0.85;
 export const HW_P50_RATIO = 1.0;
@@ -87,9 +99,10 @@ export function evaluate(report) {
         const a = m?.shots?.[shot];
         const b = ref.shots?.[shot];
         if (!a || !b) continue;
-        sharp.push({ key: `${tier}/${shot}`, value: r3(a.edgeEnergy / (b.edgeEnergy || 1)), floor: SHARPNESS_FLOOR[tier] ?? 1 });
-        crush.push({ key: `${tier}/${shot}`, value: r3(b.crushPct + CRUSH_MARGIN_PCT - a.crushPct), actual: a.crushPct, cap: r3(b.crushPct + CRUSH_MARGIN_PCT) });
-        shadow.push({ key: `${tier}/${shot}`, value: r3(a.shadowDetail / (b.shadowDetail || 1)) });
+        sharp.push({ key: `${tier}/${shot}`, value: r3(a.microDetail / (b.microDetail || 1)), floor: SHARPNESS_FLOOR[tier] ?? 1 });
+        const cap = Math.min(CRUSH_CAP_PCT, r3(b.crushPct + CRUSH_MARGIN_PCT));
+        crush.push({ key: `${tier}/${shot}`, value: r3(cap - a.crushPct), actual: a.crushPct, cap });
+        shadow.push({ key: `${tier}/${shot}`, value: r3(a.shadowDetail / (b.shadowDetail || 1)), floor: SHADOW_FLOOR[tier] ?? 1 });
         tone.push({ key: `${tier}/${shot}`, value: r3(TONE_DRIFT_MAX - Math.abs(a.meanL - b.meanL)), drift: r3(Math.abs(a.meanL - b.meanL)) });
       }
     }
@@ -98,7 +111,7 @@ export function evaluate(report) {
       pass(
         'V1',
         'Sharpness floor per tier',
-        'edgeEnergy >= floor x ultra (perf .60 / low .80 / med .92 / high .98)',
+        'microDetail >= floor x ultra (perf .65 / low .80 / med .88 / high .97)',
         sharpFails.length
           ? sharpFails.map((s) => `${s.key} ${s.value} < ${s.floor}`).join(', ')
           : `worst ${worst(sharp.map((s) => ({ ...s, value: r3(s.value / s.floor) }))).key} at ${r3(Math.min(...sharp.map((s) => s.value / s.floor)))}x its floor`,
@@ -106,13 +119,13 @@ export function evaluate(report) {
       )
     );
     const crushFails = crush.filter((c) => c.value < 0);
-    const shadowFails = shadow.filter((s) => s.value < SHADOW_DETAIL_FLOOR);
+    const shadowFails = shadow.filter((s) => s.value < s.floor);
     out.push(
       pass(
         'V2',
         'Shadow legibility',
-        `crushPct <= ultra+${CRUSH_MARGIN_PCT}pp and shadowDetail >= ${SHADOW_DETAIL_FLOOR}x ultra`,
-        [...crushFails.map((c) => `${c.key} crush ${c.actual}% > ${c.cap}%`), ...shadowFails.map((s) => `${s.key} shadowDetail ${s.value}x`)].join(', ') ||
+        `crushPct <= min(${CRUSH_CAP_PCT}%, ultra+${CRUSH_MARGIN_PCT}pp) and shadowDetail >= floor x ultra (perf .60 / low .75 / med .85 / high .95)`,
+        [...crushFails.map((c) => `${c.key} crush ${c.actual}% > ${c.cap}%`), ...shadowFails.map((s) => `${s.key} shadowDetail ${s.value}x < ${s.floor}`)].join(', ') ||
           `worst shadowDetail ${worst(shadow).key} ${worst(shadow).value}x`,
         crush.length ? crushFails.length === 0 && shadowFails.length === 0 : null
       )
@@ -137,9 +150,8 @@ export function evaluate(report) {
   const refActors = targets.find((t) => t.tier === REFERENCE_TIER)?.s.actors ?? null;
   const legibilityFails = [];
   for (const t of targets) {
+    if (t.tier === REFERENCE_TIER) continue;
     for (const a of t.s.actors) {
-      if (a.distance <= NEAR_ENEMY_M && a.px > 0 && a.weber < ENEMY_MIN_WEBER)
-        legibilityFails.push(`${t.tier} #${a.id} at ${a.distance}m weber ${a.weber}`);
       const ref = refActors?.find((r) => r.id === a.id);
       if (!ref || ref.px <= 0) continue;
       if (a.px < ref.px * ENEMY_PX_RETENTION)
@@ -153,14 +165,34 @@ export function evaluate(report) {
   out.push(
     pass(
       'V3',
-      'Enemy legibility',
-      `weber >= ${ENEMY_MIN_WEBER} inside ${NEAR_ENEMY_M}m; vs ultra keep ${ENEMY_PX_RETENTION}x pixels and ${ENEMY_WEBER_RETENTION}x contrast per actor`,
+      'Enemy legibility holds up at cheaper tiers',
+      `vs ultra, per actor: keep ${ENEMY_PX_RETENTION}x silhouette pixels and ${ENEMY_WEBER_RETENTION}x contrast, and lose nobody`,
       targets.length
         ? legibilityFails.length
           ? legibilityFails.slice(0, 6).join(', ') + (legibilityFails.length > 6 ? ` (+${legibilityFails.length - 6} more)` : '')
           : targets.map((t) => `${t.tier} ${t.s.visible}/${t.s.total} w>=${t.s.minWeber}`).join(', ')
         : 'not measured',
       targets.length ? legibilityFails.length === 0 : null
+    )
+  );
+
+  // The relative check above cannot see a scene where enemies are hard to read
+  // at EVERY tier, ultra included. This one can. It uses the median rather than
+  // the worst actor on purpose: one soldier standing against a wall of his own
+  // brightness is art, a whole squad doing it is a bug.
+  const refNear = (refActors ?? []).filter((a) => a.distance <= NEAR_ENEMY_M && a.px > 0);
+  const medianWeber = refNear.length
+    ? [...refNear].sort((a, b) => a.weber - b.weber)[(refNear.length / 2) | 0].weber
+    : null;
+  out.push(
+    pass(
+      'V5',
+      'Enemies read against the scene at all',
+      `median Weber contrast of enemies inside ${NEAR_ENEMY_M}m at ${REFERENCE_TIER} >= ${ENEMY_MIN_WEBER}`,
+      medianWeber === null
+        ? 'not measured'
+        : `median ${medianWeber} over ${refNear.length} actors (worst ${Math.min(...refNear.map((a) => a.weber))})`,
+      medianWeber === null ? null : medianWeber >= ENEMY_MIN_WEBER
     )
   );
 

@@ -95,6 +95,8 @@ function resampleThroughLowRes(img, factor) {
   const upscaled = resampleThroughLowRes(sharp, 3.33); // ~ renderScale 0.3
   const a = imageMetrics(sharp);
   const b = imageMetrics(upscaled);
+  ok('upscaling from a low internal buffer collapses microDetail',
+    b.microDetail < a.microDetail * 0.5, `${a.microDetail} -> ${b.microDetail}`);
   ok('upscaling from a low internal buffer collapses edgeEnergy',
     b.edgeEnergy < a.edgeEnergy * 0.5, `${a.edgeEnergy} -> ${b.edgeEnergy}`);
   ok('upscaling collapses detailPct', b.detailPct < a.detailPct * 0.5, `${a.detailPct}% -> ${b.detailPct}%`);
@@ -102,7 +104,7 @@ function resampleThroughLowRes(img, factor) {
 
   const mild = imageMetrics(resampleThroughLowRes(sharp, 1.4)); // ~ renderScale 0.72
   ok('a mild downscale scores between sharp and heavy',
-    mild.edgeEnergy < a.edgeEnergy && mild.edgeEnergy > b.edgeEnergy, `${mild.edgeEnergy}`);
+    mild.microDetail < a.microDetail && mild.microDetail > b.microDetail, `${mild.microDetail}`);
 }
 
 /* ------------------------------------------------------ crush and contrast */
@@ -197,7 +199,7 @@ function resampleThroughLowRes(img, factor) {
 /* ------------------------------------------------------------- evaluation */
 
 {
-  const shot = (edge, crush = 0.2, shadowDetail = 3, meanL = 90) => ({ edgeEnergy: edge, crushPct: crush, shadowDetail, meanL });
+  const shot = (micro, crush = 0.2, shadowDetail = 3, meanL = 90) => ({ microDetail: micro, edgeEnergy: micro * 4, crushPct: crush, shadowDetail, meanL });
   const tier = (name, edge, targets) => ({
     tier: name,
     shots: { hero: shot(edge), interior: shot(edge), night: shot(edge) },
@@ -225,7 +227,7 @@ function resampleThroughLowRes(img, factor) {
   ok('hardware criteria are unverified, and unverified is not met', clean.summary.met === false);
 
   const blurry = structuredClone(report);
-  for (const s of Object.values(blurry.visibility.tiers[0].shots)) s.edgeEnergy = 4;
+  for (const s of Object.values(blurry.visibility.tiers[0].shots)) s.microDetail = 4;
   ok('a blurry performance tier fails V1', evaluate(blurry).criteria.find((c) => c.id === 'V1').status === 'fail');
 
   const invisible = structuredClone(report);
@@ -239,6 +241,16 @@ function resampleThroughLowRes(img, factor) {
   const gone = structuredClone(report);
   gone.visibility.tiers[0].targets = { total: 2, visible: 1, minWeber: 0.5, minPx: 900, actors: [{ id: 1, distance: 14, px: 900, weber: 0.5 }, { id: 2, distance: 55, px: 0, weber: 0 }] };
   ok('an enemy that vanished entirely fails V3', evaluate(gone).criteria.find((c) => c.id === 'V3').status === 'fail');
+
+  const camo = structuredClone(report);
+  for (const t of camo.visibility.tiers) t.targets.actors[0].weber = 0.05;
+  ok('enemies that read badly at ultra too fail V5', evaluate(camo).criteria.find((c) => c.id === 'V5').status === 'fail');
+  ok('...and V3 stays clean, because every tier is equally bad', evaluate(camo).criteria.find((c) => c.id === 'V3').status === 'pass');
+
+  const blackHole = structuredClone(report);
+  for (const t of blackHole.visibility.tiers) t.shots.night.crushPct = 9;
+  ok('a frame that is 9% near-black fails V2 at every tier, ultra included',
+    evaluate(blackHole).criteria.find((c) => c.id === 'V2').status === 'fail');
 
   const pricey = structuredClone(report);
   pricey.cost.tiers[0].costIndex = 9;

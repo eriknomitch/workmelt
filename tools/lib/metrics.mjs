@@ -41,6 +41,25 @@ export function gradientPlane(L, width, height) {
   return g;
 }
 
+/** Separable 1-4-1 gaussian, `passes` times. Radius grows ~1px per pass. */
+export function blurPlane(L, width, height, passes = 1) {
+  let a = Float32Array.from(L);
+  const b = new Float32Array(L.length);
+  for (let p = 0; p < passes; p++) {
+    for (let y = 0; y < height; y++)
+      for (let x = 0; x < width; x++) {
+        const i = y * width + x;
+        b[i] = 0.25 * (x > 0 ? a[i - 1] : a[i]) + 0.5 * a[i] + 0.25 * (x < width - 1 ? a[i + 1] : a[i]);
+      }
+    for (let y = 0; y < height; y++)
+      for (let x = 0; x < width; x++) {
+        const i = y * width + x;
+        a[i] = 0.25 * (y > 0 ? b[i - width] : b[i]) + 0.5 * b[i] + 0.25 * (y < height - 1 ? b[i + width] : b[i]);
+      }
+  }
+  return a;
+}
+
 /** 3x3 box mean, clamped at the edges. */
 function boxMean(L, width, height) {
   const out = new Float32Array(width * height);
@@ -60,11 +79,17 @@ function boxMean(L, width, height) {
 /**
  * The per-image scorecard.
  *
- * - `edgeEnergy`   mean Sobel magnitude. Collapses when the internal buffer is
- *                  upscaled, which is exactly what a low `renderScale` does, so
- *                  it is the resolution-legibility proxy.
- * - `detailPct`    share of pixels carrying a real edge. Same idea, less
- *                  sensitive to a handful of very high-contrast edges.
+ * - `microDetail`  energy in the finest spatial band, |L - gaussian(1px)|. This
+ *                  is the resolution-legibility number: an upscaled buffer
+ *                  cannot invent 1px features, so the band collapses. Measured
+ *                  against the shipped presets it separates them cleanly
+ *                  (0.53-0.65x of ultra at `performance`, 0.99x at `high`)
+ *                  where `edgeEnergy` does not.
+ * - `edgeEnergy`   mean Sobel magnitude. Kept as a secondary reading, NOT as a
+ *                  gate: a tier with TAA off scores high on aliased edges, so
+ *                  it rated `performance` at 0.72x of ultra while the image was
+ *                  a 192x108 buffer stretched to 640x360.
+ * - `detailPct`    share of pixels carrying a real edge. Same caveat.
  * - `crushPct`     share of pixels at or near black. Detail lost to the shadows.
  * - `clipPct`      share of pixels at or near white. Detail lost to the sky/sun.
  * - `shadowDetail` local contrast inside the darkest quartile, in 8-bit levels.
@@ -76,9 +101,10 @@ export function imageMetrics(png) {
   const L = lumaPlane(png);
   const G = gradientPlane(L, width, height);
   const M = boxMean(L, width, height);
+  const B1 = blurPlane(L, width, height, 1);
   const n = L.length;
 
-  let sum = 0, crush = 0, clip = 0, edgeSum = 0, detail = 0;
+  let sum = 0, crush = 0, clip = 0, edgeSum = 0, detail = 0, micro = 0;
   for (let i = 0; i < n; i++) {
     const v = L[i];
     sum += v;
@@ -86,6 +112,7 @@ export function imageMetrics(png) {
     if (v > 250) clip++;
     edgeSum += G[i];
     if (G[i] > 12) detail++;
+    micro += Math.abs(v - B1[i]);
   }
   const sorted = Float32Array.from(L).sort();
   const p25 = percentile(sorted, 0.25);
@@ -105,6 +132,7 @@ export function imageMetrics(png) {
     contrast: r2(percentile(sorted, 0.95) - percentile(sorted, 0.05)),
     crushPct: r2((100 * crush) / n),
     clipPct: r2((100 * clip) / n),
+    microDetail: +(micro / n).toFixed(3),
     edgeEnergy: r2(edgeSum / n),
     detailPct: r2((100 * detail) / n),
     shadowDetail: r2(darkN ? darkSum / darkN : 0),
