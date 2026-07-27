@@ -551,7 +551,7 @@ function buildGround(A, rng) {
     out[0] = 0.2 + n * 0.28;
     out[1] = 0.12 + Math.max(0, (Math.max(Math.abs(x), Math.abs(z)) - 16) / 12) * 0.4 + n * 0.2;
   });
-  A.add('gravel', yard, null);
+  A.add('yard_slab', yard, null);
   A.box('dirt', 0, -0.25, 0, W, 0.5, W);
   yard.dispose();
 
