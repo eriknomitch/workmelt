@@ -147,6 +147,16 @@ export class Room {
       case 'respawn':
         peer.alive = true;
         break;
+      case 'spawn': {
+        // Spawn claim — clients choose their own point (the relay has no map),
+        // and this is what stops two simultaneous respawns landing on the same
+        // ground. Advisory. Mirrors server/index.mjs.
+        if (!Array.isArray(msg.p) || msg.p.length < 3) return;
+        const p = msg.p.map(Number);
+        if (!p.every(Number.isFinite)) return;
+        this._broadcast({ t: 'spawn', id: peer.id, p }, peer.id);
+        break;
+      }
       case 'chat': {
         const text = String(msg.text ?? '').slice(0, 200);
         if (text) this._broadcast({ t: 'chat', id: peer.id, name: peer.name, text });

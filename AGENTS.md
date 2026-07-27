@@ -14,6 +14,7 @@ The browser client lives in `src/`. Features are divided into subsystem director
 - `npm run preview` serves the built client for local verification.
 - `npm run serve` builds, then serves the client and Node relay.
 - `node src/physics/selftest.js` and `node src/ai/selftest.mjs` run subsystem checks.
+- `node src/world/spawns.selftest.mjs` checks the spawn director's scoring headlessly; `node src/world/spawns.probe.mjs` verifies spawn placement, the bot garrison and 30 respawns inside the real built level (needs a browser).
 - `node tools/capture.mjs` performs the required GPU-backed visual smoke test.
 
 ## Coding Style & Naming Conventions
