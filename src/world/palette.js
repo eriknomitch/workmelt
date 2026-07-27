@@ -157,6 +157,26 @@ export const PALETTE = {
     opts: { vertexMasks: true, scale: 1.8, wear: [0, 0.5, 0.45, 0] },
   },
   /**
+   * The refinery apron on Rust: a poured slab under years of blown grit, and
+   * the single biggest surface in that map's frame. Untinted `gravel` reads as
+   * white sand at 30 m — there is nothing to hold a value against a bright sky,
+   * and the whole yard flattens. So: a warm mid tint that sits near 0.22
+   * reflectance, cavity grime doing the tonal work, and `detile` because a 55 m
+   * apron is exactly where a repeating tile announces itself.
+   */
+  yard_slab: {
+    name: 'gravel',
+    surface: 'dirt',
+    opts: {
+      vertexMasks: true,
+      tint: 0xa8977a,
+      scale: 2.1,
+      detile: 0.85,
+      weather: [0.4, 0.06, 0.1, 0.2],
+      wear: [0, 0.5, 0.45, 0],
+    },
+  },
+  /**
    * The contact fillet swept up against anything standing on the ground (see
    * Assembler.put / props.dustSkirt). It has to read as the ground's own grit
    * piled up, so it is the same generator as the road at a slightly darker,
@@ -212,6 +232,72 @@ export const PALETTE = {
   },
   steel: { name: 'metal_brushed', surface: 'metal', opts: { vertexMasks: true, scale: 0.9 } },
   corrugated: { name: 'corrugated', surface: 'metal', opts: { vertexMasks: true, scale: 2.2 } },
+  /**
+   * Corrugated hoarding. Tighter than the 2.2 m roof tile above — fence sheet
+   * really is a finer profile than roof sheet — but only by a third. The first
+   * pass ran this at 0.85 and the containers at 1.25, and both came out as a
+   * comb: at 8 ribs to the tile that is a 10-15 cm pitch, against the ~28 cm a
+   * real corrugation actually has. Measure the pitch, do not eyeball the number.
+   */
+  corrugated_fine: {
+    name: 'corrugated',
+    surface: 'metal',
+    opts: { vertexMasks: true, tint: 0x9a9084, scale: 1.5, normalStrength: 1.3, weather: [0.5, 0.4, 0.35, 0.5] },
+  },
+
+  /**
+   * SHIPPING CONTAINERS — the Rust map's whole vocabulary of cover.
+   *
+   * All four are the corrugated generator under a paint tint. The tints are
+   * desaturated on purpose — a saturated primary-red box reads as a toy — but
+   * the first pass went too far the other way: measured against a sunset frame,
+   * red/blue/green all landed near 0.06 reflectance and the entire yard merged
+   * into one dark mass with no cover legible inside it. These sit around
+   * 0.18-0.28, which is where a painted steel box actually is, and which keeps
+   * three distinguishable values in a frame full of containers.
+   */
+  /**
+   * SHIPPING CONTAINER PAINT. `scale` is a tile size in metres, so BIGGER means
+   * coarser: the ribs have to land at roughly the 28 cm pitch of a real ISO
+   * corrugation, and 2.4 is what does that on this generator.
+   */
+  container_red: {
+    name: 'corrugated',
+    surface: 'metal',
+    opts: { vertexMasks: true, tint: 0xb5624a, scale: 2.4, normalStrength: 1.25, weather: [0.55, 0.45, 0.5, 0.5] },
+  },
+  container_blue: {
+    name: 'corrugated',
+    surface: 'metal',
+    opts: { vertexMasks: true, tint: 0x5c7f9c, scale: 2.4, normalStrength: 1.25, weather: [0.5, 0.45, 0.5, 0.5] },
+  },
+  container_green: {
+    name: 'corrugated',
+    surface: 'metal',
+    opts: { vertexMasks: true, tint: 0x6d8460, scale: 2.4, normalStrength: 1.25, weather: [0.5, 0.4, 0.4, 0.5] },
+  },
+  container_sand: {
+    name: 'corrugated',
+    surface: 'metal',
+    opts: { vertexMasks: true, tint: 0xb9a988, scale: 2.4, normalStrength: 1.25, weather: [0.6, 0.4, 0.45, 0.5] },
+  },
+  /**
+   * Structural steel that is PAINTED and only rusting through at the arris —
+   * the derrick legs, gantry stringers and pipe trestles. Distinct from
+   * `metal_rust`, which is bare corroded sheet: a whole 14 m tower in bare rust
+   * reads as one orange silhouette with no structure in it.
+   */
+  steel_frame: {
+    name: 'metal_painted',
+    surface: 'metal',
+    opts: { vertexMasks: true, tint: 0x7c6a58, scale: 0.75, normalStrength: 1.2, weather: [0.6, 0.4, 0.5, 0.5] },
+  },
+  /** Walkway grating and stair treads: darker, and rough enough to kill glare. */
+  steel_grate: {
+    name: 'metal_brushed',
+    surface: 'metal',
+    opts: { vertexMasks: true, tint: 0x585552, scale: 0.5, normalStrength: 1.2, weather: [0.5, 0.5, 0.5, 0.6] },
+  },
 
   // ---------------------------------------------------------------- organic --
   wood: { name: 'wood', surface: 'wood', opts: { vertexMasks: true, scale: 1.8 } },

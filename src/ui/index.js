@@ -163,6 +163,14 @@ export class UiSystem {
     this._unsubs = [];
     const on = (type, fn) => this._unsubs.push(ctx.events.on(type, fn));
 
+    // The player picked another map on the Match Start screen. The minimap's
+    // bitmap is a bake of the level that no longer exists, so drop it and let
+    // the bake retry loop in update() draw the new one.
+    on('world:rebuilt', () => {
+      this.minimap.invalidate();
+      this._bakeFrame = 0;
+    });
+
     on('weapon:fire', (e) => {
       this.crosshair.onFire(e?.recoil ?? 1);
       if (this.state.simulate) return;

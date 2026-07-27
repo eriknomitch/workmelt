@@ -32,6 +32,7 @@ Two ways in, side by side on the Match Start screen:
 
 | | what happens |
 |---|---|
+| **Map** | Pick the level — **Market** or **Rust**. In a room the map belongs to the *room*: the choice goes to the relay and everybody switches together. |
 | **Bots** | Pick a garrison size — none / light (3) / standard (6) / heavy (12) — and press start. You deploy immediately; no waiting on anyone. |
 | **Multiplayer** | Share the room link. When a second player is in the room, both press **Ready**; the relay fires one start signal, both clients count 3–2–1, and the match begins for both at once. **This mode spawns no bots — it is players only.** |
 
@@ -39,6 +40,17 @@ The garrison is per-client, spawned at the moment you deploy, so a players-only
 match really is empty of AI. A player who arrives after the match has started
 sees "match in progress" and a **Deploy now** button instead of the ready flow —
 nobody already shooting has to wait for them.
+
+### The room's map
+
+The relay stores one map slug per room and hands it back on `welcome` and every
+`lobby` frame. It does not know what maps exist — clients validate the slug
+against their own list and ignore one they do not recognise — but it does own
+that there is a single answer, so two players cannot ready up on different
+levels. The first player into a room sets it; after that any player can change
+it while the match has not started, and doing so clears everyone's ready flag
+(you readied up for a level, and it is not that level any more). A change is
+refused once anybody is deployed.
 
 Ready state, the "is this room live" flag and the start signal live on the relay
 (`maybeStart()` in `server/index.mjs`, mirrored in `worker/room.js`), because two
@@ -100,6 +112,7 @@ non-capture run (disable with `?mp=0`). It:
 | dir | message | meaning |
 |---|---|---|
 | C→S | `join {room, name}` | enter a room |
+| C→S | `map {map}` | change the room's level (refused once anyone is deployed; clears everyone's ready flag) |
 | C→S | `ready {ready}` | toggle my match-start ready flag |
 | C→S | `deploy` | I am in the match now (bots start, or countdown finished) |
 | C→S | `state {s:{p,y,pt,sp,cr,ad,hp,dead,v}}` | transform snapshot (20 Hz) |
@@ -108,9 +121,9 @@ non-capture run (disable with `?mp=0`). It:
 | C→S | `kill {by,headshot}` | victim confirms its own death |
 | C→S | `spawn {p}` | "I am coming in here" — a spawn claim, relayed to the room |
 | C→S | `name` / `chat` / `respawn` / `ping` | misc |
-| S→C | `welcome {id,room,live,peers}` | you joined; who's here; is the match already live |
+| S→C | `welcome {id,room,live,map,peers}` | you joined; who's here; which level; is the match already live |
 | S→C | `peer_join` / `peer_leave` | roster changes |
-| S→C | `lobby {live,players}` | match-start lobby: `[{id,name,ready,deployed}]` |
+| S→C | `lobby {live,players,map}` | match-start lobby: `[{id,name,ready,deployed}]`, plus the room's level |
 | S→C | `match_start {in}` | everyone readied up — count down `in` ms and deploy |
 | S→C | `snapshot {states:[…]}` | everyone's latest transform |
 | S→C | `spawn {id,p}` | somebody else claimed that ground to spawn on |

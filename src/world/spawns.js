@@ -269,14 +269,20 @@ export function standableAt(x, z, margin = 0.55) {
  * above lands on those and puts the spawn on a canvas roof. The result is then
  * checked against the level's own datum, so a probe that came down on a crate
  * instead of the road drops the point.
+ *
+ * `standable` is the map's own cheap occupancy test — `standableAt` above is
+ * the MARKET's, and every map descriptor supplies its own (see
+ * `src/world/maps.js`). Passing it in rather than importing one keeps this
+ * module free of any particular level's layout.
  */
-export function buildSpawnPoints(table, { toWorld, groundY, clear, log } = {}) {
+export function buildSpawnPoints(table, { toWorld, groundY, clear, log, standable } = {}) {
   const points = [];
   const dropped = [];
+  const open = standable ?? standableAt;
   for (let i = 0; i < table.length; i++) {
     const [lx, lz, yaw, zone] = table[i];
     const frozen = i === 0;
-    if (!frozen && !standableAt(lx, lz)) {
+    if (!frozen && !open(lx, lz)) {
       dropped.push({ zone, lx, lz, why: 'not open ground' });
       continue;
     }
@@ -362,6 +368,14 @@ export class SpawnDirector {
    * @param opts.los     (ax,ay,az, bx,by,bz) => boolean — clear line of sight
    * @param opts.tuning  overrides for TUNING
    * @param opts.salt    per-client tie-breaker (the relay peer id, or 0)
+   * @param opts.sources source list to ADOPT BY REFERENCE, from a director this
+   *                     one replaces. `world` hands the old list over when the
+   *                     level is rebuilt on another map: `player`, `ai` and
+   *                     `net` register once at init and would otherwise be
+   *                     invisible to the new director — every spawn would then
+   *                     score as if the map were empty. Adopting the array
+   *                     itself (rather than copying it) keeps the unsubscribe
+   *                     closures `addSource` already handed out working.
    */
   constructor(opts = {}) {
     this.points = opts.points ?? [];
@@ -379,7 +393,7 @@ export class SpawnDirector {
       z.points.push(p);
     }
 
-    this._sources = [];
+    this._sources = opts.sources ?? [];
     /** Pooled actor records: gathering a spawn must not allocate. */
     this._actors = [];
     this._actorCount = 0;
@@ -419,6 +433,11 @@ export class SpawnDirector {
       const i = this._sources.indexOf(fn);
       if (i >= 0) this._sources.splice(i, 1);
     };
+  }
+
+  /** The live source list, for a director that is about to replace this one. */
+  get sources() {
+    return this._sources;
   }
 
   /** Per-client tie-breaker. `net` calls this with its relay-assigned id. */

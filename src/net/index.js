@@ -54,7 +54,7 @@ export class NetSystem {
      *   live      someone in this room is already playing
      *   players   [{ id, name, ready, deployed }] including me
      */
-    this.lobby = { live: false, players: [] };
+    this.lobby = { live: false, players: [], map: null };
     this.ready = false;
     /** Have we ever been welcomed? Separates "connecting" from "dropped out". */
     this.everConnected = false;
@@ -156,7 +156,10 @@ export class NetSystem {
     this._ws = ws;
     ws.onopen = () => {
       this.ui.setStatus('wait');
-      this._send({ t: 'join', room: this.room, name: this.name });
+      // The map goes out with the join: the first client into a room decides
+      // which level the room is on, and everyone after joins the one in
+      // progress. `match` applies whatever comes back on the lobby frame.
+      this._send({ t: 'join', room: this.room, name: this.name, map: this.world?.mapId ?? null });
     };
     ws.onmessage = (ev) => {
       let msg;
@@ -173,7 +176,7 @@ export class NetSystem {
       this.myId = null;
       this.ui.setStatus('off');
       this._clearPeers();
-      this.lobby = { live: false, players: [] };
+      this.lobby = { live: false, players: [], map: this.lobby?.map ?? null };
       this.ready = false;
       this._emitLobby();
       if (this._wantReconnect) this._scheduleReconnect();
@@ -215,6 +218,7 @@ export class NetSystem {
         this.world?.spawns?.setSalt(this.myId);
         this.tickHz = msg.tickHz ?? SEND_HZ;
         this.lobby.live = !!msg.live;
+        if (msg.map) this.lobby.map = msg.map;
         for (const p of msg.peers ?? []) this._ensurePeer(p.id, p.name, p);
         this._updateStatus();
         this._emitLobby();
@@ -236,7 +240,7 @@ export class NetSystem {
         break;
       }
       case 'lobby': {
-        this.lobby = { live: !!msg.live, players: msg.players ?? [] };
+        this.lobby = { live: !!msg.live, players: msg.players ?? [], map: msg.map ?? null };
         // The relay clears ready flags when it fires the start signal; mirror
         // whatever it says about us rather than keeping a local opinion.
         this.ready = !!this.lobby.players.find((p) => p.id === this.myId)?.ready;
@@ -666,6 +670,20 @@ export class NetSystem {
   /* match-start lobby (driven by the `match` subsystem)                   */
   /* ==================================================================== */
 
+  /**
+   * Ask the room to change level.
+   *
+   * The relay owns the answer, exactly as it owns the ready flags: it stores
+   * one map per room and broadcasts it, so two players cannot ready up on
+   * different levels. Nothing is applied locally here — `match` waits for the
+   * lobby frame to come back and switches on that, which is also what makes a
+   * remote player's choice arrive the same way our own does.
+   */
+  setMap(id) {
+    if (!id || id === this.lobby.map) return;
+    this._send({ t: 'map', map: id });
+  }
+
   /** Toggle my ready flag. The relay starts the match once everyone is ready. */
   setReady(on) {
     this.ready = !!on;
@@ -703,6 +721,7 @@ export class NetSystem {
       players: this.lobbyPlayers(),
       myId: this.myId,
       ready: this.ready,
+      map: this.lobby.map,
     });
   }
 

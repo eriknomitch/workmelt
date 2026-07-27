@@ -6,9 +6,15 @@
  * console spam to the shipping code.
  *
  *   node src/world/probe.mjs --shot=hero --port=5206 --eval="w.stats"
+ *   node src/world/probe.mjs --query="map=rust" --eval="w.spawnPoints.length"
  *
  * `w` is the world subsystem, `e` the engine, `THREE` is not available.
  * Only ever run this on port 5206 — every other agent owns a different port.
+ *
+ * `--eval` is evaluated synchronously, so it cannot await. To probe something
+ * asynchronous — a map change, say — kick it off in `--pre`, stash the result
+ * on `window`, and read that back in `--eval`; the settle frames in between are
+ * what give it time to land.
  */
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
@@ -17,13 +23,33 @@ import net from 'node:net';
 
 const args = Object.fromEntries(
   process.argv.slice(2).map((a) => {
-    const m = a.match(/^--([^=]+)(?:=(.*))?$/);
-    return m ? [m[1], m[2] ?? true] : [a, true];
+    // `[\s\S]` rather than `.`, because `.` stops at the first newline and a
+    // `--eval` spanning lines is the normal case here. When it failed to match,
+    // the whole expression silently became a KEY with the value `true`, `EXPR`
+    // fell back to its default, and the probe printed a well-formed answer to a
+    // question nobody asked. An unparsed argument is now loud.
+    const m = a.match(/^--([^=\s]+)(?:=([\s\S]*))?$/);
+    if (!m) {
+      console.error(`[probe] ignoring unrecognised argument: ${a.slice(0, 60)}`);
+      return ['_unparsed', true];
+    }
+    return [m[1], m[2] ?? true];
   })
 );
 const PORT = Number(args.port ?? 5206);
 const SHOT = args.shot ?? 'hero';
 const EXPR = args.eval ?? 'w.stats';
+/**
+ * Extra query string, e.g. `--query="map=rust&prewarm=0"`. The map is resolved
+ * from the URL, so this is how you probe a level other than the default.
+ */
+const QUERY = args.query ? `&${args.query}` : '';
+/**
+ * Boot can take a while: shader pre-warm alone is 30-40 s on a software-GL
+ * sandbox, and the old hard-coded 90 s left nothing for the page to actually
+ * reach its third frame. Raise it rather than guessing whether the run hung.
+ */
+const TIMEOUT = Number(args.timeout ?? 300000);
 
 const portOpen = (port) =>
   new Promise((res) => {
@@ -55,10 +81,11 @@ page.on('console', (m) => logs.push(`[${m.type()}] ${m.text()}`));
 page.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}`));
 
 try {
-  await page.goto(`http://127.0.0.1:${PORT}/?capture=1&shot=${SHOT}`, {
+  await page.goto(`http://127.0.0.1:${PORT}/?capture=1&shot=${SHOT}${QUERY}`, {
     waitUntil: 'domcontentloaded',
+    timeout: TIMEOUT,
   });
-  await page.waitForFunction('window.__READY__ === true', null, { timeout: 90000 });
+  await page.waitForFunction('window.__READY__ === true', null, { timeout: TIMEOUT });
   await page.evaluate((s) => window.__APPLY_SHOT__?.(s), SHOT);
   // --pre="js" runs before the settle and the screenshot: use it to hide a batch
   // and find out which merged mesh a mystery silhouette belongs to.
