@@ -169,6 +169,12 @@ try {
   await settle();
   eq('the latch survives the release', await ads(), true);
 
+  // The optic blends in over a couple of frames before the HUD crosses its
+  // 0.5 threshold, which at software-rasteriser frame rates is a real wait —
+  // poll for it rather than sampling once and calling a slow frame a bug.
+  await page
+    .waitForFunction('window.__ENGINE__.ctx.get("ui").state.ads === true', null, { timeout: 8000 })
+    .catch(() => {});
   // `adsRequested` is gated on more than the button, so report the whole gate
   // — a dead or mantling player failing here is not an input bug.
   const seen = await page.evaluate(() => {
