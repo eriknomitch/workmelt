@@ -21,6 +21,13 @@ export class Room {
     /** ws -> peer */
     this.sessions = new Map();
     this.nextId = 1;
+    /**
+     * The room's level, as an opaque slug. The room does not know what maps
+     * exist and must not: it stores whatever the clients agree on and hands it
+     * back, and each client validates it against its own list. What it DOES own
+     * is that there is one answer per room. Mirrors server/index.mjs.
+     */
+    this.map = null;
     this.tickHandle = null;
   }
 
@@ -82,15 +89,31 @@ export class Room {
           return;
         }
         peer.joined = true;
+        // First one in picks the level; everybody after joins the one in progress.
+        if (!this.map) this.map = sanitiseMap(msg.map);
         this._send(peer, {
           t: 'welcome',
           id: peer.id,
           room: msg.room ?? '',
           tickHz: this.tickHz,
           live: this._isLive(),
+          map: this.map,
           peers: this._roster().filter((p) => p.id !== peer.id),
         });
         this._broadcast({ t: 'peer_join', id: peer.id, name: peer.name }, peer.id);
+        this._sendLobby();
+        break;
+      }
+      case 'map': {
+        // Refused once anybody is deployed: swapping the map under a live match
+        // would teleport everyone into a level that no longer exists. Ready
+        // flags are cleared — you readied up for a level, and it is not that
+        // level any more.
+        if (this._isLive()) return;
+        const next = sanitiseMap(msg.map);
+        if (!next || next === this.map) return;
+        this.map = next;
+        for (const p of this.sessions.values()) p.ready = false;
         this._sendLobby();
         break;
       }
@@ -147,6 +170,16 @@ export class Room {
       case 'respawn':
         peer.alive = true;
         break;
+      case 'spawn': {
+        // Spawn claim — clients choose their own point (the relay has no map),
+        // and this is what stops two simultaneous respawns landing on the same
+        // ground. Advisory. Mirrors server/index.mjs.
+        if (!Array.isArray(msg.p) || msg.p.length < 3) return;
+        const p = msg.p.map(Number);
+        if (!p.every(Number.isFinite)) return;
+        this._broadcast({ t: 'spawn', id: peer.id, p }, peer.id);
+        break;
+      }
       case 'chat': {
         const text = String(msg.text ?? '').slice(0, 200);
         if (text) this._broadcast({ t: 'chat', id: peer.id, name: peer.name, text });
@@ -205,7 +238,7 @@ export class Room {
   }
 
   _sendLobby() {
-    this._broadcast({ t: 'lobby', live: this._isLive(), players: this._lobby() });
+    this._broadcast({ t: 'lobby', live: this._isLive(), players: this._lobby(), map: this.map });
   }
 
   _maybeStart() {
@@ -266,4 +299,10 @@ export class Room {
       } catch {}
     }
   }
+}
+
+/** Same slug filter as `sanitiseMap` in server/index.mjs — keep them identical. */
+function sanitiseMap(v) {
+  const s = String(v ?? '').slice(0, 24).toLowerCase();
+  return /^[a-z0-9][a-z0-9_-]*$/.test(s) ? s : null;
 }

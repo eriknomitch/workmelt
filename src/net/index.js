@@ -11,6 +11,9 @@
  *   • Replicate shots as muzzle flash + tracers, and settle PvP hits with a
  *     trust-the-shooter model: the shooter ray-tests remote bodies locally and
  *     the victim applies the damage the shooter claims.
+ *   • Spawn the local player through the world's spawn director, feeding it the
+ *     room's live transforms so a respawn is scored against real opponents, and
+ *     announcing each pick (`spawn`) so two clients cannot claim one point.
  *   • Drive the overlay: invite bar, scoreboard, kill/join toasts, status.
  *   • Carry the match-start lobby — who is here, who has readied up, whether the
  *     match is already live — and hand it to `match` as `net:lobby` /
@@ -51,7 +54,7 @@ export class NetSystem {
      *   live      someone in this room is already playing
      *   players   [{ id, name, ready, deployed }] including me
      */
-    this.lobby = { live: false, players: [] };
+    this.lobby = { live: false, players: [], map: null };
     this.ready = false;
     /** Have we ever been welcomed? Separates "connecting" from "dropped out". */
     this.everConnected = false;
@@ -68,6 +71,9 @@ export class NetSystem {
     // scratch
     this._v = new THREE.Vector3();
     this._v2 = new THREE.Vector3();
+    /** Where I died, and where the round that did it came from — spawn inputs. */
+    this._deathSite = new THREE.Vector3();
+    this._killerShot = new THREE.Vector3();
     this._from = new THREE.Vector3();
     this._to = new THREE.Vector3();
     this._origin = new THREE.Vector3();
@@ -88,8 +94,12 @@ export class NetSystem {
     this.name = resolveName();
     this.serverUrl = resolveServerUrl();
     const variants = this.ai.variantNames ?? ['vanguard'];
-    this.variant = (Math.random() * variants.length) | 0;
+    // ctx.rng, never Math.random (ARCHITECTURE.md rule 4). The relay hands out
+    // the per-client variety that actually matters — see setSalt() on welcome.
+    this._rng = ctx.rng.fork();
+    this.variant = this._rng.int(0, variants.length - 1);
     this._variants = variants;
+    this._registerSpawnSource();
 
     // ---- overlay ----
     this.ui = new NetUI();
@@ -146,7 +156,10 @@ export class NetSystem {
     this._ws = ws;
     ws.onopen = () => {
       this.ui.setStatus('wait');
-      this._send({ t: 'join', room: this.room, name: this.name });
+      // The map goes out with the join: the first client into a room decides
+      // which level the room is on, and everyone after joins the one in
+      // progress. `match` applies whatever comes back on the lobby frame.
+      this._send({ t: 'join', room: this.room, name: this.name, map: this.world?.mapId ?? null });
     };
     ws.onmessage = (ev) => {
       let msg;
@@ -163,7 +176,7 @@ export class NetSystem {
       this.myId = null;
       this.ui.setStatus('off');
       this._clearPeers();
-      this.lobby = { live: false, players: [] };
+      this.lobby = { live: false, players: [], map: this.lobby?.map ?? null };
       this.ready = false;
       this._emitLobby();
       if (this._wantReconnect) this._scheduleReconnect();
@@ -197,8 +210,15 @@ export class NetSystem {
         this.myId = msg.id;
         this.connected = true;
         this.everConnected = true;
+        // The spawn director is RNG-free by design, so ties are broken by a
+        // salt. The relay-assigned id is the only value in the room that is
+        // *guaranteed* distinct — better than trusting two clients' engine
+        // seeds to differ — so two players cannot score their way onto the
+        // same slab on the same tick.
+        this.world?.spawns?.setSalt(this.myId);
         this.tickHz = msg.tickHz ?? SEND_HZ;
         this.lobby.live = !!msg.live;
+        if (msg.map) this.lobby.map = msg.map;
         for (const p of msg.peers ?? []) this._ensurePeer(p.id, p.name, p);
         this._updateStatus();
         this._emitLobby();
@@ -220,7 +240,7 @@ export class NetSystem {
         break;
       }
       case 'lobby': {
-        this.lobby = { live: !!msg.live, players: msg.players ?? [] };
+        this.lobby = { live: !!msg.live, players: msg.players ?? [], map: msg.map ?? null };
         // The relay clears ready flags when it fires the start signal; mirror
         // whatever it says about us rather than keeping a local opinion.
         this.ready = !!this.lobby.players.find((p) => p.id === this.myId)?.ready;
@@ -241,6 +261,13 @@ export class NetSystem {
         break;
       case 'kill':
         this._onKill(msg);
+        break;
+      case 'spawn':
+        // Somebody else is coming in here. Reserve the ground for a couple of
+        // seconds so our own pick lands elsewhere.
+        if (msg.id !== this.myId && Array.isArray(msg.p)) {
+          this.world?.spawns?.noteClaim(msg.p[0], msg.p[1], msg.p[2]);
+        }
         break;
       case 'score':
         this.roster = msg.roster ?? [];
@@ -422,6 +449,12 @@ export class NetSystem {
     this._lastAttacker = msg.from ?? 0;
     this._lastAttackerName = msg.fromName ?? '';
     this._lastHeadshot = msg.part === 'head';
+    // Where the round came from. If the shooter has left the room by the time
+    // we respawn, this is still a good "do not put me back here" hint.
+    if (from) {
+      this._killerShot.copy(from);
+      this._killerShotValid = true;
+    }
     this.player.applyDamage(msg.dmg ?? 0, from, { type: 'bullet' });
     // player system draws the arc from the `damage:taken` it emits internally
   }
@@ -433,6 +466,7 @@ export class NetSystem {
   _onLocalDeath() {
     if (this._deadSince >= 0) return; // already handling
     this._deadSince = this._now();
+    this._deathSite.copy(this.player.feetPosition);
     const by = this._lastAttacker || 0;
     this._send({ t: 'kill', by, headshot: !!this._lastHeadshot });
     this.player.setControlEnabled(false);
@@ -546,28 +580,109 @@ export class NetSystem {
     const pitch = lerp(a.pitch, b.pitch, alpha);
     const speed = lerp(a.speed, b.speed, alpha);
 
+    // The wire carries a VIEW yaw (the camera's, forward = -sin/-cos). The
+    // soldier rig is built facing +Z (see src/ai/rig.js) and the puppet derives
+    // its aim vector with +sin/+cos, so both want the same value turned around.
+    // Without the half turn a remote player's body — and the head and weapon IK
+    // that hang off it — face exactly away from where he is actually looking.
+    p.viewYaw = yaw;
     p.puppet.apply({
       position: this._v.set(x, y, z),
-      yaw, pitch, speed,
+      yaw: yaw + Math.PI,
+      pitch, speed,
       crouch: b.crouch, aiming: b.aiming, dead: p.dead,
     });
     p.puppet.update(dt);
   }
 
+  /**
+   * Come back into the match.
+   *
+   * The point is chosen by the world's spawn director, told two things only
+   * this system knows: where the killer was standing and where I died. Because
+   * every client feeds its own remote-player positions into the same director
+   * (see `_registerSpawnSource`), a respawn here is scored against the actual
+   * live room, not against a list of coordinates.
+   *
+   * The pick is then ANNOUNCED. Two players whose respawn timers expire on the
+   * same tick would otherwise both score the same empty corner and land on top
+   * of each other; a claim is a 2.5 s reservation that makes the second one
+   * pick somewhere else. It is advisory, like every other rule on this relay.
+   */
   _respawn() {
     this._deadSince = -1;
+    const killer = this._killerPos();
     this._lastAttacker = 0;
-    const n = this.world?.spawnPoints?.length ?? 1;
-    const idx = (Math.random() * n) | 0;
-    this.player.respawn(idx);
+    const point = this.player.respawn({
+      team: this.spawnTeam,
+      actorId: 'player',
+      killer,
+      from: this._deathSite,
+    });
     this.player.setControlEnabled(true);
     this._send({ t: 'respawn' });
+    this.announceSpawn(point);
     this.ui.toast('Respawned');
+  }
+
+  /**
+   * My team, as the spawn director sees it. This is a free-for-all: every
+   * player is his own team, so everybody else scores as an enemy.
+   */
+  get spawnTeam() {
+    return this.myId != null ? `p${this.myId}` : 'player';
+  }
+
+  /** Tell the room where I am coming in. Advisory — see `_respawn`. */
+  announceSpawn(point) {
+    const p = point?.position ?? point;
+    if (!p || !this.connected) return;
+    this._send({ t: 'spawn', p: [round2(p.x), round2(p.y), round2(p.z)] });
+  }
+
+  /** Where the man who killed me was standing, if we still have him. */
+  _killerPos() {
+    const p = this.peers.get(this._lastAttacker);
+    if (p?.puppet?.position) return p.puppet.position;
+    return this._killerShotValid ? this._killerShot : null;
+  }
+
+  /**
+   * Everyone else in the room, as the spawn director sees them: hostile (this
+   * is a free-for-all, so every player is his own team) and at their last
+   * interpolated position.
+   */
+  _registerSpawnSource() {
+    const spawns = this.world?.spawns;
+    if (!spawns) return;
+    this._offSpawnSource = spawns.addSource((add) => {
+      for (const p of this.peers.values()) {
+        const pos = p.puppet?.position;
+        if (!pos) continue;
+        // View yaw, not the puppet's body yaw — the director's cone test is in
+        // the camera convention. See _advancePeer.
+        add(pos.x, pos.y, pos.z, p.viewYaw ?? 0, `p${p.id}`, `net:${p.id}`, p.dead || p.hp <= 0);
+      }
+    });
   }
 
   /* ==================================================================== */
   /* match-start lobby (driven by the `match` subsystem)                   */
   /* ==================================================================== */
+
+  /**
+   * Ask the room to change level.
+   *
+   * The relay owns the answer, exactly as it owns the ready flags: it stores
+   * one map per room and broadcasts it, so two players cannot ready up on
+   * different levels. Nothing is applied locally here — `match` waits for the
+   * lobby frame to come back and switches on that, which is also what makes a
+   * remote player's choice arrive the same way our own does.
+   */
+  setMap(id) {
+    if (!id || id === this.lobby.map) return;
+    this._send({ t: 'map', map: id });
+  }
 
   /** Toggle my ready flag. The relay starts the match once everyone is ready. */
   setReady(on) {
@@ -606,6 +721,7 @@ export class NetSystem {
       players: this.lobbyPlayers(),
       myId: this.myId,
       ready: this.ready,
+      map: this.lobby.map,
     });
   }
 
@@ -696,6 +812,8 @@ export class NetSystem {
 
   dispose() {
     this._wantReconnect = false;
+    this._offSpawnSource?.();
+    this._offSpawnSource = null;
     for (const off of this._off ?? []) off();
     removeEventListener('keydown', this._onKey, true);
     removeEventListener('keyup', this._onKeyUp, true);

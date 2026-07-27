@@ -58,7 +58,7 @@ export class MySystem {
 | `render` | `src/render/` | WebGLRenderer, HDR pipeline, all post-processing, CSM shadows, the final composite |
 | `materials` | `src/materials/` | procedural PBR texture generation, the shared material library, triplanar/detail mapping |
 | `sky` | `src/sky/` | physical sky, sun/moon, time of day, IBL/env map generation, volumetric fog & light shafts |
-| `world` | `src/world/` | level geometry, the modular building kit, props, set dressing, static collision meshes |
+| `world` | `src/world/` | level geometry, the modular building kit, props, set dressing, static collision meshes, the spawn point set and the spawn director (`src/world/spawns.js`), the map list and the level rebuild (`src/world/maps.js`) |
 | `physics` | `src/physics/` | broadphase, raycasts, character controller collision, rigid bodies, ragdolls, penetration |
 | `player` | `src/player/` | movement state machine, camera feel, sprint/slide/mantle/lean, health |
 | `weapons` | `src/weapons/` | weapon meshes, viewmodel rig, ADS, recoil, sway, bob, reload & inspect animation, ballistics |
@@ -68,7 +68,7 @@ export class MySystem {
 | `audio` | `src/audio/` | sampled + synthesized weapon/foley audio, spatialisation, reverb, occlusion, mix |
 | `quality` | `src/core/quality.js` | per-browser graphics calibration, FPS targeting, dynamic render scale, persisted graphics mode |
 | `net` | `src/net/` | web multiplayer: room transport, remote player puppets, PvP hit settlement, invite bar / scoreboard, the match-start lobby on the wire |
-| `match` | `src/match/` | the Match Start view: bot-garrison choice, ready-up, countdown, and when the match goes live |
+| `match` | `src/match/` | the Match Start view: map choice, bot-garrison choice, ready-up, countdown, and when the match goes live |
 
 Shared, owned by the lead (do not edit): `src/core/`, `src/main.js`,
 `src/dev/`, `tools/`, `vite.config.js`.
@@ -88,6 +88,7 @@ Emit and listen via `ctx.events`. Payloads are plain objects. The canonical set:
 | ↳ | means *damage dealt **to** `target`*. `target` is the local player when an enemy round connects (`'player'`, the player system, or anything with `isPlayer === true`) — filter it out before drawing a hitmarker. Damage is applied by the target's own listener, never by the emitter as well. | |
 | `damage:taken` | `{ amount, from: Vector3, health }` | player |
 | `actor:death` | `{ actor, point, impulse }` | ai |
+| `player:spawn` | `{ position, yaw, zone }` — the local player entered the map at a spawn point chosen by `world.spawns` | player |
 | `player:land` | `{ velocity, surface }` | player |
 | `player:footstep` | `{ position, surface, running }` | player |
 | `player:state` | `{ stance, sprinting, sliding, ads }` | player |
@@ -97,8 +98,9 @@ Emit and listen via `ctx.events`. Payloads are plain objects. The canonical set:
 | `net:join` / `net:leave` | `{ id, name }` | net |
 | `net:countdown` | `{ ms }` — the relay fired the pre-match start signal | net |
 | `net:kill` | `{ by, victim, headshot, mine }` — a relay-confirmed PvP kill | net |
-| `match:start` | `{ bots, squads, perSquad, mode }` — the match is live | match |
+| `match:start` | `{ bots, squads, perSquad, mode, map }` — the match is live | match |
 | `match:countdown` | `{ seconds }` | match |
+| `world:rebuilt` | `{ mapId, map }` — the level was torn down and rebuilt on another map. Anything holding level-derived state (`ai`'s nav grid, the minimap bake) must redo it. Only ever fires before a match goes live. | world |
 
 If you need an event that is not listed, add a row here in the same commit.
 
@@ -107,6 +109,58 @@ If you need an event that is not listed, add a row here in the same commit.
 Shared vocabulary for impact FX, decals, audio and footsteps. Physics tags every
 collider with one of: `concrete`, `metal`, `wood`, `dirt`, `sand`, `glass`,
 `water`, `foliage`, `fabric`, `flesh`, `rubber`, `plaster`.
+
+## Maps
+
+The level is one of the descriptors in `src/world/maps.js`, not a hard-coded
+build sequence. Two ship: `market` (the Middle-Eastern street) and `rust` (a
+low-poly desert refinery). Which one boots is `?map=` > the player's last
+choice > `market`; a capture run ignores the stored choice so the pixel gate
+always frames the same level unless `?map=` says otherwise.
+
+```js
+const world = ctx.get('world');
+world.mapId                 // 'market' | 'rust'
+world.maps                  // [{ id, name, subtitle, blurb, size }] for menus
+await world.setMap('rust')  // tear the level down and build another. Emits
+                            // `world:rebuilt`. ONLY legal before a match is
+                            // live — `src/match` is the only caller.
+```
+
+Adding a map means adding a module that exports a descriptor and listing it in
+`MAPS`; no other subsystem changes. `node src/world/maps.selftest.mjs` builds
+every map headlessly and checks the descriptor contract.
+
+## Spawning
+
+Nobody picks their own spawn point. `world` owns the point set and the scoring
+(`src/world/spawns.js`); everyone else asks:
+
+```js
+const world = ctx.get('world');
+world.selectSpawn({ team, actorId, killer, from })  // -> { position, yaw, zone }
+world.spawns.selectMany(n, { team })                // deploy spread; picks repel
+world.spawns.noteClaim(x, y, z)                     // a remote player is coming in here
+world.spawn(0)                                      // by index — dev harnesses only
+```
+
+If your subsystem controls bodies that can be spawned on, register a source in
+`init()` and drop it in `dispose()`. The director pulls it at the moment of a
+spawn, so it can never be stale:
+
+```js
+this._off = world.spawns.addSource((add) => {
+  for (const a of this.things) add(a.x, a.y, a.z, viewYaw, team, id, dead);
+});
+```
+
+`viewYaw` is the CAMERA convention (forward is `-sin yaw, -cos yaw`). The
+soldier rig faces +Z, so an `ai` agent's yaw is a half turn from it — add `π`.
+
+Points are validated against real collision at boot and any that a standing
+character does not fit in are dropped, so the count is a property of the built
+level, not of the table. `SPAWN_POINTS[0]` is frozen: it is the deterministic
+boot spawn every capture baseline is framed from.
 
 ## Render integration
 

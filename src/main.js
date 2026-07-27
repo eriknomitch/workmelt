@@ -9,6 +9,7 @@ import {
   resolveGraphicsBoot,
   saveGraphicsSettings,
 } from './core/quality.js';
+import { DEFAULT_CONTROLS, loadControlSettings } from './core/controls.js';
 
 import { RenderSystem } from './render/index.js';
 import { MaterialSystem } from './materials/index.js';
@@ -61,8 +62,13 @@ const { enabled: adaptiveEnabled, quality: bootQuality } = resolveGraphicsBoot({
   explicitQuality,
   settings: graphics,
 });
+// Capture runs must not inherit whatever aim style a previous session saved,
+// or a scripted ADS shot could come back hip-fired.
+const controls = capture ? { ...DEFAULT_CONTROLS } : loadControlSettings();
 const config = createConfig({
   quality: bootQuality,
+  adsMode: controls.adsMode,
+  adsKey: controls.adsKey,
   graphicsMode: graphics.mode,
   targetFps: graphics.targetFps,
   displayRefreshHz: graphics.refreshHz ?? 120,

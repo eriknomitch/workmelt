@@ -18,6 +18,10 @@
  *
  * PUBLIC API — `const ai = ctx.get('ai')`
  *   ai.spawn(variant, position, yaw, opts) -> Agent
+ *   ai.populate({squads, perSquad, respawn}) garrison the level through the
+ *                                          world's spawn director
+ *   ai.reinforce(n)                        bring n replacements in now
+ *   ai.removeAgent(agent)                  retire a body and free its resources
  *   ai.agents                              live Agent list
  *   ai.debugStage('firefight')             staged combat tableau for captures
  *   ai.prewarmMaterials()                  await: build + compile every character
@@ -46,6 +50,16 @@ import { Agent, STATE } from './agent.js';
 import { Squad } from './squad.js';
 import { GroundShadows } from './grounding.js';
 import { NetPuppet } from './puppet.js';
+
+/**
+ * How long a body stays on the ground before it is retired, and how long the
+ * garrison waits between reinforcements. The corpse timer is long enough that
+ * the ragdoll has settled and been *seen* (CoD is in the same 10-30 s band);
+ * the reinforcement timer is what makes a wiped squad trickle back one man at
+ * a time instead of popping in as six.
+ */
+const CORPSE_SECONDS = 14;
+const REINFORCE_SECONDS = 4;
 
 export class AiSystem {
   static id = 'ai';
@@ -76,6 +90,12 @@ export class AiSystem {
     this.debugLog = false;
     /** dev: force the garrison to spawn even in deterministic capture runs */
     this.forcePopulate = false;
+    /** The team the whole garrison fights for, as the spawn director sees it. */
+    this.botTeam = 'ai';
+    /** Keep the garrison at strength as it is killed. Set by populate(). */
+    this.botRespawn = false;
+    this.garrisonSize = 0;
+    this._reinforceTimer = 0;
     this._navPending = true;
     this.stats = { agents: 0, alive: 0, navMs: 0, coverPts: 0, walkable: 0 };
 
@@ -151,6 +171,7 @@ export class AiSystem {
     // which is what decides how every soldier is stitched together — is
     // unchanged. `update()` keeps the same code as a fallback for the case where
     // the collision world is not registered yet.
+    this._registerSpawnSource(ctx.peek('world'));
     this._bootNav(ctx);
     await this.prewarmMaterials();
   }
@@ -304,6 +325,17 @@ export class AiSystem {
   _wireEvents(ctx) {
     this._off = [];
     const on = (t, fn) => this._off.push(ctx.events.on(t, fn));
+
+    // The player changed map on the Match Start screen. The nav grid and the
+    // cover map are sampled straight out of the physics BVH, and that BVH now
+    // describes a different level — so throw both away and let update() rebuild
+    // them. `world` only allows the swap before a match is live, so there is no
+    // garrison standing on the old grid to relocate.
+    on('world:rebuilt', () => {
+      this.grid = null;
+      this.cover = null;
+      this._navPending = true;
+    });
 
     on('weapon:fire', (e) => {
       if (!e || !e.origin || e.weapon === 'ai_rifle') return; // ignore our own
@@ -501,66 +533,270 @@ export class AiSystem {
   }
 
   /**
-   * Garrison the level: two squads on patrol routes drawn from the world's own
-   * spawn points, far enough from the player to be found rather than spawned on
-   * top of. This is what the behaviour tree, navigation and perception actually
-   * run against in play.
+   * Garrison the level: squads on patrol routes, anchored on spawn points the
+   * world's spawn director hands out.
+   *
+   * The director is what makes this safe rather than merely distant: a squad
+   * anchor is scored against the player exactly as a player respawn is, so a
+   * garrison can neither appear inside the player's bubble nor pop into
+   * existence in his line of sight. Anchors also repel each other, so two
+   * squads never land in the same alley.
+   *
+   * @param opts.squads    squad count             (default 2)
+   * @param opts.perSquad  soldiers per squad      (default 3)
+   * @param opts.respawn   keep the garrison at strength as it is killed
+   *                       (default true — a deathmatch that empties out is over)
    */
   populate(opts = {}) {
     const world = this.ctx.peek('world');
     const spawns = world?.spawnPoints ?? [];
     if (!spawns.length || !this.grid) return 0;
-    const player = this.playerPosition(this._v3).clone();
-    // rank the spawn points by distance from the player, take the far half
-    const ranked = spawns
-      .map((s, i) => ({ s, i, d: s.position.distanceTo(player) }))
-      .sort((a, b) => b.d - a.d)
-      .filter((e) => e.d > 18);
-    if (!ranked.length) return 0;
 
-    const variants = ['vanguard', 'irregular', 'breacher'];
     const squads = opts.squads ?? 2;
     const per = opts.perSquad ?? 3;
-    let made = 0;
-    for (let q = 0; q < squads && q < ranked.length; q++) {
-      const squad = this.createSquad();
-      const anchor = ranked[q % ranked.length].s;
-      // patrol route: this spawn point and the two next-nearest ones
-      const route = [anchor.position.clone()];
-      const others = ranked
-        .filter((e) => e.s !== anchor)
-        .sort(
-          (a, b) =>
-            a.s.position.distanceTo(anchor.position) - b.s.position.distanceTo(anchor.position)
-        )
-        .slice(0, 2);
-      for (const o of others) route.push(o.s.position.clone());
+    this.botRespawn = opts.respawn ?? true;
+    this.garrisonSize = squads * per;
 
+    const anchors = this._squadAnchors(squads, world);
+    if (!anchors.length) return 0;
+
+    let made = 0;
+    for (let q = 0; q < anchors.length; q++) {
+      const squad = this.createSquad();
+      const anchor = anchors[q];
+      squad.anchor = anchor;
+      squad.patrol = this._patrolRoute(anchor, spawns);
       for (let m = 0; m < per; m++) {
-        const jitterA = this.rng.range(0, Math.PI * 2);
-        const jitterR = this.rng.range(0.8, 3.2);
-        const p = anchor.position
-          .clone()
-          .add(new THREE.Vector3(Math.cos(jitterA) * jitterR, 0, Math.sin(jitterA) * jitterR));
-        const ci = this.grid.nearest(p.x, p.z, anchor.position.y, 6, 1.4);
-        if (ci >= 0) {
-          p.set(
-            this.grid.worldX(ci % this.grid.nx),
-            this.grid.floor[ci],
-            this.grid.worldZ((ci / this.grid.nx) | 0)
-          );
-        } else {
-          p.y = this.groundAt(p.x, p.z, anchor.position.y + 4);
-        }
-        const a = this.spawn(variants[(q * per + m) % variants.length], p, anchor.yaw + this.rng.signed() * 0.7, {
-          patrol: route,
-        });
-        squad.add(a);
-        made++;
+        if (this._spawnBot(squad, anchor, q * per + m)) made++;
       }
     }
-    console.info(`[ai] garrison: ${made} enemies in ${squads} squads`);
+    console.info(
+      `[ai] garrison: ${made} enemies in ${anchors.length} squads at ` +
+        anchors.map((a) => a.zone ?? a.tag).join(', ') +
+        (this.botRespawn ? ' · reinforced' : '')
+    );
     return made;
+  }
+
+  /**
+   * Squad anchors, spread across the map and away from every live player.
+   * Falls back to the old rank-by-distance rule if the world predates the
+   * director (or dropped every point during validation).
+   */
+  _squadAnchors(count, world) {
+    const director = world?.spawns;
+    if (director) {
+      const picked = director.selectMany(count, {
+        team: this.botTeam,
+        // Squads want a lot more elbow room than a single player does: a
+        // 26 m reservation is what keeps two of them out of the same alley.
+        // If the map runs out of ground the director relaxes on its own.
+        claimRadius: 26,
+      });
+      if (picked.length) return picked;
+    }
+    const player = this.playerPosition(this._v3).clone();
+    return (world?.spawnPoints ?? [])
+      .map((s) => ({ s, d: s.position.distanceTo(player) }))
+      .sort((a, b) => b.d - a.d)
+      .filter((e) => e.d > 18)
+      .slice(0, count)
+      .map((e) => e.s);
+  }
+
+  /** Patrol route: the anchor plus the nearest point in two OTHER zones. */
+  _patrolRoute(anchor, spawns) {
+    const route = [anchor.position.clone()];
+    const used = new Set([anchor.zone ?? anchor.tag]);
+    for (let leg = 0; leg < 2; leg++) {
+      let best = null;
+      let bestD = Infinity;
+      for (const s of spawns) {
+        const zone = s.zone ?? s.tag;
+        if (used.has(zone)) continue;
+        const d = s.position.distanceTo(anchor.position);
+        if (d < bestD) {
+          bestD = d;
+          best = s;
+        }
+      }
+      if (!best) break;
+      used.add(best.zone ?? best.tag);
+      route.push(best.position.clone());
+    }
+    return route;
+  }
+
+  /**
+   * One soldier, placed near `anchor` and snapped onto walkable ground.
+   *
+   * The jitter is a ring around the anchor rather than a second spawn-point
+   * lookup on purpose: squadmates are *supposed* to arrive together. The nav
+   * grid then decides where a body actually fits, so nobody starts inside a
+   * market stall.
+   */
+  _spawnBot(squad, anchor, seq = 0) {
+    const variants = ['vanguard', 'irregular', 'breacher'];
+    const p = this._botSlot(anchor);
+    if (!p) return null;
+    const a = this.spawn(variants[seq % variants.length], p, anchor.yaw + this.rng.signed() * 0.7, {
+      patrol: squad.patrol,
+      team: this.botTeam,
+    });
+    squad.add(a);
+    return a;
+  }
+
+  /**
+   * A standing slot near `anchor`, out of the player's sight.
+   *
+   * The director already proved the ANCHOR is not visible, but a soldier is
+   * placed up to 3 m off it and then snapped to the nav grid — and three
+   * metres sideways is the difference between standing behind a wall and
+   * standing in the doorway beside it. Measured: two of six bots in a
+   * standard garrison were visible from the player's spawn without this.
+   * So each candidate slot is re-tested and up to four are tried.
+   */
+  _botSlot(anchor) {
+    const phys = this.phys;
+    const eye = phys ? this.playerPosition(this._v3) : null;
+    let fallback = null;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const jitterA = this.rng.range(0, Math.PI * 2);
+      const jitterR = this.rng.range(0.8, 3.2);
+      const p = anchor.position
+        .clone()
+        .add(new THREE.Vector3(Math.cos(jitterA) * jitterR, 0, Math.sin(jitterA) * jitterR));
+      const ci = this.grid?.nearest(p.x, p.z, anchor.position.y, 6, 1.4) ?? -1;
+      if (ci >= 0) {
+        p.set(
+          this.grid.worldX(ci % this.grid.nx),
+          this.grid.floor[ci],
+          this.grid.worldZ((ci / this.grid.nx) | 0)
+        );
+      } else {
+        p.y = this.groundAt(p.x, p.z, anchor.position.y + 4);
+      }
+      if (!Number.isFinite(p.y)) continue;
+      if (!phys) return p;
+      fallback ??= p;
+      this._botChest ??= new THREE.Vector3();
+      this._botChest.set(p.x, p.y + 1.35, p.z);
+      if (!phys.lineOfSight(eye, this._botChest, phys.MASK.SIGHT)) return p;
+    }
+    return fallback;
+  }
+
+  /**
+   * Keep the garrison at strength.
+   *
+   * Two jobs, both on a clock: retire a body once its ragdoll has been seen
+   * (agents are never otherwise removed, so a long match would accumulate
+   * hundreds of them), and bring a replacement in through the spawn director
+   * near — but not on top of — whatever is left of its squad. A bot that dies
+   * alone comes back somewhere else entirely, which is what stops the player
+   * farming one corner of the map.
+   */
+  _updateGarrison(dt) {
+    if (!this.botRespawn || !this.grid) return;
+    const world = this._world ?? (this._world = this.ctx.peek('world'));
+    let alive = 0;
+    for (let i = this.agents.length - 1; i >= 0; i--) {
+      const a = this.agents[i];
+      if (a.alive) {
+        alive++;
+        continue;
+      }
+      if (a.staged) continue; // a capture tableau owns its own corpses
+      if ((a.deadTime ?? 0) < CORPSE_SECONDS) continue;
+      this.removeAgent(a);
+    }
+    if (alive >= this.garrisonSize) {
+      // Re-arm while at strength, so the first man after a kill still waits
+      // the full delay instead of stepping in on the frame his mate fell.
+      this._reinforceTimer = REINFORCE_SECONDS;
+      return;
+    }
+    this._reinforceTimer -= dt;
+    if (this._reinforceTimer > 0) return;
+    this._reinforceTimer = REINFORCE_SECONDS;
+    this.reinforce(1, world);
+  }
+
+  /** Bring `n` replacements in. Returns how many actually made it. */
+  reinforce(n = 1, world = this.ctx.peek('world')) {
+    let made = 0;
+    for (let i = 0; i < n; i++) {
+      const squad = this._weakestSquad();
+      if (!squad) break;
+      const anchor = this._reinforcementAnchor(squad, world);
+      if (!anchor) break;
+      if (this._spawnBot(squad, anchor, this.agents.length)) made++;
+    }
+    return made;
+  }
+
+  _weakestSquad() {
+    let best = null;
+    for (const s of this.squads) {
+      if (s.staged) continue;
+      if (!best || s.alive < best.alive) best = s;
+    }
+    return best;
+  }
+
+  /**
+   * Where a replacement comes in: near the squad's surviving centre when it has
+   * one, and a fresh directed point when it does not. Either way the point is
+   * scored against the player, so "near my squad" never means "in front of the
+   * man who just wiped it".
+   */
+  _reinforcementAnchor(squad, world) {
+    const director = world?.spawns;
+    if (!director) return squad.anchor ?? this.ctx.peek('world')?.spawn?.(0) ?? null;
+    let cx = 0, cz = 0, cy = 0, n = 0;
+    for (const m of squad.members) {
+      if (!m.alive) continue;
+      cx += m.position.x; cy += m.position.y; cz += m.position.z; n++;
+    }
+    const opts = { team: this.botTeam, claimRadius: 8 };
+    if (n) {
+      // Its own vector, not one of the shared scratches: the director calls
+      // back into every subsystem's spawn source while this is live.
+      this._squadCentre ??= new THREE.Vector3();
+      this._squadCentre.set(cx / n, cy / n, cz / n);
+      opts.anchor = this._squadCentre;
+    }
+    const p = director.select(opts);
+    if (p) squad.anchor = p;
+    return p ?? squad.anchor ?? null;
+  }
+
+  /** Retire an agent: free its GPU/physics resources and forget it. */
+  removeAgent(a) {
+    const i = this.agents.indexOf(a);
+    if (i >= 0) this.agents.splice(i, 1);
+    a.squad?.remove?.(a);
+    a.dispose();
+  }
+
+  /**
+   * Report the garrison to the spawn director, so a player respawn treats bots
+   * as the threats they are (and so bots avoid spawning on each other).
+   */
+  _registerSpawnSource(world) {
+    if (!world?.spawns) return;
+    this._offSpawnSource = world.spawns.addSource((add) => {
+      for (let i = 0; i < this.agents.length; i++) {
+        const a = this.agents[i];
+        // The director works in the CAMERA convention (forward = -sin/-cos);
+        // the soldier rig faces +Z, so an agent's yaw is a half turn from it.
+        add(
+          a.position.x, a.position.y, a.position.z,
+          a.yaw + Math.PI, this.botTeam, `ai:${a.id}`, !a.alive
+        );
+      }
+    });
   }
 
   createSquad() {
@@ -783,6 +1019,7 @@ export class AiSystem {
       }
     }
     this._updateGrenades(dt);
+    this._updateGarrison(dt);
     this.stats.agents = this.agents.length;
     this.stats.alive = alive;
   }
@@ -1019,6 +1256,9 @@ export class AiSystem {
     F.normalize();
     const right = new THREE.Vector3(F.z, 0, -F.x);
     const squad = this.createSquad();
+    // A tableau owns its own bodies: reinforcement must not retire them or top
+    // the squad back up mid-shot.
+    squad.staged = true;
 
     /** [variant, ndcX, depth, crouch, speed, fire, reloadEvery] */
     const LAYOUT = [
@@ -1113,6 +1353,8 @@ export class AiSystem {
 
   dispose() {
     for (const off of this._off ?? []) off();
+    this._offSpawnSource?.();
+    this._offSpawnSource = null;
     for (const a of this.agents) a.dispose();
     this.agents.length = 0;
     this.squads.length = 0;

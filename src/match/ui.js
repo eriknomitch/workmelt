@@ -2,7 +2,10 @@
  * The Match Start view: the screen the game now opens on instead of dropping
  * straight into a firefight.
  *
- * Two ways in, side by side, because they answer different questions:
+ * A map picker on top, then two ways in side by side, because they answer
+ * different questions:
+ *   • MAP — which level to fight on. In a room this is the ROOM's map, so
+ *     picking one here asks the relay and everybody switches together.
  *   • BOTS — pick a garrison size and go. No waiting, no second player.
  *   • MULTIPLAYER — share the room link, and when someone joins, both players
  *     press READY; the relay starts the countdown once everyone has.
@@ -35,6 +38,31 @@ const CSS = `
   text-shadow: 0 2px 18px rgba(0,0,0,.7); }
 .cod-ms .head .rule { width: 210px; height: 1px; margin: 12px auto 0;
   background: linear-gradient(90deg, transparent, rgba(255,176,42,.75), transparent); }
+
+/* ---- map picker ---------------------------------------------------------
+   A row of cards above the two start panels, because the map is the first
+   decision a player makes and the one that changes what the other two mean. */
+.cod-ms .maps { width: 100%; max-width: 900px; display: flex; flex-direction: column; gap: 8px; }
+.cod-ms .maps .lbl { display: flex; align-items: baseline; gap: 10px; font-size: 11px;
+  font-weight: 700; text-transform: uppercase; letter-spacing: .24em; color: #ffb02a; }
+.cod-ms .maps .lbl em { font-style: normal; font-size: 10px; letter-spacing: .14em;
+  color: #7d8b96; text-transform: none; }
+.cod-ms .cards { display: flex; gap: 12px; flex-wrap: wrap; }
+.cod-ms .mapcard { flex: 1 1 240px; max-width: 440px; display: flex; flex-direction: column;
+  gap: 3px; padding: 12px 13px; text-align: left; cursor: pointer; color: #b9c8d4;
+  background: rgba(9,13,18,0.82); border: 1px solid rgba(120,170,200,0.2);
+  border-radius: 10px; transition: background .15s, border-color .15s, color .15s; }
+.cod-ms .mapcard:hover:not(:disabled) { background: rgba(60,96,122,0.5); border-color: rgba(150,205,235,0.6); }
+.cod-ms .mapcard.on { background: rgba(255,176,42,0.13); border-color: #ffb02a; }
+.cod-ms .mapcard:disabled { opacity: .5; cursor: not-allowed; }
+.cod-ms .mapcard .nm { font-size: 15px; font-weight: 800; letter-spacing: .14em;
+  text-transform: uppercase; color: #dfeaf2; }
+.cod-ms .mapcard.on .nm { color: #ffd48a; }
+.cod-ms .mapcard .sub { font-size: 10px; letter-spacing: .18em; text-transform: uppercase;
+  color: #7d8b96; }
+.cod-ms .mapcard .bl { margin-top: 4px; font-size: 11px; line-height: 1.45; color: #93a4b1;
+  letter-spacing: .01em; }
+.cod-ms .mapcard .sz { margin-top: 4px; font-size: 10px; letter-spacing: .16em; color: #62707c; }
 
 .cod-ms .panels { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center;
   width: 100%; max-width: 900px; }
@@ -114,6 +142,8 @@ const CSS = `
   .cod-ms .head .rule { margin-top: 8px; }
   .cod-ms .panel { min-height: 0; padding: 14px; gap: 9px; }
   .cod-ms .count .n { font-size: 68px; }
+  .cod-ms .mapcard { padding: 9px 11px; }
+  .cod-ms .mapcard .bl { display: none; }
 }
 `;
 
@@ -139,6 +169,7 @@ export class MatchStartUI {
     host.appendChild(this.root);
 
     this.multiplayer = multiplayer;
+    this.onMap = null;
     this.onStartBots = null;
     this.onToggleReady = null;
     this.onDeploy = null;
@@ -151,6 +182,10 @@ export class MatchStartUI {
         <div class="game">Workmelt</div>
         <h1>Match Start</h1>
         <div class="rule"></div>
+      </div>
+      <div class="maps" data-maps>
+        <div class="lbl">Map <em data-map-note></em></div>
+        <div class="cards" data-cards></div>
       </div>
       <div class="panels" data-panels>
         <div class="panel">
@@ -182,6 +217,9 @@ export class MatchStartUI {
      </div>
     `;
 
+    this.mapsEl = this.root.querySelector('[data-maps]');
+    this.cardsEl = this.root.querySelector('[data-cards]');
+    this.mapNote = this.root.querySelector('[data-map-note]');
     this.panels = this.root.querySelector('[data-panels]');
     this.botSeg = this.root.querySelector('[data-bots]');
     this.botNote = this.root.querySelector('[data-bot-note]');
@@ -196,6 +234,14 @@ export class MatchStartUI {
     this.countLbl = this.root.querySelector('[data-count-lbl]');
     this.hintEl = this.root.querySelector('[data-hint]');
     this.mpPanel = this.root.querySelector('.panel.mp');
+
+    /** id -> card element, filled by setMaps(). */
+    this.mapBtns = new Map();
+    this.mapId = null;
+    this.mapBusy = false;
+    /** The room is already playing, so its level is no longer up for a vote. */
+    this.mapLocked = false;
+    this.mapNoteIdle = '';
 
     this.botBtns = new Map();
     for (const p of BOT_PRESETS) {
@@ -221,11 +267,78 @@ export class MatchStartUI {
     this._mode = 'none';
   }
 
+  /**
+   * Build the map cards. Called once, from the list `world` publishes — this
+   * view never imports the world subsystem, it just renders what it is given.
+   */
+  setMaps(list = []) {
+    this.cardsEl.innerHTML = '';
+    this.mapBtns.clear();
+    for (const m of list) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'mapcard';
+      b.innerHTML =
+        `<span class="nm">${escapeHtml(m.name)}</span>` +
+        `<span class="sub">${escapeHtml(m.subtitle ?? '')}</span>` +
+        `<span class="bl">${escapeHtml(m.blurb ?? '')}</span>` +
+        `<span class="sz">${escapeHtml(m.size ?? '')}</span>`;
+      b.addEventListener('click', () => this.onMap?.(m.id));
+      this.cardsEl.appendChild(b);
+      this.mapBtns.set(m.id, b);
+    }
+    this.mapsEl.classList.toggle('hide', list.length < 2);
+    this.setMap(this.mapId);
+  }
+
+  setMap(id) {
+    this.mapId = id;
+    for (const [k, b] of this.mapBtns) b.classList.toggle('on', k === id);
+  }
+
+  /**
+   * Building a level takes a beat and re-runs the shader pre-warm. Lock the
+   * cards and the start buttons while it happens, so nobody can start a match
+   * against half a map.
+   */
+  setMapBusy(on) {
+    this.mapBusy = !!on;
+    this.startBtn.disabled = !!on;
+    this._syncMap();
+  }
+
+  /**
+   * A live room's level is settled: the relay refuses a change once anybody is
+   * deployed, so offering the cards would be offering a button that does
+   * nothing. Say so rather than failing silently.
+   */
+  setMapLocked(on) {
+    this.mapLocked = !!on;
+    this._syncMap();
+  }
+
+  /** The caller's line — what the strip says when nothing is overriding it. */
+  setMapNote(text) {
+    this.mapNoteIdle = text ?? '';
+    this._syncMap();
+  }
+
+  _syncMap() {
+    const off = this.mapBusy || this.mapLocked;
+    for (const b of this.mapBtns.values()) b.disabled = off;
+    this.mapNote.textContent = this.mapBusy
+      ? 'Loading…'
+      : this.mapLocked
+        ? 'Locked — the match is already running'
+        : this.mapNoteIdle ?? '';
+  }
+
   setBots(key) {
     for (const [k, b] of this.botBtns) b.classList.toggle('on', k === key);
     const p = BOT_PRESETS.find((x) => x.key === key);
     this.botNote.textContent = p?.note ?? '';
     this.startBtn.textContent = p && p.squads ? `Start match vs ${p.squads * p.perSquad} bots` : 'Start match';
+    this.startBtn.disabled = this.mapBusy;
   }
 
   setRoom(code) {
@@ -267,6 +380,15 @@ export class MatchStartUI {
       this.rosterEl.appendChild(row);
     }
 
+    if (this.mapBusy) {
+      this._mode = 'none';
+      this.statusEl.textContent = 'Loading the map…';
+      this.readyBtn.textContent = 'Ready';
+      this.readyBtn.disabled = true;
+      this.readyBtn.className = 'btn';
+      return;
+    }
+    this.setMapLocked(!!m.live);
     if (!m.connected) {
       this._mode = 'none';
       this.statusEl.textContent = m.everConnected
@@ -320,8 +442,9 @@ export class MatchStartUI {
     else this.root.classList.remove('show');
   }
 
-  /** Swap the two panels for the big countdown number. */
+  /** Swap the map row and the two panels for the big countdown number. */
   showCountdown(on) {
+    this.mapsEl.classList.toggle('hide', on || this.mapBtns.size < 2);
     this.panels.classList.toggle('hide', on);
     this.countEl.classList.toggle('hide', !on);
     this.hintEl.classList.toggle('hide', on);

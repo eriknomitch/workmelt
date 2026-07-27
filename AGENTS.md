@@ -14,6 +14,11 @@ The browser client lives in `src/`. Features are divided into subsystem director
 - `npm run preview` serves the built client for local verification.
 - `npm run serve` builds, then serves the client and Node relay.
 - `node src/physics/selftest.js` and `node src/ai/selftest.mjs` run subsystem checks.
+- `npm run test:input` checks input aggregation and the persisted control binds.
+- `npm run playtest:ads` drives the pause menu and ADS binds in a real browser.
+- `node server/map.selftest.mjs` walks the relay's room-map protocol against a real server on a real socket.
+- `node src/world/maps.selftest.mjs` builds every map headlessly and checks the map-descriptor contract, spawn tables and layout invariants.
+- `node src/world/spawns.selftest.mjs` checks the spawn director's scoring headlessly; `node src/world/spawns.probe.mjs` verifies spawn placement, the bot garrison and 30 respawns inside the real built level (needs a browser).
 - `node tools/capture.mjs` performs the required GPU-backed visual smoke test.
 - `npm run goal` scores the open goal in `goals/`; `npm run goal:quick` is the faster
   iteration pass. Both run headless on SwiftShader and need no GPU.

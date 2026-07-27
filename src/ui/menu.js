@@ -1,4 +1,11 @@
 import { el, setText, setStyle, clamp, damp, ease } from './util.js';
+import {
+  ADS_MODES,
+  DEFAULT_CONTROLS,
+  isBindableKey,
+  keyLabel,
+  saveControlSettings,
+} from '../core/controls.js';
 
 const GRAPHICS_MODES = ['auto', 'low', 'medium', 'high', 'ultra'];
 const FPS_TARGETS = ['display', '30', '60', '90', '120', '144', '165', '240'];
@@ -89,6 +96,29 @@ export class PauseMenu {
       this.invBtns.push([b, val]);
     }
 
+    // ---- aim down sights -------------------------------------------------
+    // Trackpad escape hatch: right-mouse-held is a two-finger click on a
+    // laptop, which cannot coexist with the one-finger click that fires. Either
+    // knob alone solves it; together they take the pointer out of aiming
+    // entirely. See `core/controls.js`.
+    const adsRow = this._row('Aim (ADS)');
+    const adsSeg = el('div', 'ow-seg', adsRow);
+    this.adsModeBtns = [];
+    for (const mode of ADS_MODES) {
+      const b = el('button', null, adsSeg, mode);
+      b.type = 'button';
+      b.addEventListener('click', () => this._setAdsMode(mode));
+      this.adsModeBtns.push([b, mode]);
+    }
+
+    const adsKeyRow = this._row('ADS Key');
+    this.adsKeyBtn = el('button', 'ow-bind', adsKeyRow, 'X');
+    this.adsKeyBtn.type = 'button';
+    this.adsKeyBtn.addEventListener('click', () => this._beginRebind());
+    this._rebinding = false;
+    this._rebindKeydown = null;
+    this._keyFlash = 0;
+
     // ---- buttons ---------------------------------------------------------
     const btns = el('div', 'ow-btns', inner);
     this.resumeBtn = el('button', 'ow-btn primary', btns, 'Resume');
@@ -100,9 +130,11 @@ export class PauseMenu {
       this.sens.set(1);
       this.fov.set(80);
       this.ctx.config.invertY = false;
+      this._setAdsMode(DEFAULT_CONTROLS.adsMode);
+      this._setAdsKey(DEFAULT_CONTROLS.adsKey);
       this.ctx.peek('quality')?.resetDefaults();
     });
-    el('div', 'hint', inner, 'ESC RESUME · WASD MOVE · SHIFT SPRINT · R RELOAD · F USE');
+    this.hint = el('div', 'hint', inner, '');
 
     this.open = false;
     this.shown = 0;
@@ -147,6 +179,76 @@ export class PauseMenu {
     return api;
   }
 
+  /* --------------------------------------------------------------- ADS -- */
+
+  _setAdsMode(mode) {
+    this.ctx.config.adsMode = mode;
+    // Switching styles mid-latch would strand the optic up (or down).
+    this.ctx.input?.clearAdsToggle?.();
+    this._persistControls();
+    this.ctx.events.emit('ui:setting', { key: 'adsMode', value: mode });
+    this.syncFromConfig();
+  }
+
+  _setAdsKey(code) {
+    this.ctx.config.adsKey = code;
+    this.ctx.input?.clearAdsToggle?.();
+    this._persistControls();
+    this.ctx.events.emit('ui:setting', { key: 'adsKey', value: code });
+    this.syncFromConfig();
+  }
+
+  _persistControls() {
+    const cfg = this.ctx.config;
+    saveControlSettings({ adsMode: cfg.adsMode, adsKey: cfg.adsKey });
+  }
+
+  /**
+   * Listen in the capture phase so the keypress never reaches `Input`, which
+   * binds on `window` in the bubble phase — otherwise choosing a key would also
+   * fire the action it is being taken from.
+   */
+  _beginRebind() {
+    if (this._rebinding) return;
+    this._rebinding = true;
+    this._keyFlash = 0;
+    setText(this.adsKeyBtn, 'PRESS A KEY');
+    this.adsKeyBtn.classList.add('on');
+    this._rebindKeydown = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this._finishRebind(e.code);
+    };
+    addEventListener('keydown', this._rebindKeydown, true);
+  }
+
+  _cancelRebind() {
+    if (!this._rebinding) return;
+    removeEventListener('keydown', this._rebindKeydown, true);
+    this._rebindKeydown = null;
+    this._rebinding = false;
+    this.adsKeyBtn.classList.remove('on');
+  }
+
+  _finishRebind(code) {
+    this._cancelRebind();
+    if (code === 'Escape') {
+      this.syncFromConfig();
+      return;
+    }
+    if (code === 'Backspace' || code === 'Delete') {
+      this._setAdsKey(null);
+      return;
+    }
+    if (!isBindableKey(code)) {
+      // Taken by movement/stance/etc, or not a key we can render a cap for.
+      setText(this.adsKeyBtn, 'IN USE');
+      this._keyFlash = 1.1;
+      return;
+    }
+    this._setAdsKey(code);
+  }
+
   setGraphicsMode(mode) {
     this.ctx.peek('quality')?.setMode(mode);
     this.syncFromConfig();
@@ -164,6 +266,18 @@ export class PauseMenu {
     for (const [b, v] of this.invBtns) b.classList.toggle('on', !!cfg.invertY === v);
     this.sens?.set((cfg.sensitivity ?? 0.0022) / 0.0022);
     this.fov?.set(cfg.fov ?? 80);
+
+    const adsMode = cfg.adsMode ?? 'hold';
+    for (const [b, v] of this.adsModeBtns) b.classList.toggle('on', adsMode === v);
+    // Don't stomp the prompt while the player is mid-rebind.
+    if (!this._rebinding && this._keyFlash <= 0)
+      setText(this.adsKeyBtn, keyLabel(cfg.adsKey ?? null));
+    // Must stay one line at the menu's width, with room for a long bind label
+    // ("L SHIFT/RMB ADS"), so the aim entry costs the two hints that are
+    // already shown elsewhere: ESC by the Resume button directly above, and
+    // F by the in-world use prompt. Hold vs toggle is on the row above too.
+    const aim = cfg.adsKey ? `${keyLabel(cfg.adsKey)}/RMB ADS` : 'RMB ADS';
+    setText(this.hint, `WASD MOVE · SHIFT SPRINT · ${aim} · R RELOAD`);
   }
 
   setQualityStatus(status) {
@@ -224,6 +338,8 @@ export class PauseMenu {
   close() {
     if (!this.open) return;
     this.open = false;
+    this._cancelRebind();
+    this.syncFromConfig();
     const t = this.ctx.time;
     if (t) t.scale = this._prevScale ?? 1;
     this.ctx.peek('player')?.setControlEnabled?.(true);
@@ -233,6 +349,10 @@ export class PauseMenu {
 
   /** Driven with unscaled time so the fade still runs while the game is frozen. */
   update(rawDt) {
+    if (this._keyFlash > 0) {
+      this._keyFlash -= rawDt;
+      if (this._keyFlash <= 0) this.syncFromConfig();
+    }
     this.shown = damp(this.shown, this.open ? 1 : 0, 14, rawDt);
     if (this.shown < 0.004) {
       setStyle(this.root, 'display', 'none');
@@ -245,6 +365,7 @@ export class PauseMenu {
   }
 
   dispose() {
+    this._cancelRebind();
     this.root.remove();
   }
 }
