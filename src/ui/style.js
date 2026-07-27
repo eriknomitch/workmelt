@@ -650,10 +650,44 @@ const CSS = `
 .ow-menu-bd { padding: 4px 20px 14px; overflow-y:auto; flex: 1 1 auto; min-height:0; }
 .ow-menu-ft { flex:none; padding: 14px 20px 16px; border-top: 1px solid var(--wm-border); }
 
+/* Tab strip for the advanced graphics groups. Pinned between the header and the
+   scrolling body — with ~38 settings behind it, a strip that scrolled away
+   would leave the player with no way back without a full scroll up. Chips
+   rather than an underlined rail: DESIGN.md wants 8px-grid enterprise UI, and a
+   chip carries the Ice-White-fill active state the segmented controls already
+   use, so the whole panel has one selected-state vocabulary. */
+.ow-tabs {
+  flex:none; display:flex; flex-wrap:wrap; gap: 6px;
+  padding: 12px 20px; border-bottom: 1px solid var(--wm-border);
+}
+.ow-tab {
+  appearance:none; border:1px solid var(--wm-border); border-radius: var(--wm-r-sm);
+  background: var(--wm-panel-2); color: var(--wm-muted-fg);
+  font-family: var(--wm-body); font-weight:600; text-transform:uppercase;
+  font-size: 10px; letter-spacing:.08em; padding: 6px 10px; cursor:pointer;
+  transition: color var(--wm-t), background var(--wm-t), border-color var(--wm-t);
+}
+.ow-tab:hover { color: var(--wm-fg); background: var(--wm-hover); }
+.ow-tab.on { color: var(--wm-bg); background: var(--wm-fg); border-color: var(--wm-fg); }
+
 .ow-group {
   font-size: 11px; font-weight:600; letter-spacing:.1em; text-transform:uppercase;
   color: var(--wm-muted-fg); padding: 18px 0 2px;
 }
+/* The first group header in a tab sits right under the strip, so it does not
+   need the 18px it uses to separate two groups mid-panel. */
+.ow-panel > .ow-group:first-child { padding-top: 10px; }
+/* A setting the player has moved off its preset. Melt Green is a border and an
+   accent only (the 4% rule), so "changed" is a left rule, not a fill. */
+.ow-row-set { box-shadow: inset 2px 0 0 -1px var(--wm-accent); padding-left: 8px; }
+.ow-row-set > .name { color: var(--wm-fg); }
+/* Marks a row that cannot take effect until the page reloads. */
+.ow-tag {
+  margin-left: 8px; padding: 2px 5px; border-radius: 3px; vertical-align: middle;
+  font-size: 9px; font-weight:600; letter-spacing:.08em;
+  color: var(--wm-muted-fg); border: 1px solid var(--wm-border);
+}
+.ow-row-set .ow-tag { color: var(--wm-warn); border-color: var(--wm-warn); }
 .ow-row {
   display:flex; align-items:center; justify-content:space-between;
   gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--wm-border); min-height: 52px;
@@ -740,6 +774,11 @@ const CSS = `
    Bebas it is. It fills only on hover, so leaving a match is never a mis-click. */
 .ow-btn.danger { border-color: var(--wm-border); color: var(--wm-muted-fg); }
 .ow-btn.danger:hover { background: var(--wm-danger); border-color: var(--wm-danger); color: var(--wm-bg); }
+/* Only on screen while a RESTART-tagged graphics setting is waiting to apply.
+   Warning, not Danger: reloading is the thing the player just asked for, it is
+   simply the thing that costs a loading screen. */
+.ow-btn.warn { border-color: var(--wm-warn); color: var(--wm-warn); }
+.ow-btn.warn:hover { background: var(--wm-warn); border-color: var(--wm-warn); color: var(--wm-bg); }
 .ow-menu .hint {
   margin-top: 14px; font-size: 11px; font-weight:500; letter-spacing:.06em;
   text-transform:uppercase; color: var(--wm-muted-fg); text-align:center;
@@ -772,6 +811,7 @@ const CSS = `
   .ow-menu h1 { font-size: 26px; }
   .ow-menu-hd { padding: 12px 16px; }
   .ow-menu-bd { padding: 0 16px 8px; }
+  .ow-tabs { padding: 8px 16px; }
   .ow-group { padding: 12px 0 2px; }
   .ow-row { padding: 9px 0; min-height: 0; }
 }

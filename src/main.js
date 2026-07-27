@@ -9,6 +9,7 @@ import {
   resolveGraphicsBoot,
   saveGraphicsSettings,
 } from './core/quality.js';
+import { applyGraphicsOverrides } from './core/graphics.js';
 import { DEFAULT_CONTROLS, loadControlSettings } from './core/controls.js';
 
 import { RenderSystem } from './render/index.js';
@@ -79,6 +80,14 @@ const config = createConfig({
 });
 if (adaptiveEnabled && graphics.mode === 'auto' && graphics.calibrated)
   config.q.renderScale = graphics.renderScale;
+
+// Advanced per-option overrides go on LAST, over both the preset and whatever
+// the adaptive scaler last settled on — they are the most specific thing the
+// player asked for. Skipped entirely for capture/`?q=` runs, so the pixel gate
+// and the goal harness keep seeing the shipped presets.
+const graphicsOverrides = adaptiveEnabled ? applyGraphicsOverrides(config, graphics.overrides) : null;
+if (graphicsOverrides?.applied.length)
+  console.info('[boot] graphics overrides', graphicsOverrides.applied.join(', '));
 
 const canvas = document.getElementById('game');
 

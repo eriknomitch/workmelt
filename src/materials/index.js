@@ -52,13 +52,15 @@ export class MaterialSystem {
     this.ctx = ctx;
     const q = ctx?.config?.q;
     this._anisotropy = q?.anisotropy ?? 8;
-    // Texture budget scales with the quality preset; 1K is the reference.
-    this._quality =
-      ctx?.config?.quality === 'performance' || ctx?.config?.quality === 'low'
-        ? 0.5
-        : ctx?.config?.quality === 'medium'
-          ? 0.75
-          : 1;
+    // Texture budget scales with the quality preset; 1K is the reference. The
+    // preset carries the multiplier now (it used to be re-derived from the tier
+    // name here), so the advanced graphics menu has something to override — and
+    // so "Texture Quality: Ultra" is one number in one place.
+    this._quality = q?.textureScale ?? 1;
+    /** Multiplier on per-surface parallax depth; 0 turns the POM march off. */
+    this._parallax = q?.parallaxScale ?? 1;
+    /** Multiplier on the shared micro-detail layer's strength and fade range. */
+    this._detail = q?.detailScale ?? 1;
     this._tryBuild();
   }
 
@@ -94,6 +96,27 @@ export class MaterialSystem {
     const ms = performance.now() - t0;
     if (ms > 30) console.info(`[materials] shared maps ${ms.toFixed(0)}ms`);
     return true;
+  }
+
+  /**
+   * Fold the Parallax Occlusion / Micro Detail quality settings into one
+   * surface's shader params, in place.
+   *
+   * Both are multipliers on values the library authored per surface rather than
+   * flat on/off switches, because the library's numbers are not interchangeable
+   * — 2.5 mm of mortar relief and 3 mm of tread plate are different surfaces
+   * making the same point. At 1 (the preset default for every tier) this is the
+   * identity, so nothing moves unless the player asked it to.
+   */
+  _scaleDetailParams(p) {
+    if (this._parallax !== 1 && p.parallax) p.parallax = p.parallax * this._parallax;
+    if (this._detail !== 1 && Array.isArray(p.detail)) {
+      const [tiles, normal, albedo, fade] = p.detail;
+      // Tiling is untouched: it sets the *size* of the tooth in metres, and
+      // scaling that would change what the surface is, not how much of it you
+      // get. Strength and fade distance are the quality dials.
+      p.detail = [tiles, normal * this._detail, albedo * this._detail, fade * this._detail];
+    }
   }
 
   _size(base) {
@@ -193,6 +216,7 @@ export class MaterialSystem {
     delete p.three;
     delete p.bake;
     p.groundY = opts.groundY ?? this._groundY;
+    this._scaleDetailParams(p);
 
     const threeProps = { ...(def.three ?? {}), ...(opts.three ?? {}) };
     const usePhysical = threeProps.physical === true;

@@ -74,8 +74,12 @@ export class AiSystem {
     ctx.scene.add(this.root);
 
     const t0 = performance.now();
+    // The soldier maps are baked per-texel on the CPU, so this size is paid in
+    // LOADING time, not frame time — which is why it is exposed as its own
+    // graphics setting rather than riding the world texture budget. 512 is the
+    // default at every tier; 1024 is what makes kit read as kit at 25 m.
     this.materials = new SoldierMaterials(this.rng.fork(), {
-      size: 512,
+      size: ctx.config.q.characterTextureSize ?? 512,
       anisotropy: ctx.config.q.anisotropy ?? 8,
       camo: ['arid', 'woodland', 'urban'],
     });

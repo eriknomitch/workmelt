@@ -18,109 +18,151 @@ export const UNITS = {
   eyeOffset: 0.12, // below top of capsule
 };
 
+/**
+ * Fields every preset carries but which used to be derived inside `render`
+ * from the tier name. They are spelled out per preset now so the advanced
+ * settings menu has something to override, and so a subsystem never has to
+ * re-derive "what does `medium` mean" for itself. Values below reproduce
+ * exactly what the derivations produced before they moved here.
+ */
+const SHARED = {
+  prepass: true,
+  post: true,
+  /** Multiplier on the world texture bake resolution; 1 = 1K reference. */
+  textureScale: 1,
+  /** Edge length of the CPU-baked soldier maps. Fixed at every tier, still. */
+  characterTextureSize: 512,
+  /** Multiplier on per-surface parallax depth; 0 disables the POM march. */
+  parallaxScale: 1,
+  /** Multiplier on the shared micro-detail layer's strength and range. */
+  detailScale: 1,
+  /** Ceiling on devicePixelRatio for the canvas backbuffer. */
+  pixelRatioCap: 1.5,
+};
+
 export const QUALITY_PRESETS = {
   performance: {
+    ...SHARED,
     renderScale: 0.3,
     minRenderScale: 0.2,
     maxRenderScale: 0.3,
     shadows: true,
     shadowQuality: -1,
-    prepass: true,
-    post: true,
     shadowMapSize: 512,
     cascades: 1,
     shadowDistance: 30,
     taa: false,
+    antialias: 'fxaa',
     gtao: false,
     ssr: false,
     volumetrics: false,
     motionBlur: false,
     bloom: false,
+    contactShadows: false,
+    dof: false,
+    viewSamples: 0,
     anisotropy: 2,
+    textureScale: 0.5,
     particleBudget: 1000,
     decalBudget: 32,
   },
   low: {
+    ...SHARED,
     renderScale: 0.72,
     minRenderScale: 0.5,
     maxRenderScale: 1,
     shadows: true,
     shadowQuality: 0,
-    prepass: true,
-    post: true,
     shadowMapSize: 1024,
     cascades: 3,
     shadowDistance: 60,
     taa: false,
+    antialias: 'fxaa',
     gtao: false,
     ssr: false,
     volumetrics: false,
     motionBlur: false,
     bloom: true,
+    contactShadows: false,
+    dof: false,
+    viewSamples: 0,
     anisotropy: 4,
+    textureScale: 0.5,
     particleBudget: 2000,
     decalBudget: 64,
   },
   medium: {
+    ...SHARED,
     renderScale: 0.85,
     minRenderScale: 0.5,
     maxRenderScale: 1,
     shadows: true,
     shadowQuality: 1,
-    prepass: true,
-    post: true,
     shadowMapSize: 2048,
     cascades: 3,
     shadowDistance: 90,
     taa: true,
+    antialias: 'taa',
     gtao: true,
     ssr: false,
     volumetrics: true,
     motionBlur: true,
     bloom: true,
+    contactShadows: true,
+    dof: true,
+    viewSamples: 2,
     anisotropy: 8,
+    textureScale: 0.75,
     particleBudget: 6000,
     decalBudget: 128,
   },
   high: {
+    ...SHARED,
     renderScale: 1.0,
     minRenderScale: 0.5,
     maxRenderScale: 1,
     shadows: true,
     shadowQuality: 2,
-    prepass: true,
-    post: true,
     shadowMapSize: 2048,
     cascades: 4,
     shadowDistance: 140,
     taa: true,
+    antialias: 'taa',
     gtao: true,
     ssr: true,
     volumetrics: true,
     motionBlur: true,
     bloom: true,
+    contactShadows: true,
+    dof: true,
+    viewSamples: 4,
     anisotropy: 16,
+    textureScale: 1,
     particleBudget: 12000,
     decalBudget: 256,
   },
   ultra: {
+    ...SHARED,
     renderScale: 1.0,
     minRenderScale: 0.5,
     maxRenderScale: 1,
     shadows: true,
     shadowQuality: 3,
-    prepass: true,
-    post: true,
     shadowMapSize: 4096,
     cascades: 4,
     shadowDistance: 200,
     taa: true,
+    antialias: 'taa',
     gtao: true,
     ssr: true,
     volumetrics: true,
     motionBlur: true,
     bloom: true,
+    contactShadows: true,
+    dof: true,
+    viewSamples: 4,
     anisotropy: 16,
+    textureScale: 1,
     particleBudget: 24000,
     decalBudget: 512,
   },
@@ -159,6 +201,13 @@ export const DEFAULTS = {
 export function createConfig(overrides = {}) {
   const cfg = { ...DEFAULTS, ...overrides };
   cfg.q = { ...QUALITY_PRESETS[cfg.quality] };
+  /**
+   * Advanced-settings overrides for keys the RENDER subsystem owns the defaults
+   * for (`RenderSystem.settings`). Core must not invent values for those, so it
+   * only carries the sparse patch across and lets render merge it.
+   * See `src/core/graphics.js`.
+   */
+  cfg.renderSettings = {};
   cfg.setQuality = (name) => {
     if (!QUALITY_PRESETS[name]) throw new Error(`unknown quality preset "${name}"`);
     cfg.quality = name;

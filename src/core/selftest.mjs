@@ -139,8 +139,10 @@ check('loads versioned per-browser settings and rejects corrupt values', () => {
     getItem: () =>
       JSON.stringify({ version: 2, mode: 'auto', targetFps: 144, tier: 'high', renderScale: 0.8 }),
   };
+  // v3 added `overrides` (the advanced graphics options); a v2 profile migrates
+  // to "none set", which renders exactly what v2 rendered.
   assert.deepEqual(loadGraphicsSettings(storage), {
-    version: 2,
+    version: 3,
     mode: 'auto',
     targetFps: 144,
     tier: 'high',
@@ -148,6 +150,7 @@ check('loads versioned per-browser settings and rejects corrupt values', () => {
     refreshHz: null,
     signature: null,
     calibrated: true,
+    overrides: {},
   });
   assert.equal(loadGraphicsSettings({ getItem: () => '{bad' }).mode, 'auto');
   assert.equal(
@@ -392,6 +395,132 @@ check('manual graphics selection persists and reloads exactly once', () => {
   assert.equal(system.setMode('high'), true);
   assert.equal(loadGraphicsSettings(storage).mode, 'high');
   assert.equal(reloads, 1);
+});
+
+/* ------------------------------------------- advanced graphics options -- */
+// The schema itself is checked by `src/core/graphics.selftest.mjs`; what
+// follows is the quality SYSTEM's half of the contract — persistence, live vs
+// restart classification, and the resolution pin.
+
+const optionHarness = ({ settings = {}, render } = {}) => {
+  const values = new Map();
+  const storage = {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, value),
+  };
+  let reloads = 0;
+  const applied = [];
+  const renderStub = render ?? {
+    settings: { grain: 0.01, exposureBias: 0, skyFill: 0.32 },
+    applySettings() {
+      applied.push('applySettings');
+    },
+    setRenderScale(v) {
+      applied.push(`renderScale:${v}`);
+    },
+    setRenderScaleLimits() {},
+    setPixelRatioCap(v) {
+      applied.push(`dpr:${v}`);
+    },
+    setAmbientFill(v) {
+      applied.push(`ambient:${v}`);
+    },
+  };
+  const ctx = {
+    config: { quality: 'ultra', q: { renderScale: 1 }, fov: 80 },
+    events: { emit() {} },
+    camera: null,
+    peek: (id) => (id === 'render' ? renderStub : null),
+  };
+  const system = new AdaptiveQualitySystem({
+    settings: { mode: 'auto', targetFps: 'display', ...settings },
+    storage,
+    location: { reload: () => reloads++ },
+  });
+  system.ctx = ctx;
+  return { system, storage, ctx, render: renderStub, applied, reloads: () => reloads };
+};
+
+check('a live option applies to the renderer without a reload', () => {
+  const h = optionHarness();
+  const result = h.system.setOption('grain', 0);
+  assert.equal(result.ok, true);
+  assert.equal(result.live, true);
+  assert.equal(result.restart, false);
+  assert.equal(h.render.settings.grain, 0);
+  assert.equal(h.system.pendingRestart, false);
+  assert.equal(h.reloads(), 0);
+  assert.equal(loadGraphicsSettings(h.storage).overrides.grain, 0);
+});
+
+check('brightness reaches the renderer as an inverted exposure bias', () => {
+  const h = optionHarness();
+  h.system.setOption('brightness', 0.75);
+  assert.equal(h.render.settings.exposureBias, -0.75);
+});
+
+check('a restart-only option persists and raises the pending flag', () => {
+  const h = optionHarness();
+  const result = h.system.setOption('textureScale', 2);
+  assert.equal(result.ok, true);
+  assert.equal(result.live, false);
+  assert.equal(result.restart, true);
+  assert.equal(h.system.pendingRestart, true);
+  assert.equal(h.reloads(), 0, 'must not reload under the player mid-menu');
+  assert.equal(loadGraphicsSettings(h.storage).overrides.textureScale, 2);
+  assert.equal(h.system.applyPending(), true);
+  assert.equal(h.reloads(), 1);
+});
+
+check('an unknown option or value is refused rather than persisted', () => {
+  const h = optionHarness();
+  assert.equal(h.system.setOption('nope', 1).ok, false);
+  assert.equal(h.system.setOption('antialias', 'msaa').ok, false);
+  assert.deepEqual(loadGraphicsSettings(h.storage).overrides, {});
+});
+
+check('clearing an option drops the override and asks for a restart', () => {
+  const h = optionHarness();
+  h.system.setOption('shadowQuality', 'ultra');
+  h.system.pendingRestart = false;
+  const result = h.system.setOption('shadowQuality', 'auto');
+  assert.equal(result.ok, true);
+  assert.equal(result.restart, true);
+  assert.deepEqual(loadGraphicsSettings(h.storage).overrides, {});
+});
+
+check('a preview drag moves the picture without touching storage', () => {
+  const h = optionHarness();
+  assert.equal(h.system.previewOption('grain', 0.04).live, true);
+  assert.equal(h.render.settings.grain, 0.04);
+  assert.deepEqual(loadGraphicsSettings(h.storage).overrides, {}, 'not persisted');
+  // A restart-only option has nothing to preview.
+  assert.equal(h.system.previewOption('textureScale', 2).live, false);
+});
+
+check('a hand-set resolution scale pins the adaptive scaler', () => {
+  const h = optionHarness({ settings: { calibrated: true, tier: 'high', renderScale: 1 } });
+  assert.equal(h.system.scaleLocked, false);
+  h.system.setOption('renderScale', 1.5);
+  assert.equal(h.system.scaleLocked, true);
+
+  const perf = {
+    count: 100000,
+    stats: () => ({ fps: { p95: 20 }, frameMs: { p95: 50 }, bound: 'gpu-or-vsync' }),
+  };
+  const ctx = { ...h.ctx, perf, time: { scale: 1 }, get: () => h.render };
+  h.system.policy = null;
+  h.system.lateUpdate(0, ctx);
+  assert.equal(h.system.getStatus().state, 'pinned');
+  assert.equal(h.reloads(), 0, 'a pinned resolution can never walk the tier down');
+});
+
+check('resetting defaults clears the advanced overrides too', () => {
+  const h = optionHarness();
+  h.system.setOption('textureScale', 2);
+  h.system.setOption('grain', 0);
+  h.system.resetDefaults();
+  assert.deepEqual(loadGraphicsSettings(h.storage).overrides, {});
 });
 
 console.log(`\n${checks} adaptive-quality checks passed`);

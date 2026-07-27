@@ -51,6 +51,17 @@ export class MySystem {
   `q.taa`, `q.gtao`, `q.ssr`, `q.volumetrics`, `q.shadowMapSize`,
   `q.particleBudget`, `q.decalBudget`. Never exceed a budget.
 
+  A preset field is also the **only** place the advanced graphics menu can
+  reach. `src/core/graphics.js` folds the player's per-option overrides into
+  `config.q` at boot, before `init()` runs, so a subsystem never learns that an
+  option exists — it reads the same preset object it always did. If your
+  subsystem re-derives a quality decision from `config.quality` (the tier NAME)
+  rather than from a `config.q` field, that decision cannot be exposed as a
+  setting: give it a preset field instead. `q.textureScale`,
+  `q.characterTextureSize`, `q.parallaxScale`, `q.detailScale`, `q.antialias`,
+  `q.viewSamples`, `q.contactShadows`, `q.dof` and `q.pixelRatioCap` all moved
+  out of such derivations for exactly this reason.
+
 ## Ownership map
 
 | id | directory | owns |
@@ -66,7 +77,7 @@ export class MySystem {
 | `ai` | `src/ai/` | enemy characters, navigation, perception, cover selection, combat behaviour |
 | `ui` | `src/ui/` | HUD, crosshair, hitmarkers, damage indicators, ammo, killfeed, menus |
 | `audio` | `src/audio/` | sampled + synthesized weapon/foley audio, spatialisation, reverb, occlusion, mix |
-| `quality` | `src/core/quality.js` | per-browser graphics calibration, FPS targeting, dynamic render scale, persisted graphics mode |
+| `quality` | `src/core/quality.js` | per-browser graphics calibration, FPS targeting, dynamic render scale, persisted graphics mode, and the advanced per-option graphics overrides (schema in `src/core/graphics.js`) |
 | `net` | `src/net/` | web multiplayer: room transport, remote player puppets, PvP hit settlement, invite bar / scoreboard, the match-start lobby on the wire |
 | `match` | `src/match/` | the Match Start view: map choice, bot-garrison choice, ready-up, countdown, and when the match goes live |
 
@@ -176,7 +187,15 @@ r.screenSize          // { width, height } of the internal render target
 r.depthTexture        // linear depth, for soft particles / SSR
 r.velocityTexture     // motion vectors, for TAA / motion blur
 r.setRenderScale(n)   // resize targets within the active preset's scale range
+r.setRenderScaleLimits(min, max)  // widen that range (manual scale goes to 2x)
+r.setPixelRatioCap(n) // ceiling on devicePixelRatio for the backbuffer
+r.applySettings(patch?)           // push `r.settings` at the passes caching it
+r.setAmbientFill(k)   // scale every indirect term at once ("Shadow Lift")
 ```
+
+The last four exist for the advanced graphics menu, which drives `r.settings`
+live. Anything else that writes `r.settings` directly must call
+`r.applySettings()` afterwards or the passes will not see it.
 
 Anything drawn into `viewScene` is composited after the world with a cleared
 depth buffer.
