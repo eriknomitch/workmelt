@@ -81,6 +81,16 @@ const SAMPLE_BASE = `${import.meta.env?.BASE_URL ?? '/'}sfx/`.replace(/\/{2,}/g,
 const SELF_STEP_LEVEL = 0.34;
 
 /**
+ * Your own landing, at the top of its velocity ramp. Also dry — see _onLand.
+ *
+ * Derived rather than dialled: exactly twice a walking step, which reads as the
+ * bigger event it is while still sitting under the 0.72 that drowned the mix.
+ * A landing is punctuational where a step repeats twice a second, so it can
+ * afford the headroom a step could not.
+ */
+const SELF_LAND_LEVEL = SELF_STEP_LEVEL * 2;
+
+/**
  * Footstep distance law, deliberately shallower than `spatial.attenuation()`.
  *
  * The physical curve rolls off at 0.85 and was tuned when the only footstep in
@@ -718,9 +728,13 @@ export class AudioSystem {
   _onShell(p) {
     if (!this.running || !p) return;
     if (this._budget.shell++ > 2) return;
+    // No fallback to the listener: brass placed at the head would sit in
+    // attenuation()'s flat near field and ring at full gain. Both emitters
+    // (weapons, ai) always send a position, so a payload without one is
+    // malformed and silence is the honest answer.
     const pos = p.position;
-    const lp = this.field.listenerPos;
-    const x = pos?.x ?? lp.x, y = pos?.y ?? lp.y, z = pos?.z ?? lp.z;
+    if (!isVec(pos)) return;
+    const x = pos.x, y = pos.y, z = pos.z;
     const dist = this.field.distanceTo(x, y, z);
     if (dist > 22) return;
     // Find what it will land on, so brass on sand does not ring like concrete.
@@ -827,14 +841,27 @@ export class AudioSystem {
     }, 'foley', 0.4);
   }
 
+  /**
+   * The local player's own landing. Dry, for the same reasons as _onFootstep.
+   *
+   * This used to play through a 3D emitter parked at `listenerPos.y - 1.6` —
+   * always directly under your own head, so the panning carried no information,
+   * and 1.6 m sits inside `attenuation()`'s flat near field, which returns
+   * exactly 1.0. With a level that reached 1.7 that made a hard landing the
+   * loudest foley the game could produce: more than twice the 0.72 that was
+   * already judged to drown everything when your own boots played that way.
+   *
+   * Levels are calibrated against SELF_STEP_LEVEL rather than by ear — a soft
+   * landing sits just above a walking step, a hard one at exactly twice it.
+   */
   _onLand(p) {
     if (!this.running) return;
-    const lp = this.field.listenerPos;
     const v = Math.abs(typeof p?.velocity === 'number' ? p.velocity : (p?.velocity?.y ?? 4));
-    this._playAt('step', lp.x, lp.y - 1.6, lp.z, {
+    this._playDry('step', {
       surface: p?.surface ?? 'concrete', gait: 'land',
-      level: clamp(v / 7, 0.35, 1.7), gear: 1,
-    }, 'foley', 0.7);
+      level: clamp((v / 7) * SELF_LAND_LEVEL, SELF_STEP_LEVEL + 0.02, SELF_LAND_LEVEL),
+      gear: 1,
+    }, 'foley', 0.18);
     if (v > 8.5) this._playDry('cloth', { level: 0.8 }, 'foley', 0.15);
   }
 
@@ -993,9 +1020,16 @@ export class AudioSystem {
       });
     }
     ev.emit('weapon:shell', { position: at(0.3, -0.2, -0.2), velocity: { x: 1, y: 1, z: 0 } });
+    // A malformed shell must be dropped, not parked on the listener at full gain.
+    ev.emit('weapon:shell', { velocity: { x: 1, y: 1, z: 0 } });
     for (const ph of ['start', 'magout', 'magin', 'end']) ev.emit('weapon:reload', { weapon: 'rifle', phase: ph });
+    // A bot's reload carries a position, so it attenuates instead of playing dry.
+    for (const d of [4, 18, 45]) {
+      ev.emit('weapon:reload', { weapon: 'ai_rifle', phase: 'start', position: at(d * 0.7, -0.5, -d * 0.7) });
+    }
     ev.emit('bullet:tracer', { from: at(-30, 0, -30), to: at(2, 0, 2), speed: 880 });
-    ev.emit('player:land', { velocity: 9, surface: 'concrete' });
+    // Both ends of the landing ramp: a step off a kerb and a fall that hurts.
+    for (const v of [2.5, 9, 14]) ev.emit('player:land', { velocity: v, surface: 'concrete' });
     ev.emit('player:state', { stance: 'crouch', sprinting: false, sliding: false, ads: true });
     ev.emit('damage:dealt', { target: { id: 3 }, amount: 34, headshot: true, killed: false, point: at(4, 0, -9) });
     ev.emit('damage:taken', { amount: 28, from: at(4, 0, -9), health: 24 });

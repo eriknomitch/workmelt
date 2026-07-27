@@ -139,6 +139,10 @@ export class AiSystem {
     };
     this._shellEvent = { position: new THREE.Vector3(), velocity: new THREE.Vector3() };
     this._tracerEvent = { from: this._tracerFrom, to: this._tracerTo, speed: 800 };
+    // Carries a position on purpose: `audio` falls back to a head-locked dry
+    // voice for a reload without one, which would put a bot's magazine clatter
+    // in your ears from anywhere on the map.
+    this._reloadEvent = { weapon: 'ai_rifle', phase: 'start', actor: null, position: new THREE.Vector3() };
     this._grenades = [];
     this._grenadeGeo = null;
     this._grenadeMat = null;
@@ -1090,7 +1094,11 @@ export class AiSystem {
   }
 
   emitReload(agent) {
-    this.ctx.events.emit('weapon:reload', { weapon: 'ai_rifle', phase: 'start', actor: agent });
+    const re = this._reloadEvent;
+    re.actor = agent;
+    // Chest height, not the feet: a reload happens at the hands.
+    re.position.set(agent.position.x, agent.position.y + 1.1, agent.position.z);
+    this.ctx.events.emit('weapon:reload', re);
   }
 
   /** Grenade geometry + material. Built at prewarm, not on the first throw. */

@@ -15,6 +15,9 @@ The browser client lives in `src/`. Features are divided into subsystem director
 - `npm run serve` builds, then serves the client and Node relay.
 - `node src/physics/selftest.js` and `node src/ai/selftest.mjs` run subsystem checks.
 - `node src/weapons/throwables.selftest.mjs` checks the equipment inventory contract (a pulled pin is never refunded), the cook-off, and which event each throwable detonates with.
+- `node src/audio/attenuation.selftest.mjs` checks which sounds are head-locked and
+  which are spatialised — the near field is flat at 1.0 and the dry path has no
+  distance law, so the routing decision is what keeps either from running away.
 - `node src/ai/footstep.selftest.mjs` checks the stride clock behind `actor:footstep`
   — rate, foot alternation, contact phase and the animation-rate LOD.
 - `node src/audio/probe.mjs --port=5213` is the audio equivalent of the capture

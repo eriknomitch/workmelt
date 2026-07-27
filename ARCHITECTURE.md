@@ -91,8 +91,10 @@ Emit and listen via `ctx.events`. Payloads are plain objects. The canonical set:
 | event | payload | emitted by |
 |---|---|---|
 | `weapon:fire` | `{ weapon, origin: Vector3, dir: Vector3, seed }` | weapons |
-| `weapon:reload` | `{ weapon, phase: 'start'\|'magout'\|'magin'\|'end' }` | weapons |
-| `weapon:shell` | `{ position, velocity }` | weapons |
+| `weapon:reload` | `{ weapon, phase: 'start'\|'magout'\|'magin'\|'end', position? }` | weapons / ai |
+| ↳ | `position` is absent for the local player's own reload — that one is head-locked by definition. An emitter that is *not* the local player must supply it: `audio` falls back to a dry, unattenuated voice without one, which would put a bot's magazine clatter in your ears from across the map. | |
+| `weapon:shell` | `{ position, velocity }` | weapons / ai |
+| ↳ | `position` is required, not optional. Brass defaulted to the listener would sit in `attenuation()`'s flat near field and ring at full gain; `audio` drops a payload without one instead. | |
 | `bullet:impact` | `{ point, normal, surface, incident, damage }` | physics |
 | `bullet:tracer` | `{ from, to, speed }` | weapons |
 | `damage:dealt` | `{ target, amount, headshot, killed, point }` | ai / physics |
@@ -103,6 +105,7 @@ Emit and listen via `ctx.events`. Payloads are plain objects. The canonical set:
 | ↳ | NOT interchangeable with `player:footstep`, which means *the local player* stepped and is what `ai` perception and `fx` dust read. Only `audio` consumes this one; anything that would react to the player moving must keep listening to `player:footstep`. `ai` gates emission on range, so an inaudible body is silent, not merely quiet. | |
 | `player:spawn` | `{ position, yaw, zone }` — the local player entered the map at a spawn point chosen by `world.spawns` | player |
 | `player:land` | `{ velocity, surface }` | player |
+| ↳ | Local only, and `audio` plays it head-locked rather than at a position. A landing is always directly under your own head, so panning it encodes nothing and 1.6 m sits inside `attenuation()`'s flat near field — the 3D path gave it maximum gain. | |
 | `player:footstep` | `{ position, surface, running }` | player |
 | `player:state` | `{ stance, sprinting, sliding, ads }` | player |
 | `explosion` | `{ position, radius, damage }` | any |

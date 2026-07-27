@@ -60,6 +60,8 @@ import { clamp, clamp01, lerp, damp, DEG } from './mathx.js';
  *   weapon:fire    { weapon, origin, dir, seed }
  *   weapon:shell   { position, velocity }
  *   weapon:reload  { weapon, phase: 'start'|'magout'|'magin'|'end' }
+ *                  No position: this is the player's own reload, and `audio`
+ *                  reads a missing position as "head-locked". `ai` must send one.
  *   bullet:tracer  { from, to, speed }
  *   explosion      { position, radius, damage }   frag detonation
  *   equipment:flash{ position, radius, duration } stun detonation
