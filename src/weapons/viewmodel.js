@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { Arm, HAND_POSES } from './hands.js';
+import { Arm } from './hands.js';
 import { buildClips, makeSampleResult } from './clips.js';
 import { triCount, mergeAll } from './geometry.js';
 import {
@@ -111,11 +111,11 @@ export class Viewmodel {
     ctx.viewScene.add(this.anchor);
 
     // ---- arms -------------------------------------------------------------
+    // Two flat-shaded untextured dark greys — the arms are deliberately
+    // low-poly (see hands.js) and cost no texture fetches at all.
     const handMats = {
-      glove: mats.get('glove'),
-      pad: mats.get('glove_pad'),
-      seam: mats.get('glove_seam'),
-      sleeve: mats.get('sleeve'),
+      glove: mats.armGlove(),
+      sleeve: mats.armSleeve(),
     };
     // Shoulder joints in CAMERA space: ~200 mm lateral, ~210 mm below the eye
     // and only just behind it.
@@ -148,18 +148,6 @@ export class Viewmodel {
     });
     this.rig.add(this.armR.root);
     this.rig.add(this.armL.root);
-    /**
-     * The arms get the SAME curvature-mask treatment the weapon does. Without
-     * this every wear/grime/AO number in `sleeve`, `glove`, `glove_pad` and
-     * `glove_seam` is dead code — see Arm.bakeSurfaceMasks. It has to happen
-     * before `_fitSupportHand` runs, because that adds contact AO into the same
-     * attribute with Math.max and would otherwise be overwritten.
-     */
-    const bakeArms = this.mats.lib?.bakeMasks?.bind(this.mats.lib) ?? null;
-    if (bakeArms) {
-      this.armR.bakeSurfaceMasks(bakeArms, shapeMasks, this.rng);
-      this.armL.bakeSurfaceMasks(bakeArms, shapeMasks, this.rng);
-    }
     // Body-fixed shoulders, expressed in camera space and re-based into rig
     // space every frame so the elbows do not swing when the gun moves.
     this.shoulderR = new THREE.Vector3(0.205, -0.2, 0.06);
@@ -449,9 +437,9 @@ export class Viewmodel {
    *     derived analytically — see the note there for why the analytic version
    *     was 8-14 mm out in every frame despite the maths being right.
    *  2. The contact points that come back are then used to bake a contact-AO
-   *     gradient into BOTH sides of the interface: the handguard here, the glove
-   *     in `Arm.bakeContactAO`. 0.55 multiply at the contact, easing to 1.0 over
-   *     12 mm.
+   *     gradient into the handguard. 0.55 multiply at the contact, easing to
+   *     1.0 over 12 mm. (Only the weapon side: the flat-shaded arm materials
+   *     do not read vertex masks.)
    *
    * The AO mask lives in vColor.b, which the library's shader turns into
    * `orm.r *= 1 - vColor.b * wear[2]`; wear[2] is 0.5 on every weapon material,
@@ -479,7 +467,6 @@ export class Viewmodel {
     const z0 = Math.max(hg.z0, hg.z1);
     const z1 = Math.min(hg.z0, hg.z1);
     const kept = contacts.filter((p) => p.z <= z0 + 0.012 && p.z >= z1 - 0.012);
-    this.armL.bakeContactAO(kept, 0.012, 0.7);
     this._bakeContactAOOnWeapon(w, kept, 0.012, 0.9);
     this.armL.setPose(poseName);
   }
