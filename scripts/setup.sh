@@ -57,21 +57,26 @@ else
 fi
 
 # ------------------------------------------------------------------ browsers ---
-# Sandboxes preseed a shared browser cache here and export the same variable, so
-# honour it; anything already downloaded for another revision is left alone.
-export PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH:-/opt/pw-browsers}"
+# Sandboxes preseed a shared browser cache at /opt/pw-browsers and export the
+# same variable, so honour whatever is exported and adopt the shared cache only
+# when it is already there. On a normal workstation /opt is not writable and
+# playwright's own per-user cache is the right place anyway.
+if [[ -z "${PLAYWRIGHT_BROWSERS_PATH:-}" && -d /opt/pw-browsers ]]; then
+  export PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers
+fi
 
 if [[ "${SKIP_BROWSERS:-}" == 1 ]]; then
   log 'SKIP_BROWSERS=1, not touching browsers'
 elif [[ ! -d node_modules/playwright ]]; then
   log 'playwright not installed, skipping browser download'
 else
-  if [[ -d "$PLAYWRIGHT_BROWSERS_PATH" && ! -w "$PLAYWRIGHT_BROWSERS_PATH" ]]; then
-    warn "$PLAYWRIGHT_BROWSERS_PATH is not writable; installing into the default user cache"
-    warn 'export PLAYWRIGHT_BROWSERS_PATH=~/.cache/ms-playwright before running tools/'
+  # mkdir -p covers "does not exist yet"; -w covers "exists but read-only".
+  if [[ -n "${PLAYWRIGHT_BROWSERS_PATH:-}" ]] &&
+     { ! mkdir -p "$PLAYWRIGHT_BROWSERS_PATH" 2>/dev/null ||
+       [[ ! -w "$PLAYWRIGHT_BROWSERS_PATH" ]]; }; then
+    warn "cannot write $PLAYWRIGHT_BROWSERS_PATH; using playwright's default user cache"
+    warn 'unset PLAYWRIGHT_BROWSERS_PATH in your shell too, or tools/ will look in the wrong place'
     unset PLAYWRIGHT_BROWSERS_PATH
-  else
-    mkdir -p "$PLAYWRIGHT_BROWSERS_PATH"
   fi
 
   # The preseeded cache is often a revision behind the pinned playwright, which
