@@ -51,6 +51,10 @@ export class Input {
     this.gamepadIndex = null;
     this.stick = { moveX: 0, moveY: 0, lookX: 0, lookY: 0 };
 
+    /** Resolved once per frame from `config.adsMode` + `config.adsKey`. */
+    this._ads = false;
+    this._adsLatched = false;
+
     this._bound = {
       keydown: this._onKeyDown.bind(this),
       keyup: this._onKeyUp.bind(this),
@@ -147,6 +151,15 @@ export class Input {
     for (const code of this.down) this._pendingUp.add(code);
     this._rawLook.x = 0;
     this._rawLook.y = 0;
+    // A latch is not a held key, so the release sweep above misses it: coming
+    // back from a pause or an alt-tab should never leave the optic stuck up.
+    this.clearAdsToggle();
+  }
+
+  /** Drop a latched toggle-mode ADS. Safe to call every frame. */
+  clearAdsToggle() {
+    this._adsLatched = false;
+    if (this.config.adsMode === 'toggle') this._ads = false;
   }
 
   beginFrame() {
@@ -174,7 +187,35 @@ export class Input {
     this.wheel = this._pendingWheel;
     this._pendingWheel = 0;
 
+    this._resolveAds();
     this._pollGamepad();
+  }
+
+  /**
+   * Fold every ADS source — right mouse, the optional keyboard bind — into one
+   * boolean, so `hold` vs `toggle` is decided in exactly one place and every
+   * consumer of `input.ads` (player, weapons, HUD) agrees on the answer.
+   *
+   * Toggle mode is what makes aiming possible on a trackpad: a two-finger click
+   * cannot be *held* while a one-finger click fires, but it can be tapped.
+   */
+  _resolveAds() {
+    const key = this.config.adsKey;
+    const bound = typeof key === 'string' && key ? key : null;
+
+    if (this.config.adsMode === 'toggle') {
+      if (this._pressed.has('Mouse2') || (bound && this._pressed.has(bound)))
+        this._adsLatched = !this._adsLatched;
+      // Sprint is gated on not being scoped, so without this a latched player
+      // would press sprint and watch nothing happen. Same as a hold player
+      // letting go of the button to break into a run.
+      else if (this._adsLatched && this.actionPressed('sprint')) this._adsLatched = false;
+      this._ads = this._adsLatched;
+      return;
+    }
+
+    this._adsLatched = false;
+    this._ads = this.down.has('Mouse2') || (bound ? this.down.has(bound) : false);
   }
 
   endFrame() {}
@@ -230,8 +271,9 @@ export class Input {
     return this._pressed.has('Mouse0');
   }
 
+  /** Resolved in `beginFrame` — see `_resolveAds`. */
   get ads() {
-    return this.down.has('Mouse2');
+    return this._ads;
   }
 
   /** Normalised WASD + left-stick movement, clamped to the unit disc so

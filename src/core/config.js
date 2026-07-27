@@ -136,6 +136,14 @@ export const DEFAULTS = {
   adsFovScale: 0.72,
   sensitivity: 0.0022,
   adsSensScale: 0.65,
+  /**
+   * How the aim button behaves: 'hold' (classic) or 'toggle'. Toggle exists for
+   * trackpads, where a two-finger click cannot be held while a one-finger click
+   * fires. Persisted by `core/controls.js`.
+   */
+  adsMode: 'hold',
+  /** Optional keyboard bind for ADS, so aiming never needs the pointer at all. */
+  adsKey: 'KeyX',
   invertY: false,
   exposure: 1.0,
   /** Capture mode disables anything nondeterministic so screenshots are stable. */

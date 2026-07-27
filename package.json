@@ -10,6 +10,7 @@
     "serve": "npm run build && node server/index.mjs",
     "preview": "vite preview --port 4173",
     "test:quality": "node src/core/selftest.mjs",
+    "test:input": "node src/core/input.selftest.mjs",
     "test:audio": "node src/audio/probe.mjs",
     "sfx:fetch": "bash tools/fetch-sfx.sh",
     "sfx": "node tools/encode-sfx.mjs",
