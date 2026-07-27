@@ -372,6 +372,107 @@ export const PALETTE = {
   glass: { name: 'glass', surface: 'glass', opts: { scale: 2.0 } },
   foliage: { name: 'foliage', surface: 'foliage', opts: { vertexMasks: true } },
 
+  // ------------------------------------------------- the Wilmot estate --
+  /**
+   * Mown lawn. There is no grass generator in the library, so this is the dirt
+   * field under a green multiply with the mud-crack macro tiled down — at 30 m
+   * it reads as turf, at 0.5 m as thatch, and the FBM roll in the map's height
+   * field does the rest. Surface stays `dirt` so footsteps land soft, not leafy.
+   */
+  lawn: {
+    name: 'dirt',
+    surface: 'dirt',
+    opts: {
+      vertexMasks: true,
+      tint: 0x718a4e,
+      scale: 1.7,
+      detile: 0.85,
+      weather: [0.35, 0.05, 0.1, 0.2],
+      wear: [0, 0.5, 0.4, 0],
+    },
+  },
+  /**
+   * The opaque heart of every hedge, topiary ball and tree crown. The alpha-cut
+   * `foliage` shell floats just proud of this; the core is what stops daylight
+   * showing through the middle of a clipped mass, so it sits well darker than
+   * the lit leaf surface — shadowed interior, not painted green.
+   */
+  leaf_core: {
+    name: 'dirt',
+    surface: 'foliage',
+    opts: { vertexMasks: true, tint: 0x38452c, scale: 0.7, normalStrength: 1.3, weather: [0.3, 0.2, 0.2, 0.4] },
+  },
+  bark: {
+    name: 'wood',
+    surface: 'wood',
+    opts: { vertexMasks: true, tint: 0x6d5a45, scale: 0.55, normalStrength: 1.5, weather: [0.4, 0.35, 0.4, 0.55] },
+  },
+  /** Rose beds in the sunken garden: the foliage sheet under a warm multiply. */
+  bloom: {
+    name: 'foliage',
+    surface: 'foliage',
+    opts: { vertexMasks: true, tint: 0xc08a92 },
+  },
+  /** The manor's English-revival brick: tighter and redder than the market's. */
+  brick_red: {
+    name: 'brick',
+    surface: 'concrete',
+    opts: { vertexMasks: true, tint: 0x96604c, scale: 0.6, weather: [0.4, 0.45, 0.8, 0.55] },
+  },
+  /** The clay tile roof the listing calls out. Dark, cool, matte. */
+  roof_tile: {
+    name: 'tile',
+    surface: 'concrete',
+    opts: { vertexMasks: true, tint: 0x6a5a52, scale: 1.1, normalStrength: 1.3, weather: [0.5, 0.3, 0.5, 0.5] },
+  },
+  /** Interior hardwood, per the listing. Plank field at floor scale. */
+  floor_wood: {
+    name: 'plank',
+    surface: 'wood',
+    opts: { vertexMasks: true, tint: 0x8d6a48, scale: 1.2, normalStrength: 1.2 },
+  },
+  /** The restored barn's painted board siding. */
+  barn_red: {
+    name: 'plank',
+    surface: 'wood',
+    opts: { vertexMasks: true, tint: 0x86463a, scale: 1.4, normalStrength: 1.25, weather: [0.5, 0.4, 0.6, 0.55] },
+  },
+  /** Tennis-court acrylic over asphalt. */
+  court_green: {
+    name: 'asphalt',
+    surface: 'concrete',
+    opts: { vertexMasks: true, tint: 0x51705a, scale: 2.4, detile: 0.6, wear: [0, 0.5, 0.4, 0] },
+  },
+  /** Pool and fountain water: glassy, transparent, sky-fed. */
+  pool_water: {
+    name: 'glass',
+    surface: 'water',
+    opts: {
+      scale: 2.4,
+      tint: 0x5d8a8e,
+      roughness: [0.24, 0.05],
+      three: { opacity: 0.44, envMapIntensity: 1.9 },
+    },
+  },
+  /** Greenhouse glazing bars, porch columns, window trim: painted white. */
+  frame_white: {
+    name: 'metal_painted',
+    surface: 'metal',
+    opts: { vertexMasks: true, tint: 0xc9c6bc, scale: 0.9, weather: [0.45, 0.3, 0.4, 0.45] },
+  },
+  /** Cut stone for terraces, copings and steps — paler than raw concrete. */
+  stone_pale: {
+    name: 'concrete',
+    surface: 'concrete',
+    opts: { vertexMasks: true, tint: 0xb3a892, scale: 1.5, weather: [0.5, 0.35, 0.6, 0.5] },
+  },
+  /** Baled hay: hessian run bright and dry. */
+  straw: {
+    name: 'burlap',
+    surface: 'fabric',
+    opts: { vertexMasks: true, tint: 0xc0a05e, scale: 0.3, weather: [0.4, 0.2, 0.3, 0.4] },
+  },
+
   // ------------------------------------------------------------- apertures --
   /**
    * The dark core BEHIND a window opening. A window is not a grey rectangle: it

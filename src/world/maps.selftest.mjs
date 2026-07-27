@@ -26,6 +26,19 @@ import { Assembler } from './builder.js';
 import { MAPS, DEFAULT_MAP_ID, getMap, isMapId, mapSummaries, resolveBootMap } from './maps.js';
 import { CONTAINER } from './rustprops.js';
 import { CONTAINERS, STRUCTURES, RUST, DERRICK, inSolid } from './rust.js';
+import { HEDGE } from './wilmotprops.js';
+import {
+  WILMOT,
+  STRUCTURES as WILMOT_STRUCTURES,
+  TERRACE,
+  POOL,
+  BOWL,
+  HEDGES,
+  TREES,
+  GATES,
+  inSolidWilmot,
+  groundYWilmot,
+} from './wilmot.js';
 
 let pass = 0;
 let fail = 0;
@@ -281,6 +294,86 @@ for (const [name, sign] of [['north', -1], ['south', 1]]) {
   }
   ok(leaks.length === 0, `the ${name} gate is sealed`,
     leaks.length ? `open at x=${leaks.join(',')}` : `${GATE_HALF * 2} m of opening covered`);
+}
+
+/* ────────────────────────────────────────────────────── wilmot: the grounds ── */
+console.log(B('\nwilmot — the grounds'));
+
+const wRects = [];
+for (const s of WILMOT_STRUCTURES) wRects.push([s.id, s.x - s.w / 2, s.z - s.d / 2, s.x + s.w / 2, s.z + s.d / 2]);
+for (const [x, z, ry, len] of HEDGES) {
+  const hx = (ry === 0 ? len : HEDGE.w) / 2;
+  const hz = (ry === 0 ? HEDGE.w : len) / 2;
+  wRects.push([`hedge(${x},${z})`, x - hx, z - hz, x + hx, z + hz]);
+}
+for (const [x, z, s] of TREES) wRects.push([`tree(${x},${z})`, x - 0.45 * s, z - 0.45 * s, x + 0.45 * s, z + 0.45 * s]);
+wRects.push(['pool', POOL.x0, POOL.z0, POOL.x1, POOL.z1]);
+wRects.push(['terrace', TERRACE.x0, TERRACE.z0, TERRACE.x1, TERRACE.z1]);
+const wOverlaps = [];
+for (let i = 0; i < wRects.length; i++) {
+  for (let j = i + 1; j < wRects.length; j++) {
+    const a = wRects[i];
+    const b = wRects[j];
+    if (a[1] < b[3] && a[3] > b[1] && a[2] < b[4] && a[4] > b[2]) wOverlaps.push(`${a[0]} ∩ ${b[0]}`);
+  }
+}
+ok(wOverlaps.length === 0, 'nothing solid is inside anything else solid', wOverlaps.slice(0, 3).join(', '));
+
+const wOut = wRects.filter(
+  (r) => r[1] < -WILMOT.halfX || r[2] < -WILMOT.halfZ || r[3] > WILMOT.halfX || r[4] > WILMOT.halfZ
+);
+ok(wOut.length === 0, 'everything solid is inside the wall', wOut.map((r) => r[0]).join(' '));
+
+const wilmot = getMap('wilmot');
+// The manor is the landmark: two real storeys and the map's tallest eaves.
+const manor = WILMOT_STRUCTURES.find((s) => s.id === 'manor');
+ok(manor.floors === 2 && manor.h > 6, 'the manor is a two-storey landmark', `${manor.h} m eaves`);
+ok(HEDGES.every(([, , ry]) => ry === 0 || ry === Math.PI / 2), 'clipped hedges are clipped (axis-aligned)');
+
+// The estate's three signature grounds features behave as designed:
+// the pool is water (not minimap floor), the sunken garden is walkable floor
+// a full metre below the lawn, and the lawn right at its lip is still lawn.
+ok(!wilmot.isOpen((POOL.x0 + POOL.x1) / 2, (POOL.z0 + POOL.z1) / 2), 'the pool is not open ground');
+// probe beside the sundial, not through it — the centre of the bowl is cover
+const bowlMid = [(BOWL.x0 + BOWL.x1) / 2 + 1.5, (BOWL.z0 + BOWL.z1) / 2 - 1.2];
+ok(
+  wilmot.isOpen(bowlMid[0], bowlMid[1]) && groundYWilmot(bowlMid[0], bowlMid[1]) < -1.0,
+  'the sunken garden is a walkable trench',
+  `${groundYWilmot(bowlMid[0], bowlMid[1]).toFixed(2)} m`
+);
+ok(Math.abs(groundYWilmot(BOWL.x1 + BOWL.lip + 1.5, bowlMid[1])) < 0.15, 'the lawn at its lip is still lawn');
+ok(!wilmot.isOpen(0, WILMOT.halfZ + 3), 'outside the wall is not playable ground');
+
+// Sample the grounds and ask how much a player can actually stand on — an
+// estate is open country compared with Rust's yard, and should read as such.
+let wOpen = 0;
+let wTotal = 0;
+for (let x = -WILMOT.halfX; x <= WILMOT.halfX; x += 1)
+  for (let z = -WILMOT.halfZ; z <= WILMOT.halfZ; z += 1) {
+    wTotal++;
+    if (wilmot.isOpen(x, z)) wOpen++;
+  }
+const wFrac = wOpen / wTotal;
+ok(wFrac > 0.5 && wFrac < 0.92, 'most of the grounds are walkable', `${(wFrac * 100).toFixed(0)}% open`);
+
+/**
+ * THE GATES ARE SEALED — same probe as Rust's, for the same reason. The wall
+ * has one opening for the drive and one for the service gate, and the closed
+ * gate leaf is the only thing between them and empty parkland. Walk every
+ * line across each opening and require something solid within the mouth.
+ */
+for (const g of GATES) {
+  const sign = g.side === 'n' ? -1 : 1;
+  const leaks = [];
+  for (let x = g.u - g.w / 2 + 0.2; x <= g.u + g.w / 2 - 0.2; x += 0.2) {
+    let solid = false;
+    for (let d = 0; d <= 2 && !solid; d += 0.2) {
+      if (inSolidWilmot(x, sign * (WILMOT.halfZ - d), 0)) solid = true;
+    }
+    if (!solid) leaks.push(x.toFixed(1));
+  }
+  ok(leaks.length === 0, `the ${g.side === 'n' ? 'drive' : 'service'} gate is sealed`,
+    leaks.length ? `open at x=${leaks.join(',')}` : `${g.w} m of opening covered`);
 }
 
 console.log(

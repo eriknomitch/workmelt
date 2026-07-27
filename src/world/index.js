@@ -42,7 +42,7 @@ import { MAPS, DEFAULT_MAP_ID, getMap, isMapId, mapSummaries, resolveBootMap, sa
  *   world.root                THREE.Group holding everything
  *   world.bounds              THREE.Box3 of the playable area, world space
  *   world.map                 the active map descriptor
- *   world.mapId               its id — 'market' | 'rust'
+ *   world.mapId               its id — 'market' | 'rust' | 'wilmot'
  *   world.maps                [{ id, name, subtitle, blurb, size }] for menus
  *   world.setMap(id)          rebuild the level on another map. Awaitable, and
  *                             ONLY legal before a match goes live — see below.
