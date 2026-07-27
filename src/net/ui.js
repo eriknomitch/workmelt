@@ -113,6 +113,14 @@ export class NetUI {
     this.nameIn.addEventListener('keydown', (e) => e.stopPropagation());
   }
 
+  /**
+   * Hide the whole overlay. The Match Start view shows the room code and the
+   * invite button itself, and this bar would otherwise ghost through its scrim.
+   */
+  setHidden(hidden) {
+    this.root.style.display = hidden ? 'none' : '';
+  }
+
   setRoom(code) {
     this.roomEl.textContent = code;
     this.boardRoom.textContent = `Room ${code.toUpperCase()} — free-for-all`;

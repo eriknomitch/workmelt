@@ -3,7 +3,7 @@
 Get updates [here](https://shumer.dev/newsletter).
 
 A first-person shooter built in the browser with Three.js r180 and WebGL2. Roughly
-55k lines across 11 subsystems, written by a fleet of AI agents under orchestration.
+55k lines across 13 subsystems, written by a fleet of AI agents under orchestration.
 
 **There are no art assets.** Every texture, mesh, animation and sound is generated
 procedurally at load time from code. No models, no HDRIs, no image files, no audio
@@ -14,8 +14,11 @@ npm install
 npm run dev          # http://127.0.0.1:5173
 ```
 
-Click the canvas to lock the cursor. WASD move, mouse aim, LMB fire, RMB ADS,
-R reload, Shift sprint, Ctrl crouch, Space jump, Q/E lean, Esc release.
+The game opens on a **Match Start** screen rather than dropping you mid-firefight:
+pick a bot garrison and start on your own, or wait for a friend to join your room
+and ready up together. Once the match is live, click the canvas to lock the
+cursor. WASD move, mouse aim, LMB fire, RMB ADS, R reload, Shift sprint, Ctrl
+crouch, Space jump, Q/E lean, Esc release.
 
 Graphics default to **Auto** per browser profile. On first launch the game
 estimates the active display cadence, calibrates a
@@ -33,8 +36,11 @@ npm run dev:mp       # client (:5173) + relay (:8787) together
 ```
 
 Open the URL — a `?room=CODE` is added automatically, so the address bar is
-always a shareable **invite link**. Copy it (top-bar button) and send it to a
-friend; anyone who opens it joins your match. **Tab** shows the scoreboard.
+always a shareable **invite link**. Copy it from the Match Start screen and send
+it to a friend; anyone who opens it joins your room. When you are both there,
+press **Ready**: the relay counts 3–2–1 and starts the match for both of you at
+once, players only, no bots. Someone who arrives after the match is live drops
+straight in. **Tab** shows the scoreboard.
 
 To put it online so friends can join over the internet, the easiest path is
 **Cloudflare** (one command, free plan, global edge):
@@ -64,6 +70,8 @@ included Render / Fly / Docker configs. Full details in
 | `ai` | Skinned soldiers, navmesh pathing, perception, cover behaviour, ragdoll death |
 | `ui` | DOM/CSS HUD: crosshair, hitmarkers, minimap, compass, killfeed |
 | `audio` | Web Audio synthesis — no sound files. Layered weapon fire, convolution reverb, HRTF spatialisation, occlusion |
+| `net` | Room-based multiplayer: WebSocket relay transport, interpolated remote players, trust-the-shooter PvP hits, invite bar and scoreboard |
+| `match` | The Match Start view: bot garrison size, ready-up, countdown, and the moment the match goes live |
 
 `ARCHITECTURE.md` is the contract the agents worked against: subsystem interface,
 directory ownership, the cross-subsystem event vocabulary, and shared surface types.

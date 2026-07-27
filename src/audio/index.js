@@ -58,6 +58,7 @@ const BUS_FOR = {
   shot: 'weapons', explosion: 'weapons', dryfire: 'weapons',
   hitmarker: 'ui', headshot: 'ui', kill: 'ui', armour: 'ui', damage: 'ui',
   grenade_warn: 'ui', regen: 'ui', lowhealth: 'ui',
+  join: 'ui', leave: 'ui', ready: 'ui', unready: 'ui', countdown: 'ui', matchstart: 'ui',
   bark: 'voice', ambient: 'ambience',
 };
 

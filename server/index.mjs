@@ -15,10 +15,15 @@
  * friends-only free-for-all. Hit detection is trust-the-shooter — fine here,
  * and swappable later without touching the transport.
  *
+ * The one exception to "pure relay" is the match-start lobby: ready flags and
+ * the start signal live here, because two clients cannot each decide on their
+ * own when "everyone is ready" became true. See maybeStart().
+ *
  * Env:
- *   PORT        listen port (default 8787; hosts set this for you)
- *   TICK_HZ     snapshot broadcast rate (default 20)
- *   MAX_ROOM    max players per room (default 12)
+ *   PORT          listen port (default 8787; hosts set this for you)
+ *   TICK_HZ       snapshot broadcast rate (default 20)
+ *   MAX_ROOM      max players per room (default 12)
+ *   COUNTDOWN_MS  pre-match countdown once everyone is ready (default 3000)
  *
  * Run:  node server/index.mjs      (after `npm run build`)
  * Dev:  the vite client auto-connects to ws://<host>:8787 — just run this too.
@@ -31,6 +36,8 @@ import { WebSocketServer } from 'ws';
 const PORT = Number(process.env.PORT ?? 8787);
 const TICK_HZ = Number(process.env.TICK_HZ ?? 20);
 const MAX_ROOM = Number(process.env.MAX_ROOM ?? 12);
+/** Pre-match countdown, in ms. Broadcast once, counted down by every client. */
+const COUNTDOWN_MS = Number(process.env.COUNTDOWN_MS ?? 3000);
 const ROOT = resolve(import.meta.dirname, '..');
 const DIST = join(ROOT, 'dist');
 
@@ -136,6 +143,50 @@ function roster(room) {
   return out;
 }
 
+/* ── lobby / match start ──────────────────────────────────────────────────
+ * The relay owns exactly one piece of match state: who has readied up, and
+ * whether anyone is deployed. It stays a relay — it does not simulate — but the
+ * start signal has to come from one place or two clients would each count down
+ * from their own idea of "everyone is ready".
+ *
+ * A room is LIVE as soon as one player is deployed (they pressed start against
+ * bots, or a countdown finished). Live rooms skip the ready flow: a late joiner
+ * drops straight into the match instead of waiting on players who are already
+ * shooting.
+ */
+
+function lobby(room) {
+  const players = [];
+  for (const p of room.peers.values()) {
+    players.push({ id: p.id, name: p.name, ready: !!p.ready, deployed: !!p.deployed });
+  }
+  return players;
+}
+
+function isLive(room) {
+  for (const p of room.peers.values()) if (p.deployed) return true;
+  return false;
+}
+
+function sendLobby(room) {
+  broadcast(room, { t: 'lobby', live: isLive(room), players: lobby(room) });
+}
+
+/** Start the match when every player in a not-yet-live room has readied up. */
+function maybeStart(room) {
+  if (isLive(room)) return;
+  const peers = [...room.peers.values()];
+  if (peers.length < 2 || !peers.every((p) => p.ready)) return;
+  // Deployed on the signal, not on each client's confirmation: a third player
+  // arriving during the countdown must see a live match, not an empty lobby.
+  for (const p of peers) {
+    p.deployed = true;
+    p.ready = false;
+  }
+  broadcast(room, { t: 'match_start', in: COUNTDOWN_MS });
+  sendLobby(room);
+}
+
 function send(peer, obj) {
   if (peer.ws.readyState === peer.ws.OPEN) {
     peer.ws.send(JSON.stringify(obj));
@@ -162,6 +213,10 @@ wss.on('connection', (ws) => {
     deaths: 0,
     state: null,
     alive: true,
+    /** readied up in the match-start lobby */
+    ready: false,
+    /** in the match (started against bots, or a countdown finished) */
+    deployed: false,
     lastSeen: Date.now(),
   };
 
@@ -201,10 +256,32 @@ function handle(peer, msg) {
         id: peer.id,
         room: code,
         tickHz: TICK_HZ,
+        live: isLive(room),
         peers: roster(room).filter((p) => p.id !== peer.id),
       });
       // Announce to everyone else.
       broadcast(room, { t: 'peer_join', id: peer.id, name: peer.name }, peer.id);
+      sendLobby(room);
+      break;
+    }
+
+    case 'ready': {
+      const room = peer.room && rooms.get(peer.room);
+      if (!room) return;
+      peer.ready = !!msg.ready;
+      sendLobby(room);
+      maybeStart(room);
+      break;
+    }
+
+    case 'deploy': {
+      // "I am in the match now" — from the bots-only start button, or when a
+      // client's pre-match countdown reached zero.
+      const room = peer.room && rooms.get(peer.room);
+      if (!room) return;
+      peer.deployed = true;
+      peer.ready = false;
+      sendLobby(room);
       break;
     }
 
@@ -294,7 +371,14 @@ function leave(peer) {
   room.peers.delete(peer.id);
   broadcast(room, { t: 'peer_leave', id: peer.id });
   broadcast(room, { t: 'score', roster: roster(room) });
-  if (room.peers.size === 0) rooms.delete(room.code);
+  if (room.peers.size === 0) {
+    rooms.delete(room.code);
+    return;
+  }
+  // Someone leaving can complete the ready set — or empty out the last deployed
+  // player, which drops the room back to a lobby for whoever is still here.
+  sendLobby(room);
+  maybeStart(room);
 }
 
 /* ────────────────────────────────────────────────────────────────────────

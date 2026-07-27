@@ -12,6 +12,10 @@
  *     trust-the-shooter model: the shooter ray-tests remote bodies locally and
  *     the victim applies the damage the shooter claims.
  *   • Drive the overlay: invite bar, scoreboard, kill/join toasts, status.
+ *   • Carry the match-start lobby — who is here, who has readied up, whether the
+ *     match is already live — and hand it to `match` as `net:lobby` /
+ *     `net:countdown` / `net:join` / `net:leave` events. `net` renders none of
+ *     that: it only knows the wire.
  *
  * It owns no gameplay rules of its own — it reads `player`/`weapons` state and
  * feeds `ai`/`fx`/`ui`, all via ctx, so nothing else in the engine needs to know
@@ -40,6 +44,17 @@ export class NetSystem {
     /** id -> { name, kills, deaths, puppet, buf:[], last, hp, dead, variant } */
     this.peers = new Map();
     this.roster = []; // last authoritative scoreboard from server
+
+    /**
+     * Match-start lobby, as last reported by the relay. `match` renders this and
+     * decides when the local player deploys; `net` only carries it.
+     *   live      someone in this room is already playing
+     *   players   [{ id, name, ready, deployed }] including me
+     */
+    this.lobby = { live: false, players: [] };
+    this.ready = false;
+    /** Have we ever been welcomed? Separates "connecting" from "dropped out". */
+    this.everConnected = false;
 
     this._sendAccum = 0;
     this._ws = null;
@@ -148,6 +163,9 @@ export class NetSystem {
       this.myId = null;
       this.ui.setStatus('off');
       this._clearPeers();
+      this.lobby = { live: false, players: [] };
+      this.ready = false;
+      this._emitLobby();
       if (this._wantReconnect) this._scheduleReconnect();
     };
     ws.onerror = () => {
@@ -178,9 +196,12 @@ export class NetSystem {
       case 'welcome': {
         this.myId = msg.id;
         this.connected = true;
+        this.everConnected = true;
         this.tickHz = msg.tickHz ?? SEND_HZ;
+        this.lobby.live = !!msg.live;
         for (const p of msg.peers ?? []) this._ensurePeer(p.id, p.name, p);
         this._updateStatus();
+        this._emitLobby();
         this.ui.toast(`Joined room <b>${this.room.toUpperCase()}</b> — share the link to invite friends`);
         break;
       }
@@ -188,13 +209,27 @@ export class NetSystem {
         this._ensurePeer(msg.id, msg.name);
         this.ui.toast(`<b>${esc(msg.name)}</b> joined`);
         this._updateStatus();
+        this.ctx.events.emit('net:join', { id: msg.id, name: msg.name });
         break;
       }
       case 'peer_leave': {
+        const name = this.peers.get(msg.id)?.name ?? '';
         this._removePeer(msg.id);
         this._updateStatus();
+        this.ctx.events.emit('net:leave', { id: msg.id, name });
         break;
       }
+      case 'lobby': {
+        this.lobby = { live: !!msg.live, players: msg.players ?? [] };
+        // The relay clears ready flags when it fires the start signal; mirror
+        // whatever it says about us rather than keeping a local opinion.
+        this.ready = !!this.lobby.players.find((p) => p.id === this.myId)?.ready;
+        this._emitLobby();
+        break;
+      }
+      case 'match_start':
+        this.ctx.events.emit('net:countdown', { ms: Math.max(0, Number(msg.in) || 0) });
+        break;
       case 'snapshot':
         this._onSnapshot(msg.states);
         break;
@@ -523,6 +558,50 @@ export class NetSystem {
     this.player.setControlEnabled(true);
     this._send({ t: 'respawn' });
     this.ui.toast('Respawned');
+  }
+
+  /* ==================================================================== */
+  /* match-start lobby (driven by the `match` subsystem)                   */
+  /* ==================================================================== */
+
+  /** Toggle my ready flag. The relay starts the match once everyone is ready. */
+  setReady(on) {
+    this.ready = !!on;
+    this._send({ t: 'ready', ready: this.ready });
+  }
+
+  /** "I am in the match now": bots-only start, or a countdown that reached zero. */
+  deploy() {
+    this.ready = false;
+    this._send({ t: 'deploy' });
+  }
+
+  /** The lobby list with myself filled in even before the first `lobby` frame. */
+  lobbyPlayers() {
+    const list = this.lobby.players;
+    if (list.length || this.myId == null) return list;
+    return [{ id: this.myId, name: this.name, ready: this.ready, deployed: false }];
+  }
+
+  /** Copy the invite link; resolves through the same clipboard fallbacks as the bar. */
+  copyInvite() {
+    this._copyInvite();
+  }
+
+  /** Hide the invite bar / toasts while another view (the lobby) owns the screen. */
+  setOverlayVisible(on) {
+    this.ui?.setHidden(!on);
+  }
+
+  _emitLobby() {
+    this.ctx.events.emit('net:lobby', {
+      connected: this.connected,
+      everConnected: this.everConnected,
+      live: this.lobby.live,
+      players: this.lobbyPlayers(),
+      myId: this.myId,
+      ready: this.ready,
+    });
   }
 
   /* ==================================================================== */

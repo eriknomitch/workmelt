@@ -22,6 +22,7 @@ import { AiSystem } from './ai/index.js';
 import { UiSystem } from './ui/index.js';
 import { AudioSystem } from './audio/index.js';
 import { NetSystem } from './net/index.js';
+import { MatchSystem } from './match/index.js';
 
 import { installShotApi } from './dev/shots.js';
 import { prewarm } from './core/prewarm.js';
@@ -33,6 +34,13 @@ const capture = params.get('capture') === '1';
 // because tools that measure real frame pacing (tools/perf.mjs) need the loop to
 // free-run. See the long comment in src/dev/shots.js.
 const lockstep = capture && params.get('lockstep') === '1';
+
+// The Match Start view: every normal load opens on a menu rather than mid-match,
+// so a player can pick a bot garrison and go, or wait for a friend to join the
+// room and ready up together. Off for capture runs (a menu is not a screenshot)
+// and with `?match=0`, which restores the old "live on the first frame" boot for
+// benchmarks and playtest harnesses.
+const matchFlow = !capture && params.get('match') !== '0';
 
 const explicitQuality = params.get('q');
 let graphics = loadGraphicsSettings();
@@ -60,6 +68,8 @@ const config = createConfig({
   displayRefreshHz: graphics.refreshHz ?? 120,
   adaptiveQuality: adaptiveEnabled,
   deterministic: capture,
+  // `ai` skips its boot-time garrison; `match` spawns it when a match starts.
+  deferGarrison: matchFlow,
 });
 if (adaptiveEnabled && graphics.mode === 'auto' && graphics.calibrated)
   config.q.renderScale = graphics.renderScale;
@@ -88,6 +98,11 @@ engine
 // the address bar is always a shareable invite link.
 const multiplayer = !capture && params.get('mp') !== '0';
 if (multiplayer) engine.add(NetSystem);
+
+// Registered after `net` so the match view can read the room it joined; the
+// lobby itself arrives on the event bus, so the order is a convenience, not a
+// requirement. Without this system the game is live on the first frame.
+if (matchFlow) engine.add(MatchSystem);
 
 try {
   await engine.init();

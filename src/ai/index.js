@@ -162,11 +162,22 @@ export class AiSystem {
   _bootNav(ctx) {
     try {
       this._buildNav();
-      if (!this._navPending && (!ctx.config.deterministic || this.forcePopulate)) this.populate();
+      if (!this._navPending && this._shouldPopulate(ctx)) this.populate();
     } catch (err) {
       this._navPending = true;
       console.warn('[ai] boot nav deferred to the first frame:', err?.message ?? err);
     }
+  }
+
+  /**
+   * Whether the garrison spawns by itself. Capture runs stay empty unless a shot
+   * asks for a tableau, and `config.deferGarrison` hands the decision to the
+   * `match` subsystem, which populates when a match starts (with the size the
+   * player picked, or not at all for a players-only match).
+   */
+  _shouldPopulate(ctx) {
+    if (this.forcePopulate) return true;
+    return !ctx.config.deterministic && !ctx.config.deferGarrison;
   }
 
   /**
@@ -740,8 +751,9 @@ export class AiSystem {
       this._buildNav();
       // Populate the level for normal play. Capture runs stay empty unless a
       // shot asks for a tableau, so nobody's screenshot gets a stray patrol
-      // wandering through it.
-      if (!this._navPending && (!ctx.config.deterministic || this.forcePopulate)) this.populate();
+      // wandering through it; with the Match Start view in play, `match` owns
+      // the call instead. See _shouldPopulate().
+      if (!this._navPending && this._shouldPopulate(ctx)) this.populate();
     }
 
     // Per-frame A* budget: see requestPath().
