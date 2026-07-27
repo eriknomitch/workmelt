@@ -14,6 +14,7 @@ import { Prompt, Banner } from './prompts.js';
 import { PauseMenu } from './menu.js';
 import { CombatDemo } from './demo.js';
 import { PerfHud, PERF_MODES } from './perfhud.js';
+import { FlashFx } from './flash.js';
 
 const MAX_BLIPS = 48;
 
@@ -59,7 +60,7 @@ const MAX_BLIPS = 48;
  *   audio.playUi(id, gain) | audio.play(id) — hit ticks, heartbeat, warnings
  *
  * Events consumed: weapon:fire, weapon:reload, damage:dealt, damage:taken,
- * actor:death, player:state, explosion, resize.
+ * actor:death, player:state, explosion, equipment:flash, resize.
  * Events emitted:  ui:pause, ui:quality, ui:sensitivity, ui:fov, ui:setting.
  */
 export class UiSystem {
@@ -98,6 +99,11 @@ export class UiSystem {
     // entirely in capture mode: the pixel gate (tools/imagediff.mjs) compares
     // frames byte for byte, and a live fps number would change every one of
     // them. `config.deterministic` is the capture signal (src/main.js).
+    // The flashbang layer is the one overlay that sits ABOVE the game chrome:
+    // a stun that leaves the ammo counter crisp is not a stun.
+    this.flashLayer = el('div', 'ow-layer', this.root);
+    this.flash = new FlashFx(this.flashLayer);
+
     this.perfLayer = el('div', 'ow-layer', this.root);
     this.perf = ctx.config.deterministic ? null : new PerfHud(this.perfLayer, this._perfOpts());
 
@@ -158,6 +164,9 @@ export class UiSystem {
     this._prevPos = new THREE.Vector3();
     this._dir = new THREE.Vector3();
     this._tmp = new THREE.Vector3();
+    this._flashDir = new THREE.Vector3();
+    this._proj = new THREE.Vector3();
+    this._screen = [50, 50];
     this._objectives = [];
     this._compassObjs = [];
     this._blips = new Array(MAX_BLIPS);
@@ -258,6 +267,33 @@ export class UiSystem {
       if (d < (e.radius ?? 6) * 2.5) this.crosshair.onFlinch(0.6);
     });
 
+    // A stun blinds by RANGE, by whether a wall ate it, and by where the player
+    // was looking. Facing matters most: a stun that goes off behind you must
+    // still register (light bounces) but must never full-white, or the player is
+    // blinded by something they had no chance to react to.
+    on('equipment:flash', (e) => {
+      if (!e?.position) return;
+      const eye = this.ctx.camera.position;
+      this._tmp.copy(e.position).sub(eye);
+      const d = this._tmp.length();
+      const radius = e.radius ?? 9;
+      if (d > radius) return;
+
+      const range = 1 - d / radius;
+      this._tmp.multiplyScalar(1 / Math.max(1e-4, d));
+      const fwd = this.ctx.camera.getWorldDirection(this._flashDir);
+      const facing = clamp01((fwd.dot(this._tmp) + 1) * 0.5); // 1 dead ahead, 0 behind
+      const face = 0.32 + 0.68 * facing;
+
+      const phys = this.ctx.peek('physics');
+      const clear = phys ? phys.lineOfSight(e.position, eye, phys.MASK.SIGHT) : true;
+      const occl = clear ? 1 : 0.22;
+
+      const intensity = clamp01(range * face * occl);
+      this.flash.trigger(intensity, e.duration ?? 3.4, ...this._toScreen(e.position));
+      if (intensity > 0.1) this.sfx('grenade_warn', 0.25 + intensity * 0.5);
+    });
+
     on('player:state', (e) => {
       if (!e) return;
       const s = this.state;
@@ -310,6 +346,27 @@ export class UiSystem {
     if (!p) return null;
     const s = typeof p.getHudState === 'function' ? p.getHudState() : p.hudState ?? null;
     return s && typeof s === 'object' ? s : null;
+  }
+
+  /**
+   * World point -> screen percent, for the flash afterimage. Points behind the
+   * camera project to a mirrored position, so clamp them to the nearest edge
+   * instead: the ghost belongs where the light came from, not where the maths
+   * says a reversed point lands.
+   */
+  _toScreen(world) {
+    const out = this._screen;
+    this._proj.copy(world).project(this.ctx.camera);
+    const behind = this._proj.z > 1;
+    let x = (this._proj.x * 0.5 + 0.5) * 100;
+    let y = (-this._proj.y * 0.5 + 0.5) * 100;
+    if (behind) {
+      x = x < 50 ? 108 : -8;
+      y = 50;
+    }
+    out[0] = clamp(x, -20, 120);
+    out[1] = clamp(y, -20, 120);
+    return out;
   }
 
   _playerPos() {
@@ -584,7 +641,11 @@ export class UiSystem {
     const heading = (Math.atan2(fx, -fz) * 180) / Math.PI;
 
     // ---- widgets ---------------------------------------------------------
-    const hudGoal = this.hudTarget * (this.menu.open ? 0.15 : 1);
+    // The flash runs on rawDt: being stunned must not slow down while the world
+    // is in a time-scaled kill cam.
+    this.flash.update(rawDt);
+    const hudGoal =
+      this.hudTarget * (this.menu.open ? 0.15 : 1) * (1 - this.flash.hudDim * 0.9);
     this.hudVisible = damp(this.hudVisible, hudGoal, 10, rawDt);
     setStyle(this.chromeLayer, 'opacity', this.hudVisible.toFixed(3));
     setStyle(this.worldLayer, 'opacity', this.hudVisible.toFixed(3));

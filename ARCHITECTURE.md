@@ -104,6 +104,7 @@ Emit and listen via `ctx.events`. Payloads are plain objects. The canonical set:
 | `player:footstep` | `{ position, surface, running }` | player |
 | `player:state` | `{ stance, sprinting, sliding, ads }` | player |
 | `explosion` | `{ position, radius, damage }` | any |
+| `equipment:flash` | `{ position, radius, duration, source }` — a stun grenade detonated. Every listener folds in its own range / line-of-sight / facing falloff rather than trusting a pre-scaled intensity, so the player's whiteout (`ui`) and the bots' blindness (`ai`) stay consistent with each other. | weapons |
 | `resize` | `{ width, height }` | engine |
 | `net:lobby` | `{ connected, everConnected, live, players, myId, ready }` | net |
 | `net:join` / `net:leave` | `{ id, name }` | net |

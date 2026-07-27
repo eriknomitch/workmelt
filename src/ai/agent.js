@@ -202,6 +202,9 @@ export class Agent {
     this.suppression = 0;
     this.reactionTimer = 0;
     this.alertness = 0;
+    /** Seconds of stun left, and how hard it landed (0..1). See `stun()`. */
+    this.blind = 0;
+    this.blindPeak = 0;
 
     /* ---------------- combat ---------------- */
     this.weaponRange = 60;
@@ -275,6 +278,10 @@ export class Agent {
     if (!this.alive) return;
     this.stateTime += dt;
     this.suppression = Math.max(0, this.suppression - dt * 0.55);
+    if (this.blind > 0) {
+      this.blind -= dt;
+      if (this.blind <= 0) this.blindPeak = 0;
+    }
     this.fireCooldown -= dt;
     this.burstCooldown -= dt;
     this.grenadeCooldown -= dt;
@@ -300,6 +307,18 @@ export class Agent {
   _sense(dt) {
     const player = this.ai.playerPosition(this._v3);
     if (!player) return;
+
+    // Blind: the eyes are gone, but hearing is not, so `hear()` still works and
+    // `lastKnown` still ages. A hard flash also bleeds off certainty, which is
+    // what lets the thrower reposition rather than merely survive.
+    const b = this.blindness;
+    if (b > 0.25) {
+      this.targetVisible = false;
+      this.awareness = Math.max(0, this.awareness - dt * 0.9 * b);
+      if (this.awareness <= 0 && this.lastKnownAge > 3) this.hasTarget = false;
+      return;
+    }
+
     const eye = this.eye;
     const to = this._dir.copy(player).sub(eye);
     const dist = to.length();
@@ -354,6 +373,33 @@ export class Agent {
     if (!this.alive) return;
     this.suppression = Math.min(1.6, this.suppression + amount);
     this.alertness = 1;
+  }
+
+  /**
+   * Blinded by a stun. Unlike `suppress`, this does NOT raise alertness: the
+   * point of a flash is that it buys the thrower a window, and a bot that comes
+   * out of it already hunting has given nothing away for the grenade spent.
+   *
+   * It does keep `lastKnown` — being blinded near a doorway you were already
+   * watching should not erase the fact that you were watching it.
+   *
+   * @param {number} seconds duration at this intensity
+   * @param {number} intensity 0..1, range and facing folded in by `ai/index.js`
+   */
+  stun(seconds, intensity = 1) {
+    if (!this.alive) return;
+    const i = Math.min(1, Math.max(0, intensity));
+    if (i <= 0.02) return;
+    this.blind = Math.max(this.blind, seconds * i);
+    this.blindPeak = Math.max(this.blindPeak, i);
+    // A flash going off is still a bang: they know something happened, they
+    // just cannot act on it yet.
+    this.suppression = Math.min(1.6, this.suppression + 0.8 * i);
+  }
+
+  /** 0..1 — how blind right now, decaying over the remaining duration. */
+  get blindness() {
+    return this.blind > 0 ? Math.min(1, this.blind) * this.blindPeak : 0;
   }
 
   /* ================================================================== */
@@ -761,6 +807,9 @@ export class Agent {
     }
 
     if (!this.wantFire || this.animator.reloading || this.animator.vaulting) return;
+    // Hard flash: hands off the trigger entirely. A partial one only spoils the
+    // aim (see `_fireRound`), so a bot clipped by the edge still fights back.
+    if (this.blindness > 0.45) return;
     if (this.ammo <= 0) {
       this.animator.reload(this.variantName === 'irregular' ? 2.9 : 2.35);
       this.ai.emitReload(this);
@@ -783,8 +832,9 @@ export class Agent {
     const an = this.animator;
     const origin = an.muzzleWorld;
     const dir = this._muzzleDir.copy(an.muzzleDir);
-    // cone of fire: worse when suppressed, better the longer we have been aiming
-    const spread = this.spread * (1 + this.suppression * 1.5);
+    // cone of fire: worse when suppressed, worse still when flashed, better the
+    // longer we have been aiming
+    const spread = this.spread * (1 + this.suppression * 1.5 + this.blindness * 6);
     dir.x += this.rng.gauss() * spread;
     dir.y += this.rng.gauss() * spread * 0.8;
     dir.z += this.rng.gauss() * spread;

@@ -39,7 +39,7 @@
  * `_updateRelevance`) animates at a third rate and leaves the shadow cascades.
  *
  * EVENTS consumed: weapon:fire, bullet:impact, damage:dealt, explosion,
- *   player:footstep
+ *   equipment:flash, player:footstep
  * EVENTS emitted: weapon:fire (enemy muzzle), weapon:shell, bullet:tracer,
  *   damage:dealt (enemy hitting the player), actor:death
  */
@@ -377,6 +377,30 @@ export class AiSystem {
         this._v.copy(a.position).sub(e.position).normalize();
         a.suppress(1.4 * f);
         a.applyDamage((e.damage ?? 100) * f * f, 'torso', a.eye, this._v);
+      }
+    });
+
+    // A stun blinds by range, by line of sight and by which way the agent was
+    // facing — the same three terms `ui` uses for the player, so what the player
+    // sees on their own screen predicts what it did to the room.
+    on('equipment:flash', (e) => {
+      if (!e || !e.position) return;
+      const radius = e.radius ?? 9;
+      const duration = e.duration ?? 3.4;
+      for (const a of this.agents) {
+        if (!a.alive) continue;
+        const eye = a.eye;
+        const d = eye.distanceTo(e.position);
+        a.hear(e.position, 45);
+        if (d > radius) continue;
+        if (this.phys && !this.phys.lineOfSight(e.position, eye, this.phys.MASK.SIGHT)) continue;
+        this._v.copy(e.position).sub(eye).normalize();
+        // The rig faces +Z; `yaw` is the camera convention, hence the half turn.
+        const fx = Math.sin(a.yaw);
+        const fz = Math.cos(a.yaw);
+        const facing = (fx * this._v.x + fz * this._v.z + 1) * 0.5;
+        const range = 1 - d / radius;
+        a.stun(duration, range * (0.3 + 0.7 * facing));
       }
     });
 

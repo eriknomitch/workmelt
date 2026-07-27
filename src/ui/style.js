@@ -162,6 +162,20 @@ const CSS = `
   background: radial-gradient(ellipse 76% 70% at 50% 50%, rgba(0,0,0,0) 64%, rgba(150,14,10,.34) 100%);
 }
 
+/* ========================================================= flashbang whiteout
+   Sits ABOVE the HUD, unlike the hurt overlays, because a stun has to take the
+   ammo counter and minimap with it. Three stacked stages driven from flash.js:
+   a hard bloom, a lingering bleach that lifts the black point rather than
+   simply whitening, and a burned-in afterimage placed at the blast. */
+.ow-flash { position:absolute; inset:0; pointer-events:none; }
+.ow-flash-bloom { position:absolute; inset:0; opacity:0; background:#fffdf6; }
+.ow-flash-bleach {
+  position:absolute; inset:0; opacity:0;
+  background: rgba(255,251,238,.55);
+  backdrop-filter: saturate(.35) brightness(1.55) contrast(.72) blur(1.5px);
+}
+.ow-flash-ghost { position:absolute; inset:0; opacity:0; mix-blend-mode:screen; }
+
 /* ====================================================== vitals (bottom left)
    The most important number on the screen, so it gets the mirror position to
    the ammo block: bottom-left of the safe area, labelled, with a numeric

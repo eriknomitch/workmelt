@@ -22,6 +22,7 @@ export const ACTIONS = {
   leanRight: ['KeyE'],
   swapWeapon: ['Digit1', 'Digit2'], // Tab is the multiplayer scoreboard
   grenade: ['KeyG'],
+  tactical: ['KeyH'],
   flashlight: ['KeyT'],
   pause: ['Escape'],
 };

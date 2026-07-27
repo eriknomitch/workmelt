@@ -7,6 +7,7 @@ import { WEAPON_DEFS, buildRecoilPattern, SPREAD_MODS } from './defs.js';
 import { buildRifle } from './models/rifle.js';
 import { buildSmg } from './models/smg.js';
 import { buildPistol } from './models/pistol.js';
+import { Throwables } from './throwables.js';
 import { clamp, clamp01, lerp, damp, DEG } from './mathx.js';
 
 /**
@@ -26,6 +27,7 @@ import { clamp, clamp01, lerp, damp, DEG } from './mathx.js';
  *   viewmodel.js  the animation stack (sway/bob/lag/recoil/ADS/clips).
  *   clips.js      keyframed reload / inspect / draw timelines.
  *   ballistics.js travelling projectiles with gravity and drag.
+ *   throwables.js lethal / tactical equipment: cook, arc preview, throw, fuse.
  *   defs.js       every tuning number, plus the deterministic recoil patterns.
  *
  * ────────────────────────────────────────────────────────────────────────────
@@ -48,12 +50,19 @@ import { clamp, clamp01, lerp, damp, DEG } from './mathx.js';
  *   wp.muzzleWorld(v3)    world-space muzzle, for anything that needs it
  *   wp.debugPose(kind)    'idle' | 'ads' | 'fire'  (the capture harness)
  *   wp.stats              { tris, drawCalls, live, fired }
+ *   wp.throwables         equipment: `.counts`, `.cooking`, beginCook/release
+ *
+ * EQUIPMENT — hold `grenade` (G) or `tactical` (H) to cook, release to throw.
+ * The cook burns the real fuse, so a held frag air-bursts and a held-too-long
+ * one kills the thrower. See throwables.js.
  *
  * EVENTS EMITTED  (all canonical, see ARCHITECTURE.md)
  *   weapon:fire    { weapon, origin, dir, seed }
  *   weapon:shell   { position, velocity }
  *   weapon:reload  { weapon, phase: 'start'|'magout'|'magin'|'end' }
  *   bullet:tracer  { from, to, speed }
+ *   explosion      { position, radius, damage }   frag detonation
+ *   equipment:flash{ position, radius, duration } stun detonation
  * `bullet:impact` comes from physics, because physics owns penetration.
  * Anything else (ammo counts, fire mode, the current weapon) is a getter on
  * this object rather than an event, so no new event types are introduced.
@@ -122,7 +131,11 @@ export class WeaponSystem {
     this._hudState = {
       name: '', mode: 'auto', ammo: 0, reserve: 0, magSize: 0,
       reloading: false, reloadProgress: 0, ads: false, spread: 0, firing: false,
+      lethalCount: 0, tacticalCount: 0,
     };
+
+    /** Lethal / tactical equipment — see throwables.js. */
+    this.throwables = null;
   }
 
   /* ====================================================================== */
@@ -143,6 +156,7 @@ export class WeaponSystem {
     // sky a shouldered weapon actually sees, see materials.js — has to be
     // expressed there or it is silently a no-op.
     ctx.viewScene.environmentIntensity = ENV_OCCLUSION;
+    this.throwables = new Throwables(ctx, this);
     this.viewmodel.onClipEvent = (name, clip) => this._onClipEvent(name, clip);
 
     const t0 = performance.now();
@@ -176,6 +190,10 @@ export class WeaponSystem {
       ctx.events.on('player:land', (e) => this.viewmodel.land(Math.abs(e?.velocity ?? 3)))
     );
     this._off.push(ctx.events.on('player:jump', () => this.viewmodel.jump()));
+    // Equipment needs physics resolved, so it initialises after the peeks above.
+    // A fresh life restocks it — a cooked grenade must not carry over a respawn.
+    this.throwables.init();
+    this._off.push(ctx.events.on('player:spawn', () => this.throwables.refill()));
 
     this.stats = { tris, drawCalls: 0, live: 0, fired: 0 };
     console.info(
@@ -278,6 +296,10 @@ export class WeaponSystem {
     // `ui` maps this to reticle bloom as 4 + spread * 40 px, so hand it a
     // normalised 0..1 rather than raw degrees.
     h.spread = Math.min(1, Math.max(0, this._spread / 6));
+    // The equipment pips were hardcoded 2/1 in `ui` before anything owned them.
+    // These are now the real inventory.
+    h.lethalCount = this.throwables?.counts.lethal ?? 0;
+    h.tacticalCount = this.throwables?.counts.tactical ?? 0;
     h.firing = this.firing;
     return h;
   }
@@ -616,6 +638,7 @@ export class WeaponSystem {
       if (input.pressed('Digit3')) this.setWeapon('pistol');
       if (input.pressed('Tab')) this.nextWeapon();
       if (input.wheel) this.nextWeapon();
+      this._runThrowables(input);
       this._runTrigger(dt, input.fire, input.firePressed, def, s);
       st.trigger = input.fire && this.canFire();
       // Auto-reload on a dry trigger pull, like every modern shooter.
@@ -623,6 +646,20 @@ export class WeaponSystem {
     } else if (this.debugMode) {
       this._runDebug(ctx);
       st.trigger = this._sinceShot < 0.09;
+    } else if (this.throwables.cooking) {
+      // Pause / capture froze the input mid-cook. The pin is already out, so
+      // the round is spent rather than silently refunded.
+      this.throwables.cancelCook();
+    }
+
+    // The cook keeps burning whether or not input is live, and thrown rounds
+    // must keep ticking while the player is dead or the menu is open.
+    this.throwables.update(dt);
+    // A cooked grenade occupies the weapon hand: drop to low ready so the
+    // viewmodel visibly commits, and hold the trigger closed.
+    if (this.throwables.cooking) {
+      st.lowReady = true;
+      st.trigger = false;
     }
 
     // Push the ADS curve to the player so camera FOV / move speed follow it.
@@ -630,6 +667,28 @@ export class WeaponSystem {
 
     this.stats.live = this.sim.stats.live;
     this.stats.fired = this.sim.stats.fired;
+  }
+
+  /**
+   * Equipment binds. Hold to cook, release to throw — so the throw fires on the
+   * key going UP, and a tap is just a very short cook.
+   *
+   * Reloading and swapping both need the weapon hand, so they block a new cook
+   * but never interrupt one already in progress: once the pin is out the only
+   * ways it ends are `release()` and cooking off.
+   */
+  _runThrowables(input) {
+    const t = this.throwables;
+    if (!t.cooking) {
+      if (this.reloading || this.switching) return;
+      if (input.actionPressed('grenade')) t.beginCook('lethal');
+      else if (input.actionPressed('tactical')) t.beginCook('tactical');
+      return;
+    }
+    // Release on the key that STARTED the cook, not on either key: cooking a
+    // frag and then tapping H must not hold the frag in the hand until H is let
+    // go, which is exactly how it kills you.
+    if (!input.action(t.cook.def.slot === 'tactical' ? 'tactical' : 'grenade')) t.release();
   }
 
   /** Fire-mode state machine. */
@@ -837,6 +896,7 @@ export class WeaponSystem {
       if (p.body && this.physics?.removeRigidBody) this.physics.removeRigidBody(p.body);
     }
     this._droppedMags.length = 0;
+    this.throwables?.dispose();
     this.viewmodel?.dispose();
     this.mats?.dispose();
   }
