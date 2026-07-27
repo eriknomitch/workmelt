@@ -319,6 +319,18 @@ function handle(peer, msg) {
       break;
     }
 
+    case 'undeploy': {
+      // "I went back to the lobby" — the pause menu's Leave match. Without it a
+      // room stays LIVE forever after the first person plays, and everyone who
+      // came back would be offered "deploy now" instead of a fresh setup.
+      const room = peer.room && rooms.get(peer.room);
+      if (!room) return;
+      peer.deployed = false;
+      peer.ready = false;
+      sendLobby(room);
+      break;
+    }
+
     case 'state': {
       // Latest-wins transform snapshot; broadcast happens on the server tick.
       if (!peer.room) return;

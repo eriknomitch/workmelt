@@ -21,6 +21,7 @@
  *   ai.populate({squads, perSquad, respawn}) garrison the level through the
  *                                          world's spawn director
  *   ai.reinforce(n)                        bring n replacements in now
+ *   ai.clearGarrison()                     retire every bot and stop reinforcing
  *   ai.removeAgent(agent)                  retire a body and free its resources
  *   ai.agents                              live Agent list
  *   ai.debugStage('firefight')             staged combat tableau for captures
@@ -725,6 +726,29 @@ export class AiSystem {
     if (this._reinforceTimer > 0) return;
     this._reinforceTimer = REINFORCE_SECONDS;
     this.reinforce(1, world);
+  }
+
+  /**
+   * Empty the level of bots and stop reinforcing.
+   *
+   * The counterpart to `populate()`, and the reason leaving a match for the
+   * lobby and starting another one does not stack a second garrison on top of
+   * the first. Staged capture tableaux are left alone — those corpses are the
+   * shot. Returns how many agents were retired.
+   */
+  clearGarrison() {
+    this.botRespawn = false;
+    this.garrisonSize = 0;
+    let removed = 0;
+    for (let i = this.agents.length - 1; i >= 0; i--) {
+      const a = this.agents[i];
+      if (a.staged) continue;
+      this.removeAgent(a);
+      removed++;
+    }
+    // Squads that lost every member are dead weight on the update loop.
+    this.squads = this.squads.filter((s) => s.staged || s.members?.length);
+    return removed;
   }
 
   /** Bring `n` replacements in. Returns how many actually made it. */

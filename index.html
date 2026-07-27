@@ -4,12 +4,47 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
     <title>WORKMELT — Tactical Shooter</title>
+    <meta name="theme-color" content="#28303d" />
+    <meta
+      name="description"
+      content="WORKMELT — a browser-first tactical arena built out of the floor you already work on."
+    />
+    <!--
+      Brand type (DESIGN.md: Bebas Neue for display, Inter for every string) is
+      requested from src/ui/brand.js, NOT from a <link> here. Two reasons, both
+      of which bit before it moved:
+
+        • a font request in the head is render-blocking, and "browser-first and
+          instantly playable" cannot mean a blank screen while a corporate proxy
+          decides what it thinks of fonts.googleapis.com; and
+        • a pending webfont keeps `document.fonts.ready` unresolved, which hangs
+          every `page.screenshot()` the capture harnesses take.
+
+      brand.js therefore injects it non-blocking, and skips it entirely on a
+      deterministic run. Either way the documented fallback stacks carry the
+      whole UI, and brand.js measures whether Bebas actually rendered before it
+      places the metric-tuned half of the logo drip.
+    -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <style>
       :root { color-scheme: dark; }
       * { margin: 0; padding: 0; box-sizing: border-box; }
-      html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+      /* Graphite — the void behind panels, never black. */
+      html, body { width: 100%; height: 100%; overflow: hidden; background: #181c28; }
       body { font-family: "Inter", "Helvetica Neue", Arial, sans-serif; -webkit-font-smoothing: antialiased; }
-      #game { display: block; width: 100vw; height: 100vh; touch-action: none; cursor: none; }
+      #game { display: block; width: 100vw; height: 100vh; touch-action: none; }
+      /*
+        THE CURSOR RULE.
+
+        `cursor: none` used to sit on #game unconditionally, which meant every
+        surface outside pointer lock — the lobby, the pause menu, the settings
+        rows — was operated with an INVISIBLE mouse. The class is toggled from
+        `pointerlockchange` in src/core/input.js, the one authoritative source
+        for whether the pointer is captured, so the cursor is hidden exactly
+        while the game owns it and visible the rest of the time.
+      */
+      body.wm-pointer-locked #game { cursor: none; }
     </style>
   </head>
   <body>

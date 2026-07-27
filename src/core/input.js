@@ -90,6 +90,7 @@ export class Input {
     removeEventListener('blur', this._bound.blur);
     document.removeEventListener('pointerlockchange', this._bound.lockchange);
     this.canvas.removeEventListener('contextmenu', this._bound.contextmenu);
+    document.body?.classList.remove('wm-pointer-locked');
   }
 
   requestPointerLock() {
@@ -143,6 +144,10 @@ export class Input {
 
   _onLockChange() {
     this.pointerLocked = document.pointerLockElement === this.canvas;
+    // The canvas hides the system cursor only while the game actually holds the
+    // pointer — see the cursor rule in index.html. This is the one place that
+    // knows, so it is the only place that writes the class.
+    document.body?.classList.toggle('wm-pointer-locked', this.pointerLocked);
     if (!this.pointerLocked) this._onBlur();
   }
 

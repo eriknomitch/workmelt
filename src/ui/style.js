@@ -598,144 +598,228 @@ const CSS = `
 }
 
 /* ================================================================== menu */
+/* The pause / settings menu is NOT in-world chrome — it is a WORKMELT product
+   surface, so it drops the HUD's outlined amber treatment entirely and uses the
+   brand tokens from src/ui/brand.js: Gunmetal panel at 88% over a Dark Slate
+   scrim, 1px Hairline rules, 8px radius, Bebas for display and Inter for every
+   string. Melt Green is a hover border and a slider fill only, never a wash.
+
+   Sizes are plain px, not calc(N * var(--k)): the HUD scales with the viewport
+   because it has to sit in fixed relation to the crosshair, but a settings
+   panel is read at arm's length and wants normal, honest UI sizes. */
 .ow-menu {
-  position:absolute; inset:0; pointer-events:auto;
-  background: linear-gradient(105deg, rgba(4,6,8,.90) 0%, rgba(4,6,8,.72) 46%, rgba(4,6,8,.42) 100%);
-  backdrop-filter: blur(calc(9px * var(--k))) saturate(.7) brightness(.8);
+  /* Fixed and above everything: the panel is mounted on the shared #ui host,
+     outside .ow-hud, so it can cover the lobby (z-index 60) too. */
+  position:fixed; inset:0; z-index:80; pointer-events:auto;
+  display:grid; place-items:center; padding: 24px;
+  background: rgb(var(--wm-void-rgb) / .82);
+  backdrop-filter: blur(10px) saturate(.85);
   opacity:0; will-change: opacity;
+  font-family: var(--wm-body); text-transform:none; letter-spacing:normal;
+  color: var(--wm-fg); font-weight:400;
 }
+.ow-menu *, .ow-menu *::before, .ow-menu *::after { box-sizing:border-box; }
+.ow-menu :focus-visible { outline: 2px solid var(--wm-accent); outline-offset: 2px; }
+.ow-menu .grow { flex: 1 1 auto; }
 .ow-menu-inner {
-  position:absolute; left: calc(var(--u) * 22); top:50%;
-  transform: translateY(-50%);
-  width: calc(430px * var(--k));
-  padding-left: calc(var(--u) * 4.5);
-  border-left: calc(2px * var(--k)) solid var(--amber);
+  width: min(560px, 100%); max-height: min(760px, 100%);
+  display:flex; flex-direction:column;
+  background: var(--wm-panel); border: 1px solid var(--wm-border);
+  border-radius: var(--wm-r); box-shadow: var(--wm-shadow-lift);
+  overflow:hidden;
+}
+.ow-menu-hd {
+  display:flex; align-items:flex-start; gap: 12px; flex:none;
+  padding: 18px 20px 16px; border-bottom: 1px solid var(--wm-border);
 }
 .ow-menu h1 {
-  font-family: var(--fd);
-  font-size: calc(46px * var(--k)); font-weight:700; letter-spacing:.3em;
-  text-shadow: 0 2px 6px rgba(0,0,0,.8);
+  font-family: var(--wm-display); font-weight:400;
+  font-size: 34px; letter-spacing:.1em; line-height:1; text-transform:uppercase;
 }
 .ow-menu .sub {
-  margin-top: calc(var(--u) * 1.2); font-size: calc(10px * var(--k));
-  letter-spacing:.28em; color: var(--ink-3);
+  margin-top: 7px; font-size: 11px; font-weight:600; letter-spacing:.1em;
+  text-transform:uppercase; color: var(--wm-muted-fg);
 }
-.ow-menu .rule {
-  margin: calc(var(--u) * 5) 0 calc(var(--u) * 2); height:1px;
-  background: linear-gradient(to right, rgba(255,255,255,.28), rgba(255,255,255,0));
+.ow-x {
+  appearance:none; width:30px; height:30px; flex:none; border-radius: var(--wm-r-sm);
+  border:1px solid var(--wm-border); background:none; color: var(--wm-muted-fg);
+  display:grid; place-items:center; cursor:pointer;
+  transition: color var(--wm-t), border-color var(--wm-t);
 }
-/* Tab strip. The General tab is the shipped menu; the rest are generated from
-   the option table in src/core/graphics.js, which is long enough that one flat
-   list would run off the bottom of a 1080p screen. */
+.ow-x:hover { color: var(--wm-fg); border-color: var(--wm-accent); }
+.ow-menu-bd { padding: 4px 20px 14px; overflow-y:auto; flex: 1 1 auto; min-height:0; }
+.ow-menu-ft { flex:none; padding: 14px 20px 16px; border-top: 1px solid var(--wm-border); }
+
+/* Tab strip for the advanced graphics groups. Pinned between the header and the
+   scrolling body — with ~38 settings behind it, a strip that scrolled away
+   would leave the player with no way back without a full scroll up. Chips
+   rather than an underlined rail: DESIGN.md wants 8px-grid enterprise UI, and a
+   chip carries the Ice-White-fill active state the segmented controls already
+   use, so the whole panel has one selected-state vocabulary. */
 .ow-tabs {
-  display:flex; flex-wrap:wrap; gap: calc(var(--u) * 0.6);
-  margin-bottom: calc(var(--u) * 2);
+  flex:none; display:flex; flex-wrap:wrap; gap: 6px;
+  padding: 12px 20px; border-bottom: 1px solid var(--wm-border);
 }
 .ow-tab {
-  appearance:none; border:1px solid var(--hair); background: rgba(255,255,255,.03);
-  color: var(--ink-3); font-family: var(--ff); font-weight:600; text-transform:uppercase;
-  font-size: calc(9.5px * var(--k)); letter-spacing:.16em;
-  padding: calc(var(--u) * 1.2) calc(var(--u) * 2.2);
-  cursor:pointer; transition: color .12s, background .12s, border-color .12s;
+  appearance:none; border:1px solid var(--wm-border); border-radius: var(--wm-r-sm);
+  background: var(--wm-panel-2); color: var(--wm-muted-fg);
+  font-family: var(--wm-body); font-weight:600; text-transform:uppercase;
+  font-size: 10px; letter-spacing:.08em; padding: 6px 10px; cursor:pointer;
+  transition: color var(--wm-t), background var(--wm-t), border-color var(--wm-t);
 }
-.ow-tab:hover { color: var(--ink); background: rgba(255,255,255,.08); }
-.ow-tab.on { color: #0b0d0f; background: var(--amber); border-color: var(--amber); }
-/* The advanced tabs are taller than General, so the panel scrolls rather than
-   pushing the Resume button off the screen. */
-.ow-panels { max-height: calc(58vh); overflow-y: auto; overflow-x: hidden; }
-.ow-panels::-webkit-scrollbar { width: calc(3px * var(--k)); }
-.ow-panels::-webkit-scrollbar-thumb { background: rgba(255,255,255,.22); }
-.ow-panel-blurb {
-  font-size: calc(9px * var(--k)); letter-spacing:.22em; color: var(--ink-3);
-  padding: calc(var(--u) * 1.2) 0 calc(var(--u) * 0.6);
+.ow-tab:hover { color: var(--wm-fg); background: var(--wm-hover); }
+.ow-tab.on { color: var(--wm-bg); background: var(--wm-fg); border-color: var(--wm-fg); }
+
+.ow-group {
+  font-size: 11px; font-weight:600; letter-spacing:.1em; text-transform:uppercase;
+  color: var(--wm-muted-fg); padding: 18px 0 2px;
 }
+/* The first group header in a tab sits right under the strip, so it does not
+   need the 18px it uses to separate two groups mid-panel. */
+.ow-panel > .ow-group:first-child { padding-top: 10px; }
+/* A setting the player has moved off its preset. Melt Green is a border and an
+   accent only (the 4% rule), so "changed" is a left rule, not a fill. */
+.ow-row-set { box-shadow: inset 2px 0 0 -1px var(--wm-accent); padding-left: 8px; }
+.ow-row-set > .name { color: var(--wm-fg); }
+/* Marks a row that cannot take effect until the page reloads. */
+.ow-tag {
+  margin-left: 8px; padding: 2px 5px; border-radius: 3px; vertical-align: middle;
+  font-size: 9px; font-weight:600; letter-spacing:.08em;
+  color: var(--wm-muted-fg); border: 1px solid var(--wm-border);
+}
+.ow-row-set .ow-tag { color: var(--wm-warn); border-color: var(--wm-warn); }
 .ow-row {
   display:flex; align-items:center; justify-content:space-between;
-  gap: calc(var(--u) * 4); padding: calc(var(--u) * 3.2) 0;
-  border-bottom: 1px solid var(--hair-2);
+  gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--wm-border); min-height: 52px;
 }
-.ow-row > .name { font-size: calc(11.5px * var(--k)); letter-spacing:.2em; color: var(--ink); }
-/* An option the player has moved off its preset value. */
-.ow-row-set > .name { color: var(--amber); }
-.ow-tag {
-  margin-left: calc(var(--u) * 1.2); padding: 0 calc(var(--u) * 0.8);
-  font-family: var(--fm); font-size: calc(7.5px * var(--k)); letter-spacing:.14em;
-  color: var(--ink-3); border:1px solid var(--hair); vertical-align: middle;
+.ow-row:last-child { border-bottom: 0; }
+.ow-row > .name {
+  font-size: 13px; font-weight:500; letter-spacing:.01em; color: var(--wm-fg);
+  text-transform: none;
 }
-.ow-row > .val { font-family: var(--fm); font-size: calc(11px * var(--k)); color: var(--amber);
-  letter-spacing:.04em; min-width: calc(46px * var(--k)); text-align:right; }
-.ow-seg { display:flex; gap:0; }
+.ow-row > .val {
+  font-size: 12px; font-weight:600; color: var(--wm-fg-dim); font-variant-numeric: tabular-nums;
+  min-width: 52px; text-align:right;
+}
+.ow-seg { display:flex; gap:0; flex:none; }
 .ow-seg button {
-  appearance:none; border:1px solid var(--hair); border-right:0; background:rgba(255,255,255,.03);
-  color: var(--ink-2); font-family:var(--ff); font-weight:600; text-transform:uppercase;
-  font-size: calc(10px * var(--k)); letter-spacing:.16em;
-  padding: calc(var(--u) * 1.3) calc(var(--u) * 2.2);
-  cursor:pointer; position:relative; transition: color .12s, background .12s;
+  appearance:none; border:1px solid var(--wm-border); border-right:0;
+  background: var(--wm-panel-2); color: var(--wm-muted-fg);
+  font-family: var(--wm-body); font-weight:600; text-transform:uppercase;
+  font-size: 10px; letter-spacing:.08em; padding: 7px 11px;
+  cursor:pointer; position:relative;
+  transition: color var(--wm-t), background var(--wm-t), border-color var(--wm-t);
 }
-.ow-seg button:last-child { border-right:1px solid var(--hair); }
-.ow-seg button:hover { color: var(--ink); background: rgba(255,255,255,.07); }
-.ow-seg button.on { color:#0b0d0f; background: var(--ink); }
+.ow-seg button:first-child { border-radius: var(--wm-r-sm) 0 0 var(--wm-r-sm); }
+.ow-seg button:last-child { border-right:1px solid var(--wm-border); border-radius: 0 var(--wm-r-sm) var(--wm-r-sm) 0; }
+.ow-seg button:hover { color: var(--wm-fg); background: var(--wm-hover); }
+/* Ice White fill, Graphite text — 14.91:1, the primary pairing in DESIGN.md. */
+.ow-seg button.on { color: var(--wm-bg); background: var(--wm-fg); border-color: var(--wm-fg); }
 .ow-select {
-  appearance:none; min-width: calc(150px * var(--k));
-  border:1px solid var(--hair); background:rgba(8,11,14,.82);
-  color:var(--ink); font-family:var(--fm); font-size:calc(10px * var(--k));
-  letter-spacing:.08em; text-transform:uppercase;
-  padding:calc(var(--u) * 1.5) calc(var(--u) * 2.2); cursor:pointer;
+  appearance:none; min-width: 168px; border-radius: var(--wm-r-sm);
+  border:1px solid var(--wm-border); background: var(--wm-panel-2);
+  color: var(--wm-fg); font-family: var(--wm-body); font-size: 12px; font-weight:500;
+  letter-spacing:.01em; padding: 7px 10px; cursor:pointer;
+  transition: border-color var(--wm-t);
 }
+.ow-select:hover { border-color: var(--wm-accent); }
 /* Rebind button. Named ow-bind, not ow-key — that one is already the in-world
    "press F" keycap. Sized like .ow-select so the settings column stays flush,
    and wide enough that a two-word prompt ("PRESS A KEY", "IN USE") does not
    reflow the row. */
 .ow-bind {
-  appearance:none; min-width: calc(150px * var(--k));
-  border:1px solid var(--hair); background:rgba(8,11,14,.82);
-  color:var(--amber); font-family:var(--fm); font-size:calc(10px * var(--k));
-  letter-spacing:.16em; text-transform:uppercase; text-align:center;
-  padding:calc(var(--u) * 1.5) calc(var(--u) * 2.2);
-  cursor:pointer; transition: color .12s, background .12s, border-color .12s;
+  appearance:none; min-width: 168px; border-radius: var(--wm-r-sm);
+  border:1px solid var(--wm-border); background: var(--wm-panel-2);
+  color: var(--wm-fg); font-family: var(--wm-body); font-size: 11px; font-weight:600;
+  letter-spacing:.1em; text-transform:uppercase; text-align:center; padding: 8px 10px;
+  cursor:pointer; transition: color var(--wm-t), background var(--wm-t), border-color var(--wm-t);
 }
-.ow-bind:hover { color: var(--ink); border-color: rgba(255,255,255,.4); }
-.ow-bind.on { color:#0b0d0f; background: var(--amber); border-color: var(--amber); }
+.ow-bind:hover { border-color: var(--wm-accent); }
+.ow-bind.on { color: var(--wm-bg); background: var(--wm-accent); border-color: var(--wm-accent); }
 .ow-quality-status {
-  min-width:calc(235px * var(--k)) !important;
-  font-size:calc(9px * var(--k)) !important;
-  white-space:nowrap;
+  min-width: 200px !important; font-size: 11px !important;
+  white-space:nowrap; font-variant-numeric: tabular-nums;
 }
-.ow-slider { position:relative; width: calc(190px * var(--k)); height: calc(18px * var(--k)); }
+.ow-slider { position:relative; width: 200px; height: 20px; flex:none; }
 .ow-slider .track {
-  position:absolute; left:0; right:0; top:50%; height: calc(2px * var(--k));
-  transform: translateY(-50%); background: rgba(255,255,255,.16);
+  position:absolute; left:0; right:0; top:50%; height: 4px; border-radius: 2px;
+  transform: translateY(-50%); background: rgb(var(--wm-fg-rgb) / .14);
 }
 .ow-slider .fill {
-  position:absolute; left:0; top:50%; height: calc(2px * var(--k));
-  transform: translateY(-50%); background: var(--amber);
+  position:absolute; left:0; top:50%; height: 4px; border-radius: 2px;
+  transform: translateY(-50%); background: var(--wm-fg);
 }
 .ow-slider .knob {
-  position:absolute; top:50%; width: calc(9px * var(--k)); height: calc(9px * var(--k));
-  background: var(--amber); transform: translate(-50%,-50%) rotate(45deg);
-  box-shadow: 0 0 calc(6px * var(--k)) rgba(255,176,42,.5);
+  position:absolute; top:50%; width: 12px; height: 12px; border-radius: 3px;
+  background: var(--wm-fg); transform: translate(-50%,-50%);
+  transition: background var(--wm-t);
 }
+.ow-slider:hover .knob { background: var(--wm-accent); }
 .ow-slider input {
   position:absolute; inset:0; width:100%; height:100%; margin:0;
   appearance:none; background:transparent; cursor:pointer; opacity:0;
 }
-.ow-btns { margin-top: calc(var(--u) * 5); display:flex; gap: calc(var(--u) * 2.5); }
+.ow-btns { display:flex; align-items:center; gap: 10px; }
 .ow-btn {
-  appearance:none; border:1px solid var(--hair); background: rgba(255,255,255,.04);
-  color: var(--ink); font-family: var(--ff); font-weight:600; text-transform:uppercase;
-  font-size: calc(11px * var(--k)); letter-spacing:.2em;
-  padding: calc(var(--u) * 2.2) calc(var(--u) * 5);
-  cursor:pointer; transition: background .12s, border-color .12s;
+  appearance:none; border:1px solid var(--wm-fg); background: transparent;
+  color: var(--wm-fg); font-family: var(--wm-display); font-weight:400;
+  text-transform:uppercase; font-size: 17px; letter-spacing:.08em;
+  border-radius: var(--wm-r); padding: 11px 20px 8px; cursor:pointer;
+  transition: background var(--wm-t), border-color var(--wm-t), color var(--wm-t);
 }
-.ow-btn:hover { background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.4); }
-.ow-btn.primary { background: var(--amber); border-color: var(--amber); color:#100b02; }
-.ow-btn.primary:hover { background:#ffc251; }
-/* Only visible while a restart-only graphics option is waiting to take effect. */
-.ow-btn.warn { border-color: rgba(255,176,42,.55); color: var(--amber); }
-.ow-btn.warn:hover { background: rgba(255,176,42,.16); border-color: var(--amber); }
+.ow-btn:hover { border-color: var(--wm-accent); }
+.ow-btn.primary { background: var(--wm-fg); border-color: var(--wm-fg); color: var(--wm-bg); }
+.ow-btn.primary:hover { background: var(--wm-fg-warm); }
+/* Danger is 3.57:1 on Dark Slate — large text and borders only, which at 17px
+   Bebas it is. It fills only on hover, so leaving a match is never a mis-click. */
+.ow-btn.danger { border-color: var(--wm-border); color: var(--wm-muted-fg); }
+.ow-btn.danger:hover { background: var(--wm-danger); border-color: var(--wm-danger); color: var(--wm-bg); }
+/* Only on screen while a RESTART-tagged graphics setting is waiting to apply.
+   Warning, not Danger: reloading is the thing the player just asked for, it is
+   simply the thing that costs a loading screen. */
+.ow-btn.warn { border-color: var(--wm-warn); color: var(--wm-warn); }
+.ow-btn.warn:hover { background: var(--wm-warn); border-color: var(--wm-warn); color: var(--wm-bg); }
 .ow-menu .hint {
-  margin-top: calc(var(--u) * 4); font-size: calc(9.5px * var(--k));
-  letter-spacing:.2em; color: var(--ink-3);
+  margin-top: 14px; font-size: 11px; font-weight:500; letter-spacing:.06em;
+  text-transform:uppercase; color: var(--wm-muted-fg); text-align:center;
+}
+
+/* Click-to-resume target. Only on screen when the game is live and the browser
+   has not given pointer lock back yet — see the header of src/ui/menu.js. */
+.ow-lockhint {
+  position:fixed; left:50%; bottom: 14%; z-index:45; transform: translateX(-50%);
+  display:flex; align-items:center; gap: 10px; pointer-events:auto; cursor:pointer;
+  padding: 10px 16px; border-radius: var(--wm-r);
+  background: var(--wm-panel); border: 1px solid var(--wm-border);
+  box-shadow: var(--wm-shadow); font-family: var(--wm-body); text-transform:none;
+  letter-spacing:normal; white-space:nowrap;
+  transition: border-color var(--wm-t);
+}
+.ow-lockhint:hover { border-color: var(--wm-accent); }
+.ow-lockhint .t {
+  font-family: var(--wm-display); font-size: 19px; letter-spacing:.08em;
+  text-transform:uppercase; color: var(--wm-fg); line-height:1;
+}
+.ow-lockhint .k {
+  font-size: 10px; font-weight:600; letter-spacing:.08em; color: var(--wm-fg-dim);
+  border:1px solid var(--wm-border); border-radius: 3px; padding: 2px 5px; margin-left: 4px;
+}
+.ow-lockhint .s { font-size: 12px; color: var(--wm-muted-fg); }
+
+@media (max-height: 620px) {
+  .ow-menu { padding: 12px; }
+  .ow-menu h1 { font-size: 26px; }
+  .ow-menu-hd { padding: 12px 16px; }
+  .ow-menu-bd { padding: 0 16px 8px; }
+  .ow-tabs { padding: 8px 16px; }
+  .ow-group { padding: 12px 0 2px; }
+  .ow-row { padding: 9px 0; min-height: 0; }
+}
+@media (max-width: 560px) {
+  .ow-row { flex-wrap: wrap; gap: 8px; }
+  .ow-slider, .ow-select, .ow-bind { width: 100%; min-width: 0; }
+  .ow-btns { flex-wrap: wrap; }
+  .ow-menu .grow { flex-basis: 100%; }
 }
 
 /* ============================================================ perf readout */

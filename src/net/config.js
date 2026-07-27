@@ -17,6 +17,22 @@ function randomCode(n = 6) {
   return s;
 }
 
+/**
+ * Did this player arrive on somebody's invite link?
+ *
+ * Read at module load, BEFORE `resolveRoom()` gets a chance to mint a room and
+ * write it into the address bar — after that the two cases are indistinguishable.
+ * The lobby uses it for nothing more than a line of copy, but that line is the
+ * difference between "why am I here" and "you were invited".
+ */
+export const arrivedByInvite = (() => {
+  try {
+    return !!new URLSearchParams(location.search).get('room');
+  } catch {
+    return false;
+  }
+})();
+
 export function resolveRoom() {
   const params = new URLSearchParams(location.search);
   let room = (params.get('room') || '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 24);

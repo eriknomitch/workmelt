@@ -13,14 +13,15 @@ npm run dev:mp        # runs the client (:5173) + relay (:8787) together
 
 ## How to play together
 
-- Every load joins a room and opens on the **Match Start** screen — the game no
-  longer drops you into a live firefight on the first frame. If the URL has no
-  `?room=`, one is generated and written into the address bar, so **the current
-  URL is always a valid invite link**.
-- The **Copy invite link** button copies that URL.
+- Every load joins a room and opens on the **lobby** — the game no longer drops
+  you into a live firefight on the first frame. If the URL has no `?room=`, one
+  is generated and written into the address bar, so **the current URL is always
+  a valid invite link**.
+- The **Copy invite link** button copies that URL (on platforms with a native
+  share sheet it opens that instead). One click, from any lobby state.
 - Anyone who opens the link joins the same room. Up to 12 players per room.
 - **Tab** shows the scoreboard (kills / deaths / K-D). Edit your callsign in the
-  top-bar field; it's remembered per browser.
+  lobby's top-bar field or the in-match bar; it's remembered per browser.
 
 Controls are the same as single-player (WASD, mouse, LMB fire, RMB or X ADS, R
 reload, Shift sprint, Ctrl crouch, Space jump), including the trackpad-friendly
@@ -28,13 +29,25 @@ reload, Shift sprint, Ctrl crouch, Space jump), including the trackpad-friendly
 
 ### Starting a match
 
-Two ways in, side by side on the Match Start screen:
+The lobby has **one primary button**, and its meaning follows the room — so
+getting in is always a single click and never a choice between two panels:
 
-| | what happens |
-|---|---|
-| **Map** | Pick the level — **Market** or **Rust**. In a room the map belongs to the *room*: the choice goes to the relay and everybody switches together. |
-| **Bots** | Pick a garrison size — none / light (3) / standard (6) / heavy (12) — and press start. You deploy immediately; no waiting on anyone. |
-| **Multiplayer** | Share the room link. When a second player is in the room, both press **Ready**; the relay fires one start signal, both clients count 3–2–1, and the match begins for both at once. **This mode spawns no bots — it is players only.** |
+| room state | the button says | what happens |
+|---|---|---|
+| you are alone | **Play** (vs N bots) | you deploy immediately against the garrison size selected above it; no waiting on anyone |
+| somebody else is here | **Ready up** | when everyone is ready the relay fires one start signal, both clients count 3–2–1, and the match begins for both at once. **No bots in this mode — it is players only.** |
+| you are already ready | **Cancel ready** | the only thing left to undo. A quiet "start on your own instead" link sits under it |
+| the match is running | **Deploy now** | drop into it; nobody already shooting has to wait for you |
+
+`Enter` presses that button and `C` copies the invite link, so the lobby is also
+two keystrokes. Above it sit the two choices that both have working defaults, so
+changing either is optional and neither is ever a step:
+
+- **Map** — **Market** or **Rust**. In a room the map belongs to the *room*: the
+  choice goes to the relay and everybody switches together, and the cards lock
+  while the level rebuilds. Once anybody is deployed the room's level is settled
+  and the cards say so.
+- **Garrison** — none / light (3) / standard (6) / heavy (12).
 
 The garrison is per-client, spawned at the moment you deploy, so a players-only
 match really is empty of AI. A player who arrives after the match has started
@@ -115,6 +128,7 @@ non-capture run (disable with `?mp=0`). It:
 | C→S | `map {map}` | change the room's level (refused once anyone is deployed; clears everyone's ready flag) |
 | C→S | `ready {ready}` | toggle my match-start ready flag |
 | C→S | `deploy` | I am in the match now (bots start, or countdown finished) |
+| C→S | `undeploy` | I went back to the lobby (pause menu → Leave match); clears my `deployed` flag so the room stops being LIVE |
 | C→S | `state {s:{p,y,pt,sp,cr,ad,hp,dead,v}}` | transform snapshot (20 Hz) |
 | C→S | `fire {o,d,w,seed}` | a shot (origin, dir) |
 | C→S | `hit {target,dmg,part,o,w}` | shooter's damage claim |
@@ -210,6 +224,6 @@ Cloudflare can route to the right Durable Object before the first message.
 | `?room=CODE` | join a specific room (auto-generated if absent) |
 | `?name=NAME` | set your callsign |
 | `?server=wss://…` | point at a specific relay |
-| `?mp=0` | disable multiplayer (pure single-player; the Match Start screen keeps the bots panel only) |
-| `?match=0` | skip the Match Start screen — boot straight into a live match with the default garrison, as the game used to. Used by `tools/playtest.mjs` and the benchmark harnesses |
+| `?mp=0` | disable multiplayer (pure single-player; the lobby drops the room panel and the invite button) |
+| `?match=0` | skip the lobby — boot straight into a live match with the default garrison, as the game used to. Used by `tools/playtest.mjs` and the benchmark harnesses |
 | `?q=low\|medium\|high\|ultra` | graphics preset |
