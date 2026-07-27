@@ -112,7 +112,7 @@ export class PauseMenu {
     }
 
     const adsKeyRow = this._row('ADS Key');
-    this.adsKeyBtn = el('button', 'ow-key', adsKeyRow, 'X');
+    this.adsKeyBtn = el('button', 'ow-bind', adsKeyRow, 'X');
     this.adsKeyBtn.type = 'button';
     this.adsKeyBtn.addEventListener('click', () => this._beginRebind());
     this._rebinding = false;

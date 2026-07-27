@@ -650,9 +650,11 @@ const CSS = `
   letter-spacing:.08em; text-transform:uppercase;
   padding:calc(var(--u) * 1.5) calc(var(--u) * 2.2); cursor:pointer;
 }
-/* Keycap-style rebind button: wide enough that a two-word prompt
-   ("PRESS A KEY", "IN USE") does not reflow the row it sits in. */
-.ow-key {
+/* Rebind button. Named `ow-bind`, not `ow-key` — that one is already the
+   in-world "press F" keycap. Sized like `.ow-select` so the settings column
+   stays flush, and wide enough that a two-word prompt ("PRESS A KEY",
+   "IN USE") does not reflow the row. */
+.ow-bind {
   appearance:none; min-width: calc(150px * var(--k));
   border:1px solid var(--hair); background:rgba(8,11,14,.82);
   color:var(--amber); font-family:var(--fm); font-size:calc(10px * var(--k));
@@ -660,8 +662,8 @@ const CSS = `
   padding:calc(var(--u) * 1.5) calc(var(--u) * 2.2);
   cursor:pointer; transition: color .12s, background .12s, border-color .12s;
 }
-.ow-key:hover { color: var(--ink); border-color: rgba(255,255,255,.4); }
-.ow-key.on { color:#0b0d0f; background: var(--amber); border-color: var(--amber); }
+.ow-bind:hover { color: var(--ink); border-color: rgba(255,255,255,.4); }
+.ow-bind.on { color:#0b0d0f; background: var(--amber); border-color: var(--amber); }
 .ow-quality-status {
   min-width:calc(235px * var(--k)) !important;
   font-size:calc(9px * var(--k)) !important;
