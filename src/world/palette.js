@@ -473,6 +473,51 @@ export const PALETTE = {
     opts: { vertexMasks: true, tint: 0xc0a05e, scale: 0.3, weather: [0.4, 0.2, 0.3, 0.4] },
   },
 
+  // ------------------------------------------------- the Chicago Loop --
+  /**
+   * Chicago common brick: darker and browner than the market's sand-blasted
+   * walls or the manor's English red — a hundred years of soot in the mortar.
+   */
+  brick_chicago: {
+    name: 'brick',
+    surface: 'concrete',
+    opts: { vertexMasks: true, tint: 0x77584a, scale: 0.62, weather: [0.45, 0.5, 0.9, 0.6] },
+  },
+  /** Grey limestone/granite for storefront bases and the bank's whole face. */
+  stone_grey: {
+    name: 'concrete',
+    surface: 'concrete',
+    opts: { vertexMasks: true, tint: 0x97938c, scale: 1.7, weather: [0.45, 0.4, 0.7, 0.5] },
+  },
+  /** Cream terracotta cladding — the Loop's theatre-and-department-store skin. */
+  terracotta: {
+    name: 'plaster',
+    surface: 'plaster',
+    opts: { vertexMasks: true, tint: 0xc4b391, scale: 1.5, weather: [0.4, 0.4, 1.1, 0.5] },
+  },
+  /**
+   * The elevated structure itself. A century of paint and grime over riveted
+   * steel — darker and colder than Rust's `steel_frame`, because the L reads
+   * as a black lattice against the sky in every photograph ever taken of it.
+   */
+  el_steel: {
+    name: 'metal_painted',
+    surface: 'metal',
+    opts: { vertexMasks: true, tint: 0x4d4a41, scale: 0.8, normalStrength: 1.2, weather: [0.6, 0.45, 0.55, 0.55] },
+  },
+  /** Road paint: the dashed centreline and the transit lane. */
+  paint_yellow: {
+    name: 'plaster',
+    surface: 'concrete',
+    opts: { vertexMasks: true, tint: 0xa8862e, scale: 0.8, weather: [0.5, 0.3, 0.3, 0.4] },
+  },
+  /** Painted signage red: the blade sign, hydrants, the news boxes. */
+  sign_red: {
+    name: 'metal_painted',
+    surface: 'metal',
+    opts: { vertexMasks: true, tint: 0x8c3b32, scale: 0.9, weather: [0.5, 0.4, 0.5, 0.5] },
+  },
+
   // ------------------------------------------------------------- apertures --
   /**
    * The dark core BEHIND a window opening. A window is not a grey rectangle: it

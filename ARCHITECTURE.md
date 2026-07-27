@@ -124,15 +124,16 @@ collider with one of: `concrete`, `metal`, `wood`, `dirt`, `sand`, `glass`,
 ## Maps
 
 The level is one of the descriptors in `src/world/maps.js`, not a hard-coded
-build sequence. Three ship: `market` (the Middle-Eastern street), `rust` (a
-low-poly desert refinery) and `wilmot` (a low-poly walled country estate).
-Which one boots is `?map=` > the player's last choice > `market`; a capture
-run ignores the stored choice so the pixel gate always frames the same level
-unless `?map=` says otherwise.
+build sequence. Four ship: `market` (the Middle-Eastern street), `rust` (a
+low-poly desert refinery), `wilmot` (a low-poly walled country estate) and
+`loop` (a low-poly Chicago corner under the elevated tracks). Which one boots
+is `?map=` > the player's last choice > `market`; a capture run ignores the
+stored choice so the pixel gate always frames the same level unless `?map=`
+says otherwise.
 
 ```js
 const world = ctx.get('world');
-world.mapId                 // 'market' | 'rust' | 'wilmot'
+world.mapId                 // 'market' | 'rust' | 'wilmot' | 'loop'
 world.maps                  // [{ id, name, subtitle, blurb, size }] for menus
 await world.setMap('rust')  // tear the level down and build another. Emits
                             // `world:rebuilt`. ONLY legal before a match is
