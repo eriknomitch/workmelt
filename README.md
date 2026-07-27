@@ -5,9 +5,9 @@ Get updates [here](https://shumer.dev/newsletter).
 A first-person shooter built in the browser with Three.js r180 and WebGL2. Roughly
 55k lines across 13 subsystems, written by a fleet of AI agents under orchestration.
 
-**There are no art assets.** Every texture, mesh, animation and sound is generated
-procedurally at load time from code. No models, no HDRIs, no image files, no audio
-files. The only runtime dependency is `three`.
+Every texture, mesh and animation is generated procedurally at load time from
+code — no models, no HDRIs, no image files. Audio combines a procedural synthesis
+layer with sampled sound effects. The only runtime dependency is `three`.
 
 ```bash
 npm install

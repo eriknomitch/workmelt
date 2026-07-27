@@ -3,8 +3,8 @@
 **Every agent must read this before writing code. It is the only coordination mechanism.**
 
 Target: a browser FPS whose *visual and tactile quality* stands next to a modern
-Call of Duty. WebGL2 + Three.js r180, no external art assets — all textures,
-meshes, animation and audio are generated procedurally at load time.
+Call of Duty. WebGL2 + Three.js r180. Textures, meshes and animation are
+generated procedurally at load time; audio may be procedural or sample-based.
 
 ## Hard rules
 
@@ -12,8 +12,8 @@ meshes, animation and audio are generated procedurally at load time.
    every other directory and your edit will be clobbered or will break them.
 2. **Never import another subsystem's module.** Get it at runtime:
    `const fx = ctx.get('fx')`. This is what makes parallel work safe.
-3. **No new npm dependencies.** `three` only. No CDN fetches, no external
-   images/HDRIs/models/audio files — the game must run fully offline.
+3. **No new npm dependencies.** `three` only. No CDN fetches — every asset the
+   game needs ships in the bundle, so it runs fully offline.
 4. **No `Math.random()` in gameplay or visuals.** Use `ctx.rng` (see
    `src/core/rng.js`) or a `ctx.rng.fork()` you keep. Capture reproducibility
    depends on it.

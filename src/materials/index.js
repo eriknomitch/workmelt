@@ -7,8 +7,8 @@ import { bakeMasks, setMask } from './masks.js';
 /**
  * Procedural PBR texture generation and the shared material library.
  *
- * There are no art assets in this project: every texel is rendered on the GPU
- * at boot from the noise stack in glsl/, packed into three 8-bit textures per
+ * There are no texture assets in this project: every texel is rendered on the
+ * GPU at boot from the noise stack in glsl/, packed into three 8-bit textures per
  * surface (albedo+height / ORM / tangent normal) and handed to a
  * MeshStandardMaterial extended with projection, parallax, detail, macro
  * variation and weathering (see shader.js).

@@ -1,8 +1,8 @@
 /**
  * AUDIO — synthesized weapon/foley audio, spatialisation, reverb, occlusion, mix
  *
- * Everything is generated with the Web Audio API. There is not a single audio
- * file in the project.
+ * Voices are either synthesized with the Web Audio API or played back from
+ * sampled sources, behind one API — callers never know which.
  *
  * ───────────────────────────────────────────────────────────────────────────
  * PUBLIC API   const audio = ctx.get('audio')
