@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { BOX, BOX_SOFT, BOX_THIN, IDENT, LL, stairRun, parapet, rubbleMound } from './kit.js';
+import { BOX, BOX_SOFT, BOX_THIN, IDENT, LL, stairRun, rubbleMound } from './kit.js';
 import { registerProps } from './props.js';
 import { registerRustProps, CONTAINER } from './rustprops.js';
 import {
@@ -171,6 +171,13 @@ export const PIPE_RACKS = [
   [-3.0, 24.3, H, 14],
 ];
 
+/**
+ * Where the gantry turns north for the shed. Held east of the container stacks
+ * on the east flank so its midspan column has somewhere to stand, and west of
+ * the shed's own stair. The shed reads it to break its south handrail.
+ */
+export const GANTRY_X = 13.8;
+
 /** Flood masts, which are also this map's street lamps: `[x, z, ry]`. */
 export const MASTS = [
   [-8.5, -16.0, 0.6],
@@ -210,7 +217,7 @@ export const RUST_SPAWNS = [
   [8.0, -13.5, 0, 'shed'],
 
   [-25.5, 15.0, -0.35, 'garage'],
-  [-14.5, 23.0, 0.3, 'garage'],
+  [-17.5, 23.5, 0.3, 'garage'],
   [-24.0, 11.0, -0.5, 'garage'],
   [-8.0, 18.5, 0, 'garage'],
 
@@ -428,6 +435,43 @@ function railing(A, cx, y, cz, w, d, sides = 'nsew', h = 1.06) {
   if (sides.includes('s')) railRun(A, x0, z1, x1, z1, y, h);
   if (sides.includes('w')) railRun(A, x0, z0, x0, z1, y, h);
   if (sides.includes('e')) railRun(A, x1, z0, x1, z1, y, h);
+}
+
+/**
+ * A parapet around a roof, with real gaps where a stair lands on it.
+ *
+ * `kit.parapet` runs unbroken around all four sides, which is right for a
+ * skyline and wrong for a roof you are supposed to be able to walk onto: the
+ * player would arrive at the top step facing an 0.8 m wall with only 0.24 m of
+ * coping to mantle onto, and the mantle probe wants 0.46 m of standable ground
+ * past the lip. `gaps` is `{ n|s|e|w: [{ u, w }] }` in the same wall-local
+ * coordinates `wallWithHoles` uses.
+ */
+function roofParapet(A, key, cx, cz, w, d, y, opts = {}) {
+  const h = opts.h ?? 0.82;
+  const t = opts.t ?? 0.26;
+  const gaps = opts.gaps ?? {};
+  const sides = [
+    ['n', cx, cz - d / 2 + t / 2, 0, w],
+    ['s', cx, cz + d / 2 - t / 2, 0, w],
+    ['e', cx + w / 2 - t / 2, cz, Math.PI / 2, d],
+    ['w', cx - w / 2 + t / 2, cz, Math.PI / 2, d],
+  ];
+  for (const [k, px, pz, ry, len] of sides) {
+    const g = gaps[k] ?? [];
+    wallWithHoles(A, key, px, pz, ry, len, y, h, t, g.map((o) => ({ u: o.u, w: o.w, y: 0, h })), {
+      masks: [0.55, 0.5, 0.3],
+    });
+    // Coping, one band above the body and carrying the same gaps — a floating
+    // lintel over a doorway is the classic tell of a parapet cut by hand.
+    wallWithHoles(A, opts.copingKey ?? 'concrete_dark', px, pz, ry, len, y + h, 0.1, t + 0.12,
+      g.map((o) => ({ u: o.u, w: o.w, y: 0, h: 0.1 })), { masks: [0.85, 0.3, 0.1] });
+  }
+}
+
+/** How long a `flight` between two heights comes out, before building it. */
+function flightLength(from, to, rise = 0.275, run = 0.3) {
+  return Math.max(1, Math.round((to - from) / rise)) * run;
 }
 
 /** A level-space panel matrix a stair flight can be composed onto. */
@@ -743,28 +787,74 @@ function buildDerrick(A, rng) {
   A.lampAnchors.push({ x: D.x, y: D.nest + 0.4, z: D.z });
 }
 
-/** The gantry from the derrick deck east to the shed roof. */
-function buildGantry(A, rng, fromX, toX, z, y) {
-  const w = 1.5;
-  const len = toX - fromX;
-  deck(A, 'steel_grate', (fromX + toX) / 2, y, z, len, w, { t: 0.16, beams: false });
-  railing(A, (fromX + toX) / 2, y, z, len, w, 'ns', 1.02);
-  // trusses under it, and one A-frame trestle at midspan
+/**
+ * THE GANTRY — the walkway from the derrick deck to the shed roof.
+ *
+ * It has to dog-leg, and the reason is worth writing down: a straight run east
+ * would have to sit at a z the derrick deck and the shed roof both contain, and
+ * they do not overlap. So it runs east over the container lane, turns at a
+ * corner platform clear of the stacks, and runs north onto the shed's south
+ * edge. Both ends land at RUST.deckY, so it is dead level and needs no ramp.
+ *
+ * `path` is a polyline of axis-aligned segments, `[[x, z], …]`.
+ */
+function buildGantry(A, rng, path, y, w = 1.5) {
+  for (let i = 0; i < path.length - 1; i++) {
+    gantrySpan(A, path[i][0], path[i][1], path[i + 1][0], path[i + 1][1], y, w);
+  }
+  // Corner platforms at the interior vertices, so the turn is a square of deck
+  // rather than two slabs meeting at a notch.
+  for (let i = 1; i < path.length - 1; i++) {
+    deck(A, 'steel_grate', path[i][0], y, path[i][1], w, w, { t: 0.16, beams: false });
+  }
+}
+
+/** One axis-aligned run of gantry: deck, rails, underslung truss, one column. */
+function gantrySpan(A, x0, z0, x1, z1, y, w) {
+  const alongX = Math.abs(x1 - x0) > Math.abs(z1 - z0);
+  const a0 = alongX ? Math.min(x0, x1) : Math.min(z0, z1);
+  const a1 = alongX ? Math.max(x0, x1) : Math.max(z0, z1);
+  const len = a1 - a0;
+  if (len < 0.2) return;
+  const cx = (x0 + x1) / 2;
+  const cz = (z0 + z1) / 2;
+  deck(A, 'steel_grate', cx, y, cz, alongX ? len : w, alongX ? w : len, { t: 0.16, beams: false });
+
+  const off = w / 2 - 0.05;
+  /** (a, lateral) -> world x/z for this run's axis. */
+  const px = (a, lat) => (alongX ? a : cx + lat);
+  const pz = (a, lat) => (alongX ? cz + lat : a);
+
   for (const s of [-1, 1]) {
-    const zz = z + s * (w / 2 - 0.1);
-    strut(A, 'steel_frame', fromX, y - 0.2, zz, toX, y - 0.2, zz, 0.12, [0.7, 0.5, 0.3]);
-    strut(A, 'steel_frame', fromX, y - 0.62, zz, toX, y - 0.62, zz, 0.1, [0.7, 0.5, 0.3]);
-    const n = 5;
+    const lat = s * off;
+    railRun(A, px(a0, lat), pz(a0, lat), px(a1, lat), pz(a1, lat), y, 1.02);
+    // Underslung Warren truss: two chords and a zig-zag between them. This is
+    // the only thing that makes a 1.5 m walkway 4.4 m in the air read as
+    // carried rather than as a plank floating in space.
+    const l = s * (off - 0.05);
+    strut(A, 'steel_frame', px(a0, l), y - 0.2, pz(a0, l), px(a1, l), y - 0.2, pz(a1, l), 0.12, [0.7, 0.5, 0.3]);
+    strut(A, 'steel_frame', px(a0, l), y - 0.66, pz(a0, l), px(a1, l), y - 0.66, pz(a1, l), 0.1, [0.7, 0.5, 0.3]);
+    const n = Math.max(2, Math.round(len / 1.4));
     for (let i = 0; i < n; i++) {
-      const a = fromX + (i / n) * len;
-      const b = fromX + ((i + 1) / n) * len;
-      strut(A, 'steel_frame', a, y - 0.2, zz, b, y - 0.62, zz, 0.07, [0.85, 0.45, 0.2]);
-      strut(A, 'steel_frame', b, y - 0.2, zz, a, y - 0.62, zz, 0.07, [0.85, 0.45, 0.2]);
+      const u = a0 + (i / n) * len;
+      const v = a0 + ((i + 1) / n) * len;
+      strut(A, 'steel_frame', px(u, l), y - 0.2, pz(u, l), px(v, l), y - 0.66, pz(v, l), 0.07, [0.85, 0.45, 0.2]);
+      strut(A, 'steel_frame', px(v, l), y - 0.2, pz(v, l), px(u, l), y - 0.66, pz(u, l), 0.07, [0.85, 0.45, 0.2]);
     }
   }
-  const mx = (fromX + toX) / 2;
-  for (const s of [-1, 1]) strut(A, 'steel_frame', mx + s * 1.1, 0.1, z, mx + s * 0.18, y - 0.7, z, 0.19, [0.7, 0.5, 0.35]);
-  A.box('metal', mx, 1.1, z, 2.5, 2.2, 0.5);
+
+  // One splayed column pair at midspan, placed where the yard is clear.
+  const m = (a0 + a1) / 2;
+  const mxw = px(m, 0);
+  const mzw = pz(m, 0);
+  for (const s of [-1, 1]) {
+    const footX = alongX ? mxw + s * 1.1 : mxw;
+    const footZ = alongX ? mzw : mzw + s * 1.1;
+    const headX = alongX ? mxw + s * 0.18 : mxw;
+    const headZ = alongX ? mzw : mzw + s * 0.18;
+    strut(A, 'steel_frame', footX, 0.1, footZ, headX, y - 0.72, headZ, 0.19, [0.7, 0.5, 0.35]);
+  }
+  A.box('metal', mxw, 1.1, mzw, alongX ? 2.5 : 0.5, 2.2, alongX ? 0.5 : 2.5);
 }
 
 /** NW: a two-storey concrete office with an external stair to the roof. */
@@ -791,7 +881,7 @@ function buildOffice(A, rng, s) {
     [{ u: -1.6, w: 3.2, y: 0.85, h: 1.7 }, { u: 3.2, w: 1.6, y: 0.85, h: 1.7 }],
     [{ u: 0, w: 5.6, y: 0.8, h: 1.9 }],
     [{ u: -2.6, w: 2.4, y: 0.85, h: 1.7 }, { u: 2.4, w: 2.4, y: 0.85, h: 1.7 }],
-    [{ u: -1.4, w: 1.6, y: 0, h: 2.3 }], // the door the external stair lands at
+    [{ u: -1.4, w: 2.0, y: 0.85, h: 1.7 }],
   ];
   for (let i = 0; i < 4; i++) {
     const [cx, cz, ry, len] = sides[i];
@@ -804,17 +894,28 @@ function buildOffice(A, rng, s) {
   A.box('concrete', x, 0.06, z, w - t, 0.12, d - t);
   deck(A, 'floor_concrete', x, storey, z, w - t, d - t, { t: 0.26, beams: false });
   deck(A, 'roof_screed', x, s.h, z, w, d, { t: 0.3, beams: false });
-  parapet(A, 'concrete', x, z, w, d, s.h, rng, { h: 0.85, t: 0.26 });
 
   // internal stair, ground -> first, against the north wall
   flight(A, x - w / 2 + 1.4, 0.12, z - d / 2 + 0.6, 0, storey, 1.25, { key: 'concrete', railing: 'right' });
-  // external stair on the west face: two flights and a landing, first floor
-  // door then roof. This is the only way onto the highest ground on the map
-  // that is not the derrick, and it is deliberately outside and exposed.
-  const ex = x - w / 2 - 1.1;
-  flight(A, ex, 0.1, z + 3.6, Math.PI, storey, 1.25);
-  deck(A, 'steel_grate', ex - 0.55, storey, z - 0.6, 2.4, 1.5, { t: 0.16, rails: 'nw', beams: false });
-  flight(A, ex - 1.5, storey, z - 0.6, -Math.PI / 2, s.h, 1.25);
+
+  // External switchback up the yard-facing (south) elevation to the roof: the
+  // highest ground on the map that is not the derrick, and deliberately out in
+  // the open. Everything is measured BACK from the roof edge, because the last
+  // step has to land exactly on it — a flight that stops short leaves a gap
+  // and one that overshoots comes up through the slab.
+  const ex = x - 2;
+  const zEdge = z + d / 2;
+  const l2 = flightLength(storey, s.h);
+  const f2z = zEdge + l2;
+  const l1 = flightLength(0.1, storey);
+  flight(A, ex, 0.1, f2z + 1.8 + l1, Math.PI, storey, 1.25);
+  deck(A, 'steel_grate', ex, storey, f2z + 0.9, 2.4, 1.8, { t: 0.16, rails: 'ew', beams: false });
+  flight(A, ex, storey, f2z, Math.PI, s.h, 1.25);
+  roofParapet(A, 'concrete', x, z, w, d, s.h, {
+    h: 0.85,
+    t: 0.26,
+    gaps: { s: [{ u: ex - x, w: 1.7 }] },
+  });
 
   // an interior partition, so the ground floor is two rooms and not a hall
   wallWithHoles(A, 'plaster_sand', x + 1.4, z, Math.PI / 2, d - t, 0, storey, 0.2,
@@ -849,10 +950,19 @@ function buildShed(A, rng, s) {
   wallWithHoles(A, 'corrugated', x + w / 2, z, Math.PI / 2, d, 0, h, 0.14,
     [{ u: -1.0, w: 3.0, y: 0, h: 2.6 }], { masks: [0.7, 0.5, 0.3] });
 
-  // the deck, its parapet-height rail, and the stair up the south face
+  // The deck, and the two ways onto it: a stair up the south face at the east
+  // end, and the gantry from the derrick arriving further west. Both openings
+  // are in the south rail, and both are measured from the deck edge so the top
+  // step lands ON it.
   deck(A, 'steel_grate', x, h, z, w, d, { t: 0.24 });
-  railing(A, x, h, z, w, d, 'nse');
-  flight(A, x - w / 2 + 1.5, 0.1, z + d / 2 + 3.3, Math.PI, h, 1.4);
+  railing(A, x, h, z, w, d, 'nwe');
+  const stx = x + w / 2 - 1.5;
+  flight(A, stx, 0.1, z + d / 2 + flightLength(0.1, h), Math.PI, h, 1.4);
+  const sz = z + d / 2 - 0.05;
+  const gx = GANTRY_X;
+  railRun(A, x - w / 2 + 0.05, sz, gx - 0.75, sz, h);
+  railRun(A, gx + 0.75, sz, stx - 0.75, sz, h);
+  railRun(A, stx + 0.75, sz, x + w / 2 - 0.05, sz, h);
 
   // roof clutter: an AC plant and a vent bank, so the deck has cover on it
   A.put('ac_unit', x + 2.6, h, z - 2.0, 0.3, 1.15);
@@ -887,13 +997,14 @@ function buildGarage(A, rng, s) {
   A.add('floor_concrete', BOX(A), LL(IDENT, x, 0.06, z, 0, w - t, 0.12, d - t), { masks: [0.4, 0.6, 0.45] });
   A.box('concrete', x, 0.06, z, w - t, 0.12, d - t);
   deck(A, 'roof_screed', x, h, z, w, d, { t: 0.3, beams: false });
-  parapet(A, 'concrete', x, z, w, d, h, rng, { h: 0.8, t: 0.24 });
   // the roller door's rolled-up curtain and its rails
   A.add('metal_rust', BOX(A), LL(IDENT, x + w / 2 - 0.1, 3.42, z + 0.4, 0, 0.42, 0.44, 4.5), {
     masks: [0.85, 0.5, 0.2],
   });
-  // external stair on the south face
-  flight(A, x + 2.0, 0.1, z + d / 2 + 3.6, Math.PI, h, 1.3);
+  // external stair up the south face, landing on the roof edge
+  const gx = x + 2.0;
+  flight(A, gx, 0.1, z + d / 2 + flightLength(0.1, h), Math.PI, h, 1.3);
+  roofParapet(A, 'concrete', x, z, w, d, h, { h: 0.8, t: 0.24, gaps: { s: [{ u: gx - x, w: 1.7 }] } });
 
   A.interiorLights.push({ x, y: h - 0.5, z });
   A.interiorLights.push({ x: x - 3.4, y: h - 0.5, z: z - 1.6 });
@@ -947,23 +1058,33 @@ function buildSilos(A, rng) {
   }
 }
 
-/** Pipe racks: a run of trestles carrying long pipe at vault height. */
+/**
+ * Pipe racks: a line of trestles carrying long pipe at vault height.
+ *
+ * `ry` in PIPE_RACKS is the direction the RUN goes, in the same convention the
+ * pipe prototype is modelled in — 0 means along +Z. Both the pipe and the
+ * trestle take that yaw directly: the pipe because it is modelled along +Z, the
+ * trestle because its cradle beam is modelled along +X and therefore comes out
+ * across the run, which is the whole job of a trestle.
+ */
 function buildPipeRacks(A, rng) {
   for (const [x, z, ry, len] of PIPE_RACKS) {
+    const ax = Math.sin(ry); // unit vector ALONG the run
+    const az = Math.cos(ry);
+    const px = -az; // and across it
+    const pz = ax;
     const n = Math.max(2, Math.round(len / 3.2));
-    const dx = ry === 0 ? 0 : 1;
     for (let i = 0; i <= n; i++) {
       const t = (i / n - 0.5) * len;
-      const px = x + (dx ? t : 0);
-      const pz = z + (dx ? 0 : t);
-      A.put('trestle', px, 0.03, pz, ry + Math.PI / 2, 1);
+      A.put('trestle', x + ax * t, 0.03, z + az * t, ry, 1);
     }
-    for (let i = 0; i < Math.round(len / 6); i++) {
-      const t = ((i + 0.5) / Math.round(len / 6) - 0.5) * len;
-      const px = x + (dx ? t : 0);
-      const pz = z + (dx ? 0 : t);
+    const runs = Math.max(1, Math.round(len / 6));
+    for (let i = 0; i < runs; i++) {
+      const t = ((i + 0.5) / runs - 0.5) * len;
       for (const off of [-0.62, 0.62]) {
-        A.put('pipe_long', px + (dx ? 0 : off), 1.3, pz + (dx ? off : 0), ry + (dx ? Math.PI / 2 : 0), 1);
+        // 1.5 m: the cradle beam tops out at 1.28, so a 0.24 m pipe resting on
+        // it sits here. Also the height a player vaults rather than walks round.
+        A.put('pipe_long', x + ax * t + px * off, 1.5, z + az * t + pz * off, ry, 1);
       }
     }
   }
@@ -1128,8 +1249,17 @@ export function buildRust(A, rng) {
   }
 
   // The gantry lands on the shed deck, so it is built after both ends exist.
-  const shed = STRUCTURES.find((s) => s.id === 'shed');
-  buildGantry(A, rng, DERRICK.x + DERRICK.deckHalf - 0.2, shed.x - shed.w / 2 + 0.3, DERRICK.z - 1.2, RUST.deckY);
+  const shed = STRUCTURES.find((st) => st.id === 'shed');
+  buildGantry(
+    A,
+    rng,
+    [
+      [DERRICK.x + DERRICK.deckHalf - 0.2, DERRICK.z - 1.2],
+      [GANTRY_X, DERRICK.z - 1.2],
+      [GANTRY_X, shed.z + shed.d / 2 - 0.1],
+    ],
+    RUST.deckY
+  );
 
   buildSilos(A, rng);
   placeContainers(A, rng);
