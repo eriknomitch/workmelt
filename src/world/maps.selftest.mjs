@@ -25,7 +25,7 @@ import { Rng } from '../core/rng.js';
 import { Assembler } from './builder.js';
 import { MAPS, DEFAULT_MAP_ID, getMap, isMapId, mapSummaries, resolveBootMap } from './maps.js';
 import { CONTAINER } from './rustprops.js';
-import { CONTAINERS, STRUCTURES, RUST, DERRICK } from './rust.js';
+import { CONTAINERS, STRUCTURES, RUST, DERRICK, inSolid } from './rust.js';
 
 let pass = 0;
 let fail = 0;
@@ -255,6 +255,30 @@ for (let x = -RUST.half; x <= RUST.half; x += 1)
 const frac = open / total;
 ok(frac > 0.45 && frac < 0.9, 'most of the yard inside the fence is walkable',
   `${(frac * 100).toFixed(0)}% open`);
+
+/**
+ * THE GATES ARE SEALED.
+ *
+ * The perimeter has a 4.6 m opening at each end of the yard, and a container
+ * parked across it is the only thing stopping a player walking out into empty
+ * desert. That is one placement — nudge it and the map leaks, with nothing else
+ * in the build or in any frame to say so. A raycast in a browser found this
+ * once; this is the same question asked of the layout tables, in 2 ms.
+ *
+ * For every line across the opening, walk in from the fence and require
+ * something solid within the first few metres.
+ */
+const GATE_HALF = 2.3;
+for (const [name, sign] of [['north', -1], ['south', 1]]) {
+  const leaks = [];
+  for (let x = -GATE_HALF + 0.2; x <= GATE_HALF - 0.2; x += 0.2) {
+    let solid = false;
+    for (let d = 0; d <= 8 && !solid; d += 0.2) if (inSolid(x, sign * (RUST.half - d), 0)) solid = true;
+    if (!solid) leaks.push(x.toFixed(1));
+  }
+  ok(leaks.length === 0, `the ${name} gate is sealed`,
+    leaks.length ? `open at x=${leaks.join(',')}` : `${GATE_HALF * 2} m of opening covered`);
+}
 
 console.log(
   fail === 0
