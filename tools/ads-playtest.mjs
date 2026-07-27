@@ -54,6 +54,22 @@ try {
   await page.waitForFunction('window.__READY__ === true', null, { timeout: 600000 });
   await page.waitForTimeout(1500);
 
+  // This boot garrisons the level, and a respawn deliberately drops a toggle
+  // latch — so a bot landing a kill mid-run would read as a latch bug. Take
+  // damage out of the picture, and record every clear so if one does happen
+  // the failure says who called it instead of just "false".
+  await page.evaluate(() => {
+    window.__ENGINE__.ctx.get('player').health.damage = () => {};
+    const input = window.__ENGINE__.input;
+    const clear = input.clearAdsToggle.bind(input);
+    window.__ADS_CLEARS__ = [];
+    input.clearAdsToggle = () => {
+      window.__ADS_CLEARS__.push(new Error().stack ?? '?');
+      clear();
+    };
+  });
+  const clears = () => page.evaluate('window.__ADS_CLEARS__.length');
+
   // Frames are slow under a software rasteriser; give beginFrame room to run.
   const settle = () => page.waitForTimeout(400);
   const key = (type, code) =>
@@ -142,9 +158,14 @@ try {
   /* ---- toggle mode in play ---------------------------------------------- */
   await page.evaluate('window.__ENGINE__.ctx.get("ui").menu.close()');
   await settle();
+  const clearsBefore = await clears();
   await tap('KeyB');
   await settle();
-  eq('tapping the bind latches ADS', await ads(), true);
+  check(
+    'tapping the bind latches ADS',
+    (await ads()) === true,
+    `ads=${await ads()} after ${(await clears()) - clearsBefore} clear(s)`
+  );
   await settle();
   eq('the latch survives the release', await ads(), true);
 
@@ -163,6 +184,9 @@ try {
   await settle();
   eq('sprint breaks the latch', await ads(), false);
   await key('keyup', 'ShiftLeft');
+
+  if (results.some((r) => r.startsWith('  FAIL')))
+    console.log('\nclearAdsToggle callers:\n' + (await page.evaluate('window.__ADS_CLEARS__')).join('\n'));
 } finally {
   console.log(results.join('\n'));
   await browser.close();
