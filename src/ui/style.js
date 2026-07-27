@@ -650,10 +650,10 @@ const CSS = `
   letter-spacing:.08em; text-transform:uppercase;
   padding:calc(var(--u) * 1.5) calc(var(--u) * 2.2); cursor:pointer;
 }
-/* Rebind button. Named `ow-bind`, not `ow-key` — that one is already the
-   in-world "press F" keycap. Sized like `.ow-select` so the settings column
-   stays flush, and wide enough that a two-word prompt ("PRESS A KEY",
-   "IN USE") does not reflow the row. */
+/* Rebind button. Named ow-bind, not ow-key — that one is already the in-world
+   "press F" keycap. Sized like .ow-select so the settings column stays flush,
+   and wide enough that a two-word prompt ("PRESS A KEY", "IN USE") does not
+   reflow the row. */
 .ow-bind {
   appearance:none; min-width: calc(150px * var(--k));
   border:1px solid var(--hair); background:rgba(8,11,14,.82);
