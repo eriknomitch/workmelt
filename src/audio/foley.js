@@ -757,6 +757,101 @@ export function uiSound(actx, bank, rng, kind, o = {}) {
       o1.start(t0); o1.stop(t0 + 0.9);
       break;
     }
+    /* ---- lobby / match start ------------------------------------------- */
+    case 'join': {
+      // Somebody entered the room: two clean rising notes (G5 -> C6), each with
+      // an octave sine on top so it reads over a live firefight as well as over
+      // a silent lobby. Rising = arrival; 'leave' is the same figure inverted.
+      for (let i = 0; i < 2; i++) {
+        const bt = t0 + i * 0.085;
+        const f = i ? 1046 : 784;
+        const o1 = osc(actx, 'triangle', f);
+        const o2 = osc(actx, 'sine', f * 2);
+        const g = gain(actx, 0);
+        const lp = biquad(actx, 'lowpass', 6200, 0.7);
+        o1.connect(g); o2.connect(g); series(g, lp).connect(out);
+        ad(g.gain, bt, (i ? 0.3 : 0.22) * lvl, 0.005, 0.13);
+        o1.start(bt); o2.start(bt);
+        o1.stop(bt + 0.26); o2.stop(bt + 0.26);
+      }
+      break;
+    }
+    case 'leave': {
+      for (let i = 0; i < 2; i++) {
+        const bt = t0 + i * 0.085;
+        const f = i ? 588 : 784;
+        const o1 = osc(actx, 'triangle', f);
+        const g = gain(actx, 0);
+        const lp = biquad(actx, 'lowpass', 3800, 0.7);
+        o1.connect(g); series(g, lp).connect(out);
+        ad(g.gain, bt, 0.2 * lvl, 0.006, 0.12);
+        o1.start(bt); o1.stop(bt + 0.24);
+      }
+      break;
+    }
+    case 'ready': {
+      // Locked in: a hard mechanical click plus one bright confirm blip. The
+      // click is what makes it feel like a switch rather than a notification.
+      const clk = bank.source('white', rng, 1.6);
+      const cbp = biquad(actx, 'bandpass', 2600, 1.6);
+      const cg = gain(actx, 0);
+      series(clk, cbp, cg).connect(out);
+      hit(cg.gain, t0, 0.3 * lvl, 0.012);
+      clk.start(t0, clk._offset, 0.06);
+      const o1 = osc(actx, 'square', 1320);
+      const g = gain(actx, 0);
+      const lp = biquad(actx, 'lowpass', 5200, 0.8);
+      o1.connect(g); series(g, lp).connect(out);
+      ad(g.gain, t0 + 0.012, 0.2 * lvl, 0.004, 0.1);
+      o1.start(t0 + 0.012); o1.stop(t0 + 0.2);
+      break;
+    }
+    case 'unready': {
+      const o1 = osc(actx, 'square', 660);
+      const g = gain(actx, 0);
+      const lp = biquad(actx, 'lowpass', 2600, 0.8);
+      o1.connect(g); series(g, lp).connect(out);
+      sweep(o1.frequency, t0, 660, 470, 0.09);
+      ad(g.gain, t0, 0.18 * lvl, 0.004, 0.09);
+      o1.start(t0); o1.stop(t0 + 0.18);
+      break;
+    }
+    case 'countdown': {
+      // One tick of the pre-match countdown. Deliberately dry and narrow so
+      // three of them in a row read as a clock, not as a melody.
+      const o1 = osc(actx, 'square', 880);
+      const g = gain(actx, 0);
+      const bp = biquad(actx, 'bandpass', 900, 1.1);
+      o1.connect(g); series(g, bp).connect(out);
+      ad(g.gain, t0, 0.26 * lvl, 0.003, 0.075);
+      o1.start(t0); o1.stop(t0 + 0.16);
+      break;
+    }
+    case 'matchstart': {
+      // Deployment horn: a low fifth that swells under a filtered noise rush,
+      // then a short bright cap so the moment of control lands on a transient.
+      for (const [f, g0] of [[98, 0.3], [147, 0.22], [196, 0.14]]) {
+        const o1 = osc(actx, 'sawtooth', f);
+        const g = gain(actx, 0);
+        const lp = biquad(actx, 'lowpass', 1500, 0.9);
+        o1.connect(g); series(g, lp).connect(out);
+        ad(g.gain, t0, g0 * lvl, 0.045, 0.7);
+        o1.start(t0); o1.stop(t0 + 1.1);
+      }
+      const air = bank.source('pink', rng, 1);
+      const bp = biquad(actx, 'bandpass', 500, 0.9);
+      const ag = gain(actx, 0);
+      series(air, bp, ag).connect(out);
+      sweep(bp.frequency, t0, 380, 3200, 0.42);
+      ad(ag.gain, t0, 0.2 * lvl, 0.13, 0.4);
+      air.start(t0, air._offset, 0.9);
+      const cap = osc(actx, 'triangle', 1568);
+      const cg2 = gain(actx, 0);
+      cap.connect(cg2); cg2.connect(out);
+      ad(cg2.gain, t0 + 0.36, 0.16 * lvl, 0.004, 0.22);
+      cap.start(t0 + 0.36); cap.stop(t0 + 0.7);
+      break;
+    }
     default: {
       const o1 = osc(actx, 'sine', 1200);
       const g = gain(actx, 0);
@@ -765,6 +860,9 @@ export function uiSound(actx, bank, rng, kind, o = {}) {
       o1.start(t0); o1.stop(t0 + 0.08);
     }
   }
+  // The deployment horn is the one UI voice that rings past a second; its slot
+  // has to be held that long or the tail gets stolen mid-swell.
+  if (kind === 'matchstart') return { node: out, end: t0 + 1.4, send: 0 };
   return { node: out, end: t0 + 0.9, send: 0 };
 }
 

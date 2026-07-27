@@ -13,17 +13,40 @@ npm run dev:mp        # runs the client (:5173) + relay (:8787) together
 
 ## How to play together
 
-- Every load joins a room. If the URL has no `?room=`, one is generated and
-  written into the address bar, so **the current URL is always a valid invite
-  link**.
-- The **Copy invite link** button (top bar) copies that URL.
+- Every load joins a room and opens on the **Match Start** screen — the game no
+  longer drops you into a live firefight on the first frame. If the URL has no
+  `?room=`, one is generated and written into the address bar, so **the current
+  URL is always a valid invite link**.
+- The **Copy invite link** button copies that URL.
 - Anyone who opens the link joins the same room. Up to 12 players per room.
 - **Tab** shows the scoreboard (kills / deaths / K-D). Edit your callsign in the
   top-bar field; it's remembered per browser.
 
 Controls are the same as single-player (WASD, mouse, LMB fire, RMB ADS, R reload,
-Shift sprint, Ctrl crouch, Space jump). The garrison AI is still there, so it's
-players **and** bots.
+Shift sprint, Ctrl crouch, Space jump).
+
+### Starting a match
+
+Two ways in, side by side on the Match Start screen:
+
+| | what happens |
+|---|---|
+| **Bots** | Pick a garrison size — none / light (3) / standard (6) / heavy (12) — and press start. You deploy immediately; no waiting on anyone. |
+| **Multiplayer** | Share the room link. When a second player is in the room, both press **Ready**; the relay fires one start signal, both clients count 3–2–1, and the match begins for both at once. **This mode spawns no bots — it is players only.** |
+
+The garrison is per-client, spawned at the moment you deploy, so a players-only
+match really is empty of AI. A player who arrives after the match has started
+sees "match in progress" and a **Deploy now** button instead of the ready flow —
+nobody already shooting has to wait for them.
+
+Ready state, the "is this room live" flag and the start signal live on the relay
+(`maybeStart()` in `server/index.mjs`, mirrored in `worker/room.js`), because two
+clients cannot each decide on their own when "everyone is ready" became true.
+
+The lobby has its own synthesized cues, like everything else in the game: a
+rising two-note chirp when somebody joins, a mechanical click on ready, a tick
+per countdown second, and a low horn on deployment (`uiSound()` in
+`src/audio/foley.js`).
 
 ## Architecture
 
@@ -44,7 +67,8 @@ of every player out to the room as one snapshot per tick. That keeps it cheap
 transport is agnostic to how hits are decided, so a server-authoritative model
 could be dropped in later without touching the client protocol.
 
-Environment: `PORT` (default 8787), `TICK_HZ` (20), `MAX_ROOM` (12).
+Environment: `PORT` (default 8787), `TICK_HZ` (20), `MAX_ROOM` (12),
+`COUNTDOWN_MS` (3000, the pre-match countdown once everyone is ready).
 
 ### Client subsystem — `src/net/`
 
@@ -61,7 +85,11 @@ non-capture run (disable with `?mp=0`). It:
   with a **trust-the-shooter** model: the shooter ray-tests remote bodies locally
   and the victim applies the damage the shooter claims (headshots included);
 - drives the overlay (`src/net/ui.js`): invite bar, live scoreboard, kill / join
-  toasts, connection status.
+  toasts, connection status; and
+- carries the match-start lobby, reporting it as `net:lobby` / `net:countdown` /
+  `net:join` / `net:leave` events. The screen that renders it, the bot choice and
+  the countdown belong to the separate `match` subsystem (`src/match/`), which
+  also decides when `ai.populate()` runs.
 
 `net` reads `player`/`weapons` state and feeds `ai`/`fx`/`ui` entirely through
 `ctx`, so nothing else in the engine needs to know multiplayer exists.
@@ -71,13 +99,17 @@ non-capture run (disable with `?mp=0`). It:
 | dir | message | meaning |
 |---|---|---|
 | C→S | `join {room, name}` | enter a room |
+| C→S | `ready {ready}` | toggle my match-start ready flag |
+| C→S | `deploy` | I am in the match now (bots start, or countdown finished) |
 | C→S | `state {s:{p,y,pt,sp,cr,ad,hp,dead,v}}` | transform snapshot (20 Hz) |
 | C→S | `fire {o,d,w,seed}` | a shot (origin, dir) |
 | C→S | `hit {target,dmg,part,o,w}` | shooter's damage claim |
 | C→S | `kill {by,headshot}` | victim confirms its own death |
 | C→S | `name` / `chat` / `respawn` / `ping` | misc |
-| S→C | `welcome {id,room,peers}` | you joined; who's here |
+| S→C | `welcome {id,room,live,peers}` | you joined; who's here; is the match already live |
 | S→C | `peer_join` / `peer_leave` | roster changes |
+| S→C | `lobby {live,players}` | match-start lobby: `[{id,name,ready,deployed}]` |
+| S→C | `match_start {in}` | everyone readied up — count down `in` ms and deploy |
 | S→C | `snapshot {states:[…]}` | everyone's latest transform |
 | S→C | `fire` / `hit` / `kill` / `score` / `chat` | relayed events + scoreboard |
 
@@ -132,5 +164,6 @@ Cloudflare can route to the right Durable Object before the first message.
 | `?room=CODE` | join a specific room (auto-generated if absent) |
 | `?name=NAME` | set your callsign |
 | `?server=wss://…` | point at a specific relay |
-| `?mp=0` | disable multiplayer (pure single-player) |
+| `?mp=0` | disable multiplayer (pure single-player; the Match Start screen keeps the bots panel only) |
+| `?match=0` | skip the Match Start screen — boot straight into a live match with the default garrison, as the game used to. Used by `tools/playtest.mjs` and the benchmark harnesses |
 | `?q=low\|medium\|high\|ultra` | graphics preset |

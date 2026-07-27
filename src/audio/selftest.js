@@ -184,11 +184,19 @@ export async function runAudioSelfTest(opts = {}) {
   await push('heartbeat', 1.5, ({ bank, rng, mixer, t }) => {
     route(mixer, heartbeat(mixer.actx, bank, rng, { when: t }), 'foley');
   });
-  for (const k of ['hitmarker', 'headshot', 'kill', 'damage', 'lowhealth']) {
+  for (const k of [
+    'hitmarker', 'headshot', 'kill', 'damage', 'lowhealth',
+    'join', 'leave', 'ready', 'unready', 'countdown',
+  ]) {
     await push(`ui:${k}`, 1.5, ({ bank, rng, mixer, t }) => {
       route(mixer, uiSound(mixer.actx, bank, rng, k, { when: t }), 'ui');
     }, { reverb: false });
   }
+  // The deployment horn swells for ~1.1 s — rendered long enough that its tail
+  // lands inside the window being measured.
+  await push('ui:matchstart', 2.5, ({ bank, rng, mixer, t }) => {
+    route(mixer, uiSound(mixer.actx, bank, rng, 'matchstart', { when: t }), 'ui');
+  }, { reverb: false });
 
   /* ---- voice ----------------------------------------------------- */
   for (const key of Object.keys(BARKS)) {

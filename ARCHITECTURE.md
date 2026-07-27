@@ -67,6 +67,8 @@ export class MySystem {
 | `ui` | `src/ui/` | HUD, crosshair, hitmarkers, damage indicators, ammo, killfeed, menus |
 | `audio` | `src/audio/` | synthesized weapon/foley audio, spatialisation, reverb, occlusion, mix |
 | `quality` | `src/core/quality.js` | per-browser graphics calibration, FPS targeting, dynamic render scale, persisted graphics mode |
+| `net` | `src/net/` | web multiplayer: room transport, remote player puppets, PvP hit settlement, invite bar / scoreboard, the match-start lobby on the wire |
+| `match` | `src/match/` | the Match Start view: bot-garrison choice, ready-up, countdown, and when the match goes live |
 
 Shared, owned by the lead (do not edit): `src/core/`, `src/main.js`,
 `src/dev/`, `tools/`, `vite.config.js`.
@@ -91,6 +93,11 @@ Emit and listen via `ctx.events`. Payloads are plain objects. The canonical set:
 | `player:state` | `{ stance, sprinting, sliding, ads }` | player |
 | `explosion` | `{ position, radius, damage }` | any |
 | `resize` | `{ width, height }` | engine |
+| `net:lobby` | `{ connected, everConnected, live, players, myId, ready }` | net |
+| `net:join` / `net:leave` | `{ id, name }` | net |
+| `net:countdown` | `{ ms }` — the relay fired the pre-match start signal | net |
+| `match:start` | `{ bots, squads, perSquad, mode }` — the match is live | match |
+| `match:countdown` | `{ seconds }` | match |
 
 If you need an event that is not listed, add a row here in the same commit.
 

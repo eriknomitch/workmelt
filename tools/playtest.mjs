@@ -2,7 +2,9 @@ import { chromium } from 'playwright';
 const b = await chromium.launch({ headless: true, args:['--use-angle=metal','--ignore-gpu-blocklist','--mute-audio','--disable-frame-rate-limit'] });
 const p = await b.newPage({ viewport:{width:1280,height:720} });
 const errs=[]; p.on('pageerror',e=>errs.push(e.message)); p.on('console',m=>m.type()==='error'&&errs.push(m.text()));
-await p.goto('http://127.0.0.1:8080/', {waitUntil:'domcontentloaded'});
+// ?match=0 skips the Match Start view: this harness wants the old "live on the
+// first frame" boot, garrison included, not a menu waiting on a click.
+await p.goto('http://127.0.0.1:8080/?match=0', {waitUntil:'domcontentloaded'});
 await p.waitForFunction('window.__READY__===true',null,{timeout:60000});
 const snap = () => p.evaluate(()=>{const e=window.__ENGINE__,c=e.camera.position;return{
   pos:[+c.x.toFixed(2),+c.y.toFixed(2),+c.z.toFixed(2)],

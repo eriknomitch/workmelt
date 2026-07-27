@@ -4,9 +4,10 @@
  * This is the Cloudflare-native port of the relay in `server/index.mjs`: the
  * Worker (worker/index.js) routes every `/ws?room=CODE` connection to the DO
  * whose name is CODE, so all players in a room share one instance and one bit of
- * state. The logic is identical — join / state / fire / hit / kill / chat and a
- * ~20 Hz snapshot broadcast — it just lives at the edge instead of on a Node
- * box, and it holds no persistent storage (a room is ephemeral by design).
+ * state. The logic is identical — join / ready / deploy / state / fire / hit /
+ * kill / chat, the match-start signal, and a ~20 Hz snapshot broadcast — it just
+ * lives at the edge instead of on a Node box, and it holds no persistent storage
+ * (a room is ephemeral by design).
  */
 
 export class Room {
@@ -15,6 +16,7 @@ export class Room {
     this.env = env;
     this.tickHz = Number(env.TICK_HZ ?? 20);
     this.maxRoom = Number(env.MAX_ROOM ?? 12);
+    this.countdownMs = Number(env.COUNTDOWN_MS ?? 3000);
 
     /** ws -> peer */
     this.sessions = new Map();
@@ -39,6 +41,8 @@ export class Room {
       deaths: 0,
       pstate: null,
       alive: true,
+      ready: false,
+      deployed: false,
       lastSeen: Date.now(),
     };
     this.sessions.set(server, peer);
@@ -83,9 +87,23 @@ export class Room {
           id: peer.id,
           room: msg.room ?? '',
           tickHz: this.tickHz,
+          live: this._isLive(),
           peers: this._roster().filter((p) => p.id !== peer.id),
         });
         this._broadcast({ t: 'peer_join', id: peer.id, name: peer.name }, peer.id);
+        this._sendLobby();
+        break;
+      }
+      case 'ready': {
+        peer.ready = !!msg.ready;
+        this._sendLobby();
+        this._maybeStart();
+        break;
+      }
+      case 'deploy': {
+        peer.deployed = true;
+        peer.ready = false;
+        this._sendLobby();
         break;
       }
       case 'state': {
@@ -153,10 +171,53 @@ export class Room {
     } catch {}
     this._broadcast({ t: 'peer_leave', id: peer.id });
     this._broadcast({ t: 'score', roster: this._roster() });
-    if (this.sessions.size === 0 && this.tickHandle) {
-      clearInterval(this.tickHandle);
-      this.tickHandle = null;
+    if (this.sessions.size === 0) {
+      if (this.tickHandle) {
+        clearInterval(this.tickHandle);
+        this.tickHandle = null;
+      }
+      return;
     }
+    // A departure can complete the ready set, or take the last deployed player
+    // with it and drop the room back to a lobby.
+    this._sendLobby();
+    this._maybeStart();
+  }
+
+  /* ---- match-start lobby ----
+   * Ready flags and the start signal are the only match state the room owns:
+   * two clients cannot each decide when "everyone is ready" became true. A room
+   * is live while any player is deployed, and a live room skips the ready flow
+   * so a late joiner drops straight into the match. Mirrors server/index.mjs.
+   */
+
+  _isLive() {
+    for (const p of this.sessions.values()) if (p.deployed) return true;
+    return false;
+  }
+
+  _lobby() {
+    const players = [];
+    for (const p of this.sessions.values()) {
+      players.push({ id: p.id, name: p.name, ready: !!p.ready, deployed: !!p.deployed });
+    }
+    return players;
+  }
+
+  _sendLobby() {
+    this._broadcast({ t: 'lobby', live: this._isLive(), players: this._lobby() });
+  }
+
+  _maybeStart() {
+    if (this._isLive()) return;
+    const peers = [...this.sessions.values()];
+    if (peers.length < 2 || !peers.every((p) => p.ready)) return;
+    for (const p of peers) {
+      p.deployed = true;
+      p.ready = false;
+    }
+    this._broadcast({ t: 'match_start', in: this.countdownMs });
+    this._sendLobby();
   }
 
   /* ---- snapshot tick ---- */
