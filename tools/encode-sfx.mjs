@@ -7,7 +7,10 @@
  *   node tools/encode-sfx.mjs --force    ignore the up-to-date check
  *
  * Sources come from tools/sfx-sources.mjs. Get the masters with
- * tools/fetch-sfx.sh; they are gitignored, the output here is committed.
+ * tools/fetch-sfx.sh; they are gitignored, the output here is committed. The
+ * one exception is assets-src/vox/ — the announcer lines are ours and are
+ * committed alongside the encodes, so `node tools/encode-sfx.mjs vox` works on
+ * a fresh clone.
  *
  * Three things happen per file, and each is load-bearing:
  *
@@ -75,19 +78,30 @@ async function findPeak(file) {
   return at / 8000;
 }
 
-/** Trim around the transient, normalize, mono 48 k, encode Opus. */
-async function encodeOne(file, dest, { lead, dur, bitrate }) {
-  const peak = await findPeak(file);
-  if (peak === null) return null;
-  const start = Math.max(0, peak - lead);
+/**
+ * Trim around the transient, normalize, mono 48 k, encode Opus.
+ *
+ * `whole: true` skips the transient window and keeps the file end to end. That
+ * is what spoken lines need: their loudest sample is a stressed syllable in the
+ * middle, so a peak window would cut the first word off.
+ */
+async function encodeOne(file, dest, { lead, dur, bitrate, whole = false }) {
+  let start = 0;
+  if (!whole) {
+    const peak = await findPeak(file);
+    if (peak === null) return null;
+    start = Math.max(0, peak - lead);
+  }
 
   // `-ss` before `-i` seeks fast; `atrim` after guarantees an exact length.
   // loudnorm would flatten the dynamics that make a gunshot read as one, so
   // this is peak normalization only.
   const filters = [
-    `atrim=0:${dur.toFixed(4)}`,
-    'asetpts=PTS-STARTPTS',
-    `afade=t=out:st=${Math.max(0, dur - FADE).toFixed(4)}:d=${FADE}`,
+    ...(whole ? [] : [
+      `atrim=0:${dur.toFixed(4)}`,
+      'asetpts=PTS-STARTPTS',
+      `afade=t=out:st=${Math.max(0, dur - FADE).toFixed(4)}:d=${FADE}`,
+    ]),
     // Plain swr: soxr is absent from most Homebrew ffmpeg builds, and the
     // difference is inaudible once libopus has re-encoded at 48 k anyway.
     `aresample=${RATE}`,
@@ -100,7 +114,7 @@ async function encodeOne(file, dest, { lead, dur, bitrate }) {
     '-ac', '1',
     '-af', filters,
     '-c:a', 'libopus', '-b:a', bitrate, '-vbr', 'on',
-    '-application', 'audio',
+    '-application', whole ? 'voip' : 'audio',
     dest,
   ]);
 

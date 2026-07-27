@@ -21,6 +21,8 @@
  *                                      'grenade' | 'flank' | 'suppress' |
  *                                      'advance' | 'hurt' | 'death' | 'copy'
  *   audio.ui(kind)                     'hitmarker'|'headshot'|'kill'|'damage'
+ *   audio.announce(line)               announcer: 'match_begin' | 'start' |
+ *                                      'headshot' | 'killstreak' | 'game_over'
  *   audio.setMasterVolume(v)  audio.setBusVolume(bus, v)
  *   audio.setAmbienceIntensity(v)      scales the distant-battle scheduler
  *   audio.setAmbienceWind(v)           wind bed level 0..1 (ships at 0)
@@ -48,6 +50,20 @@ import {
 import { bark as voxBark, barkFor } from './vox.js';
 import { classifySpace } from './ir.js';
 import { SampleBank } from './samples.js';
+
+/**
+ * ANNOUNCER — spoken match callouts (public/sfx/vox/, recorded not synthesized).
+ *
+ * Lines queue instead of overlapping: two voices on top of each other is mush,
+ * and a headshot that also completes a streak fires both in the same frame.
+ * A line that would have to wait longer than QUEUE_MAX is dropped instead —
+ * by the time it played, it would be describing something that already scrolled
+ * off the killfeed.
+ */
+const ANNOUNCE_GAP = 0.12;      // seconds of air between queued lines
+const ANNOUNCE_QUEUE_MAX = 1.2; // drop a line rather than say it this late
+/** Kills without dying that earn a "killstreak" callout, and every N after. */
+const KILLSTREAK_EVERY = 3;
 
 const PROBE_RAYS = 9;
 const PROBE_DIST = 40;
@@ -121,6 +137,9 @@ export class AudioSystem {
 
     this._health = 100;
     this._heartTimer = 0;
+    /** Announcer: kills since the last death, and when the queue frees up. */
+    this._streak = 0;
+    this._announceFreeAt = 0;
     this._stance = null;
     this._ads = false;
 
@@ -497,6 +516,26 @@ export class AudioSystem {
     return this._playDry(k, { level }, BUS_FOR[k] ?? 'ui', k === 'heartbeat' ? 0.1 : 0);
   }
 
+  /**
+   * Speak an announcer line. Recorded only — there is no synthesized fallback,
+   * so a build without `public/sfx/vox/` simply says nothing.
+   *
+   * @param {string} line   key in the manifest's `vox` group
+   * @param {object} [opts] { level, delay } — `delay` seconds before it starts,
+   *                        used to let a stinger land before the voice does.
+   * @returns {boolean} whether a line was scheduled
+   */
+  announce(line, opts = {}) {
+    if (!this.running || !this.samples?.has('vox', line)) return false;
+    const now = this.actx.currentTime;
+    const at = Math.max(now + (opts.delay ?? 0), this._announceFreeAt);
+    if (at - now > ANNOUNCE_QUEUE_MAX) return false;
+    this._announceFreeAt = at + this.samples.duration('vox', line) + ANNOUNCE_GAP;
+    // `send: 1` hands the reverb decision to the voice itself (GROUP.vox), the
+    // same convention every sampled voice uses.
+    return this._playDry('announce', { line, level: opts.level ?? 0.85, extraDelay: at - now }, 'ui', 1);
+  }
+
   /** Adapter the `ui` subsystem probes for: playUi(id, gain). */
   playUi(id, gain = 1) {
     return this.ui(id, gain);
@@ -563,6 +602,33 @@ export class AudioSystem {
     on('actor:death', (p) => this._onDeath(p));
     // Optional: emitted by `ai` if it wants scripted chatter.
     on('ai:bark', (p) => this.bark(p?.kind ?? 'spot', p?.position, { voice: p?.voice ?? 0 }));
+
+    /* ---- announcer ------------------------------------------------ */
+    // The relay's pre-match signal, so the line runs under the countdown.
+    on('net:countdown', () => this.announce('match_begin'));
+    // Deployment: let the horn land first, then the voice.
+    on('match:start', () => {
+      this._streak = 0;
+      this.announce('start', { delay: 0.28 });
+    });
+    // PvP kills the relay confirmed. Local deaths are NOT read from here: the
+    // player system emits player:death for every death, PvP or bot.
+    on('net:kill', (p) => { if (p?.mine) this._onScored(!!p.headshot); });
+    on('player:death', () => this._onEliminated());
+  }
+
+  /** A kill the local player earned: headshot callout, then streak milestones. */
+  _onScored(headshot) {
+    this._streak++;
+    if (headshot) this.announce('headshot');
+    if (this._streak >= KILLSTREAK_EVERY && this._streak % KILLSTREAK_EVERY === 0) {
+      this.announce('killstreak');
+    }
+  }
+
+  _onEliminated() {
+    this._streak = 0;
+    this.announce('game_over');
   }
 
   _onFire(p) {
@@ -734,7 +800,12 @@ export class AudioSystem {
     const t = p.target;
     if (t === 'player' || t?.isPlayer === true || t === this.ctx.peek('player')) return;
     this.ui(p.headshot ? 'headshot' : 'hitmarker', 1);
-    if (p.killed) this.ui('kill', 1);
+    if (p.killed) {
+      this.ui('kill', 1);
+      // Bots count toward the streak exactly as players do; PvP kills arrive
+      // separately as `net:kill`, since the relay is what confirms them.
+      this._onScored(!!p.headshot);
+    }
     else if (p.point && p.target && this.rng.float() < 0.3) {
       this.bark('hurt', p.point, { level: 0.85 });
     }

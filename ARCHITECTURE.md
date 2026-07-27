@@ -96,6 +96,7 @@ Emit and listen via `ctx.events`. Payloads are plain objects. The canonical set:
 | `net:lobby` | `{ connected, everConnected, live, players, myId, ready }` | net |
 | `net:join` / `net:leave` | `{ id, name }` | net |
 | `net:countdown` | `{ ms }` — the relay fired the pre-match start signal | net |
+| `net:kill` | `{ by, victim, headshot, mine }` — a relay-confirmed PvP kill | net |
 | `match:start` | `{ bots, squads, perSquad, mode }` — the match is live | match |
 | `match:countdown` | `{ seconds }` | match |
 

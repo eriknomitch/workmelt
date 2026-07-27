@@ -443,6 +443,11 @@ export class NetSystem {
   _onKill(msg) {
     if (msg.victim === this.myId) return; // handled locally
     const mine = msg.by === this.myId;
+    // Relay-confirmed PvP kill. `audio` scores the announcer off this; a bot
+    // kill reaches it as `damage:dealt` instead.
+    this.ctx.events.emit('net:kill', {
+      by: msg.by, victim: msg.victim, headshot: !!msg.headshot, mine,
+    });
     const hs = msg.headshot ? ' ⌖' : '';
     if (mine) {
       this.ui.toast(`You eliminated <b>${esc(msg.victimName)}</b>${hs}`);

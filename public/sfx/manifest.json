@@ -224,5 +224,22 @@
     "matchstart": [
       "ui/matchstart_0.opus"
     ]
+  },
+  "vox": {
+    "match_begin": [
+      "vox/match_begin_0.opus"
+    ],
+    "start": [
+      "vox/start_0.opus"
+    ],
+    "headshot": [
+      "vox/headshot_0.opus"
+    ],
+    "killstreak": [
+      "vox/killstreak_0.opus"
+    ],
+    "game_over": [
+      "vox/game_over_0.opus"
+    ]
   }
 }
