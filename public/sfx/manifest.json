@@ -1,0 +1,228 @@
+{
+  "shot": {
+    "ak": [
+      "shot/ak_0.opus",
+      "shot/ak_1.opus",
+      "shot/ak_2.opus",
+      "shot/ak_3.opus",
+      "shot/ak_4.opus",
+      "shot/ak_5.opus"
+    ],
+    "rifle": [
+      "shot/rifle_0.opus",
+      "shot/rifle_1.opus"
+    ],
+    "smg": [
+      "shot/smg_0.opus",
+      "shot/smg_1.opus",
+      "shot/smg_2.opus",
+      "shot/smg_3.opus",
+      "shot/smg_4.opus",
+      "shot/smg_5.opus"
+    ],
+    "pistol": [
+      "shot/pistol_0.opus",
+      "shot/pistol_1.opus"
+    ],
+    "shotgun": [
+      "shot/shotgun_0.opus",
+      "shot/shotgun_1.opus"
+    ],
+    "sniper": [
+      "shot/sniper_0.opus",
+      "shot/sniper_1.opus"
+    ],
+    "lmg": [
+      "shot/lmg_0.opus",
+      "shot/lmg_1.opus"
+    ]
+  },
+  "step": {
+    "concrete": [
+      "step/concrete_0.opus",
+      "step/concrete_1.opus",
+      "step/concrete_2.opus",
+      "step/concrete_3.opus",
+      "step/concrete_4.opus",
+      "step/concrete_5.opus",
+      "step/concrete_6.opus",
+      "step/concrete_7.opus",
+      "step/concrete_8.opus"
+    ],
+    "plaster": [
+      "step/plaster_0.opus",
+      "step/plaster_1.opus",
+      "step/plaster_2.opus",
+      "step/plaster_3.opus",
+      "step/plaster_4.opus",
+      "step/plaster_5.opus",
+      "step/plaster_6.opus",
+      "step/plaster_7.opus",
+      "step/plaster_8.opus"
+    ],
+    "metal": [
+      "step/metal_0.opus",
+      "step/metal_1.opus",
+      "step/metal_2.opus",
+      "step/metal_3.opus",
+      "step/metal_4.opus",
+      "step/metal_5.opus",
+      "step/metal_6.opus",
+      "step/metal_7.opus"
+    ],
+    "wood": [
+      "step/wood_0.opus",
+      "step/wood_1.opus",
+      "step/wood_2.opus",
+      "step/wood_3.opus",
+      "step/wood_4.opus",
+      "step/wood_5.opus",
+      "step/wood_6.opus",
+      "step/wood_7.opus",
+      "step/wood_8.opus"
+    ],
+    "dirt": [
+      "step/dirt_0.opus",
+      "step/dirt_1.opus",
+      "step/dirt_2.opus",
+      "step/dirt_3.opus",
+      "step/dirt_4.opus",
+      "step/dirt_5.opus",
+      "step/dirt_6.opus",
+      "step/dirt_7.opus",
+      "step/dirt_8.opus",
+      "step/dirt_9.opus"
+    ],
+    "foliage": [
+      "step/foliage_0.opus",
+      "step/foliage_1.opus",
+      "step/foliage_2.opus",
+      "step/foliage_3.opus",
+      "step/foliage_4.opus",
+      "step/foliage_5.opus",
+      "step/foliage_6.opus",
+      "step/foliage_7.opus",
+      "step/foliage_8.opus"
+    ],
+    "water": [
+      "step/water_0.opus",
+      "step/water_1.opus",
+      "step/water_2.opus",
+      "step/water_3.opus",
+      "step/water_4.opus"
+    ],
+    "sand": [
+      "step/sand_0.opus",
+      "step/sand_1.opus",
+      "step/sand_2.opus",
+      "step/sand_3.opus",
+      "step/sand_4.opus"
+    ],
+    "fabric": [
+      "step/fabric_0.opus",
+      "step/fabric_1.opus",
+      "step/fabric_2.opus",
+      "step/fabric_3.opus",
+      "step/fabric_4.opus"
+    ]
+  },
+  "impact": {
+    "concrete": [
+      "impact/concrete_0.opus",
+      "impact/concrete_1.opus",
+      "impact/concrete_2.opus",
+      "impact/concrete_3.opus",
+      "impact/concrete_4.opus"
+    ],
+    "plaster": [
+      "impact/plaster_0.opus",
+      "impact/plaster_1.opus",
+      "impact/plaster_2.opus",
+      "impact/plaster_3.opus",
+      "impact/plaster_4.opus"
+    ],
+    "metal": [
+      "impact/metal_0.opus",
+      "impact/metal_1.opus",
+      "impact/metal_2.opus",
+      "impact/metal_3.opus",
+      "impact/metal_4.opus"
+    ],
+    "wood": [
+      "impact/wood_0.opus",
+      "impact/wood_1.opus",
+      "impact/wood_2.opus",
+      "impact/wood_3.opus",
+      "impact/wood_4.opus"
+    ],
+    "glass": [
+      "impact/glass_0.opus",
+      "impact/glass_1.opus",
+      "impact/glass_2.opus",
+      "impact/glass_3.opus",
+      "impact/glass_4.opus"
+    ],
+    "flesh": [
+      "impact/flesh_0.opus",
+      "impact/flesh_1.opus",
+      "impact/flesh_2.opus",
+      "impact/flesh_3.opus",
+      "impact/flesh_4.opus"
+    ],
+    "fabric": [
+      "impact/fabric_0.opus",
+      "impact/fabric_1.opus",
+      "impact/fabric_2.opus",
+      "impact/fabric_3.opus",
+      "impact/fabric_4.opus"
+    ],
+    "dirt": [
+      "impact/dirt_0.opus",
+      "impact/dirt_1.opus",
+      "impact/dirt_2.opus",
+      "impact/dirt_3.opus",
+      "impact/dirt_4.opus"
+    ]
+  },
+  "ui": {
+    "hitmarker": [
+      "ui/hitmarker_0.opus"
+    ],
+    "headshot": [
+      "ui/headshot_0.opus"
+    ],
+    "kill": [
+      "ui/kill_0.opus"
+    ],
+    "armour": [
+      "ui/armour_0.opus"
+    ],
+    "damage": [
+      "ui/damage_0.opus"
+    ],
+    "grenade_warn": [
+      "ui/grenade_warn_0.opus"
+    ],
+    "regen": [
+      "ui/regen_0.opus"
+    ],
+    "join": [
+      "ui/join_0.opus"
+    ],
+    "leave": [
+      "ui/leave_0.opus"
+    ],
+    "ready": [
+      "ui/ready_0.opus"
+    ],
+    "unready": [
+      "ui/unready_0.opus"
+    ],
+    "countdown": [
+      "ui/countdown_0.opus"
+    ],
+    "matchstart": [
+      "ui/matchstart_0.opus"
+    ]
+  }
+}

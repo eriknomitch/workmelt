@@ -65,7 +65,7 @@ export class MySystem {
 | `fx` | `src/fx/` | GPU particles, muzzle flash, tracers, impacts, decals, smoke, blood, shells |
 | `ai` | `src/ai/` | enemy characters, navigation, perception, cover selection, combat behaviour |
 | `ui` | `src/ui/` | HUD, crosshair, hitmarkers, damage indicators, ammo, killfeed, menus |
-| `audio` | `src/audio/` | synthesized weapon/foley audio, spatialisation, reverb, occlusion, mix |
+| `audio` | `src/audio/` | sampled + synthesized weapon/foley audio, spatialisation, reverb, occlusion, mix |
 | `quality` | `src/core/quality.js` | per-browser graphics calibration, FPS targeting, dynamic render scale, persisted graphics mode |
 | `net` | `src/net/` | web multiplayer: room transport, remote player puppets, PvP hit settlement, invite bar / scoreboard, the match-start lobby on the wire |
 | `match` | `src/match/` | the Match Start view: bot-garrison choice, ready-up, countdown, and when the match goes live |

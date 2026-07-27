@@ -35,50 +35,50 @@ import {
  */
 export const WEAPON_PROFILES = {
   rifle: {
-    level: 1.0, bodyF: 148, bodyF2: 56, bodyDecay: 0.085, subF: 62, subDecay: 0.12,
+    name: 'rifle', level: 1.0, bodyF: 148, bodyF2: 56, bodyDecay: 0.085, subF: 62, subDecay: 0.12,
     crackF: 2450, crackQ: 0.95, crackDecay: 0.055, drive: 6, asym: 0.35,
     midF: 780, midDecay: 0.05, tailDecay: 0.3, tailF: 5200, tailEndF: 700,
     mechDelay: 0.028, mechLevel: 0.42, mechPartials: [1880, 3260, 5400], send: 0.5,
   },
   ak: {
-    level: 1.1, bodyF: 124, bodyF2: 46, bodyDecay: 0.105, subF: 52, subDecay: 0.15,
+    name: 'ak', level: 1.1, bodyF: 124, bodyF2: 46, bodyDecay: 0.105, subF: 52, subDecay: 0.15,
     crackF: 1780, crackQ: 0.9, crackDecay: 0.07, drive: 7.5, asym: 0.5,
     midF: 640, midDecay: 0.06, tailDecay: 0.42, tailF: 4200, tailEndF: 560,
     mechDelay: 0.034, mechLevel: 0.55, mechPartials: [1420, 2650, 4300], send: 0.55,
   },
   smg: {
-    level: 0.84, bodyF: 172, bodyF2: 72, bodyDecay: 0.06, subF: 78, subDecay: 0.08,
+    name: 'smg', level: 0.84, bodyF: 172, bodyF2: 72, bodyDecay: 0.06, subF: 78, subDecay: 0.08,
     crackF: 3050, crackQ: 1.05, crackDecay: 0.04, drive: 5, asym: 0.3,
     midF: 900, midDecay: 0.035, tailDecay: 0.19, tailF: 6200, tailEndF: 900,
     mechDelay: 0.021, mechLevel: 0.5, mechPartials: [2200, 3900, 6300], send: 0.44,
   },
   pistol: {
-    level: 0.74, bodyF: 186, bodyF2: 84, bodyDecay: 0.05, subF: 92, subDecay: 0.07,
+    name: 'pistol', level: 0.74, bodyF: 186, bodyF2: 84, bodyDecay: 0.05, subF: 92, subDecay: 0.07,
     crackF: 2750, crackQ: 1.15, crackDecay: 0.035, drive: 4.5, asym: 0.28,
     midF: 950, midDecay: 0.03, tailDecay: 0.16, tailF: 6800, tailEndF: 1000,
     mechDelay: 0.038, mechLevel: 0.46, mechPartials: [2450, 4200, 6900], send: 0.4,
   },
   shotgun: {
-    level: 1.18, bodyF: 108, bodyF2: 40, bodyDecay: 0.13, subF: 44, subDecay: 0.19,
+    name: 'shotgun', level: 1.18, bodyF: 108, bodyF2: 40, bodyDecay: 0.13, subF: 44, subDecay: 0.19,
     crackF: 1450, crackQ: 0.7, crackDecay: 0.09, drive: 9, asym: 0.6,
     midF: 520, midDecay: 0.08, tailDecay: 0.5, tailF: 3600, tailEndF: 460,
     mechDelay: 0.16, mechLevel: 0.7, mechPartials: [980, 1760, 3050], send: 0.6,
     pellets: 6,
   },
   sniper: {
-    level: 1.3, bodyF: 96, bodyF2: 34, bodyDecay: 0.16, subF: 38, subDecay: 0.24,
+    name: 'sniper', level: 1.3, bodyF: 96, bodyF2: 34, bodyDecay: 0.16, subF: 38, subDecay: 0.24,
     crackF: 1320, crackQ: 0.8, crackDecay: 0.11, drive: 10, asym: 0.55,
     midF: 470, midDecay: 0.1, tailDecay: 0.95, tailF: 3300, tailEndF: 380,
     mechDelay: 0.19, mechLevel: 0.65, mechPartials: [1150, 2050, 3400], send: 0.72,
   },
   lmg: {
-    level: 1.14, bodyF: 118, bodyF2: 44, bodyDecay: 0.11, subF: 50, subDecay: 0.16,
+    name: 'lmg', level: 1.14, bodyF: 118, bodyF2: 44, bodyDecay: 0.11, subF: 50, subDecay: 0.16,
     crackF: 1920, crackQ: 0.85, crackDecay: 0.075, drive: 8, asym: 0.45,
     midF: 610, midDecay: 0.065, tailDecay: 0.5, tailF: 4000, tailEndF: 520,
     mechDelay: 0.03, mechLevel: 0.6, mechPartials: [1330, 2480, 4100], send: 0.58,
   },
   suppressed: {
-    level: 0.5, bodyF: 132, bodyF2: 64, bodyDecay: 0.055, subF: 70, subDecay: 0.07,
+    name: 'suppressed', level: 0.5, bodyF: 132, bodyF2: 64, bodyDecay: 0.055, subF: 70, subDecay: 0.07,
     crackF: 900, crackQ: 0.6, crackDecay: 0.03, drive: 2.5, asym: 0.2,
     midF: 430, midDecay: 0.05, tailDecay: 0.1, tailF: 1800, tailEndF: 400,
     mechDelay: 0.019, mechLevel: 0.85, mechPartials: [2100, 3700, 5900], send: 0.18,

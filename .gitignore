@@ -9,6 +9,10 @@ perf-cand2/
 # Capture output — 780 MB of PNGs. Regenerate with tools/baseline.mjs.
 shots/
 
+# Raw SFX source packs — 338 MB of 96 kHz masters. Not needed to build or run;
+# `public/sfx/` is the committed output. Re-fetch with tools/fetch-sfx.sh.
+assets-src/
+
 # Agent scratch
 demo/
 .tmp-demo/

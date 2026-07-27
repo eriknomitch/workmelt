@@ -69,12 +69,36 @@ included Render / Fly / Docker configs. Full details in
 | `fx` | GPU particles, decals, tracers, muzzle flash, explosions |
 | `ai` | Skinned soldiers, navmesh pathing, perception, cover behaviour, ragdoll death |
 | `ui` | DOM/CSS HUD: crosshair, hitmarkers, minimap, compass, killfeed |
-| `audio` | Web Audio synthesis — no sound files. Layered weapon fire, convolution reverb, HRTF spatialisation, occlusion |
+| `audio` | CC0/CC-BY samples for shots, footsteps, impacts and UI, layered over Web Audio synthesis for everything else. Convolution reverb, HRTF spatialisation, occlusion |
 | `net` | Room-based multiplayer: WebSocket relay transport, interpolated remote players, trust-the-shooter PvP hits, invite bar and scoreboard |
 | `match` | The Match Start view: bot garrison size, ready-up, countdown, and the moment the match goes live |
 
 `ARCHITECTURE.md` is the contract the agents worked against: subsystem interface,
 directory ownership, the cross-subsystem event vocabulary, and shared surface types.
+
+## Sound
+
+Weapon fire, footsteps, bullet impacts and the UI indicators play from sampled
+audio; everything else — enemy barks, suppressed weapons, shell casings,
+reloads, explosions, glass/flesh/rubber footsteps — is still synthesized at
+runtime. Both go through the same `{ node, end, send }` voice contract, so a
+build with no encoded assets is a supported configuration and simply sounds
+fully procedural.
+
+The 144 shipped clips total **0.7 MB** (mono 48 kHz Opus, in `public/sfx/`) and
+are committed. To re-encode them from the original masters:
+
+```bash
+npm run sfx:fetch    # ~338 MB of source packs into assets-src/ (gitignored)
+npm run sfx          # trim, normalize, downmix, encode -> public/sfx/
+npm run test:audio   # headless verification of the whole graph
+```
+
+Curation lives in `tools/sfx-sources.mjs` — which recording becomes which
+in-game voice. Sources and licenses are listed in
+[public/sfx/CREDITS.md](public/sfx/CREDITS.md); the firearm and Kenney packs are
+CC0, and the footstep pack is **CC BY 3.0, so that credit has to stay with any
+build you ship**.
 
 ## Performance readout
 

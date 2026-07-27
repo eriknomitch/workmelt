@@ -4,6 +4,12 @@
  * Voices are either synthesized with the Web Audio API or played back from
  * sampled sources, behind one API — callers never know which.
  *
+ * samples.js loads public/sfx/ (built by tools/encode-sfx.mjs) in the
+ * background and _build() prefers it per kind; anything it has no sample for —
+ * suppressed weapons, enemy barks, glass/flesh/rubber footsteps, dry-fire —
+ * synthesizes exactly as before. A build with no encoded assets is a supported
+ * configuration and sounds fully procedural.
+ *
  * ───────────────────────────────────────────────────────────────────────────
  * PUBLIC API   const audio = ctx.get('audio')
  * ───────────────────────────────────────────────────────────────────────────
@@ -40,11 +46,15 @@ import {
 } from './foley.js';
 import { bark as voxBark, barkFor } from './vox.js';
 import { classifySpace } from './ir.js';
+import { SampleBank } from './samples.js';
 
 const PROBE_RAYS = 9;
 const PROBE_DIST = 40;
 const DRY_SLOTS = 48;
 const GESTURES = ['pointerdown', 'mousedown', 'keydown', 'touchstart', 'wheel'];
+
+/** Where tools/encode-sfx.mjs puts its output, honouring a deployed subpath. */
+const SAMPLE_BASE = `${import.meta.env?.BASE_URL ?? '/'}sfx/`.replace(/\/{2,}/g, '/');
 
 /** Names other subsystems already use, mapped onto our voices. */
 const UI_ALIAS = {
@@ -79,6 +89,7 @@ export class AudioSystem {
     this.field = null;
     this.ambience = null;
     this.bank = null;
+    this.samples = null;
     this.deafness = 0;
 
     /* preallocated scratch — update() allocates nothing */
@@ -177,6 +188,13 @@ export class AudioSystem {
       this.stats.started = true;
       this.stats.contextState = actx.state;
       console.info(`[audio] online @ ${actx.sampleRate} Hz`);
+
+      // Sampled voices load in the background — deliberately not awaited. The
+      // graph is live now, and every kind falls back to synthesis until its
+      // buffers land, so the first shot of a match is never delayed by a fetch.
+      this.samples = new SampleBank(actx);
+      this.samples.load(SAMPLE_BASE).catch(() => { /* stays synthesized */ });
+
       return true;
     } catch (err) {
       console.warn('[audio] disabled:', err?.message ?? err);
@@ -188,13 +206,14 @@ export class AudioSystem {
 
   _teardown() {
     try {
+      this.samples?.dispose();
       this.ambience?.dispose();
       this.field?.dispose();
       this.mixer?.dispose();
       this.bank?.dispose();
       if (this.actx && this.actx.state !== 'closed') this.actx.close();
     } catch { /* nothing useful to do */ }
-    this.ambience = this.field = this.mixer = this.bank = null;
+    this.ambience = this.field = this.mixer = this.bank = this.samples = null;
     this.actx = null;
     this.running = false;
   }
@@ -336,6 +355,15 @@ export class AudioSystem {
   _build(kind, when, dist, o) {
     const { actx, bank } = this;
     const rng = this.rng;
+
+    // Sampled first when the bank has this kind; synthesis is the fallback,
+    // not the exception. Both return the same { node, end, send } voice, so
+    // nothing downstream — spatialisation, sends, voice stealing — can tell.
+    if (this.samples?.ready) {
+      const s = this.samples.voice(kind, when, dist, o, rng);
+      if (s) return s;
+    }
+
     switch (kind) {
       case 'shot':
         return weaponShot(actx, bank, rng, o.profile ?? WEAPON_PROFILES.rifle, {
@@ -864,6 +892,9 @@ export class AudioSystem {
       limiterReduction: this.mixer?.reduction ?? 0,
       events: this.stats.events,
       errors: this.stats.errors,
+      samples: this.samples
+        ? { ready: this.samples.ready, ...this.samples.stats }
+        : null,
     };
   }
 }
