@@ -272,11 +272,12 @@ export class PauseMenu {
     // Don't stomp the prompt while the player is mid-rebind.
     if (!this._rebinding && this._keyFlash <= 0)
       setText(this.adsKeyBtn, keyLabel(cfg.adsKey ?? null));
-    // One line at the menu's width, so the aim entry costs the ESC hint — the
-    // Resume button sits directly above it saying the same thing. Hold/toggle
-    // is not spelled out here either; the row above already shows it.
+    // Must stay one line at the menu's width, with room for a long bind label
+    // ("L SHIFT/RMB ADS"), so the aim entry costs the two hints that are
+    // already shown elsewhere: ESC by the Resume button directly above, and
+    // F by the in-world use prompt. Hold vs toggle is on the row above too.
     const aim = cfg.adsKey ? `${keyLabel(cfg.adsKey)}/RMB ADS` : 'RMB ADS';
-    setText(this.hint, `WASD MOVE · SHIFT SPRINT · ${aim} · R RELOAD · F USE`);
+    setText(this.hint, `WASD MOVE · SHIFT SPRINT · ${aim} · R RELOAD`);
   }
 
   setQualityStatus(status) {
