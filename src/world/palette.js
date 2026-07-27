@@ -274,7 +274,7 @@ export const PALETTE = {
   container_green: {
     name: 'corrugated',
     surface: 'metal',
-    opts: { vertexMasks: true, tint: 0x6d8460, scale: 2.4, normalStrength: 1.25, weather: [0.5, 0.5, 0.55, 0.55] },
+    opts: { vertexMasks: true, tint: 0x6d8460, scale: 2.4, normalStrength: 1.25, weather: [0.5, 0.4, 0.4, 0.5] },
   },
   container_sand: {
     name: 'corrugated',
