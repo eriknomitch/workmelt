@@ -4,13 +4,19 @@ import { mergeSimple } from './kit.js';
 import { fillMasks, rockGeometry, warpGeometry } from './util.js';
 
 /**
- * WORLD — the Wilmot map's own instanced prop library.
+ * WORLD — the ESTATE instanced prop library.
  *
  * `props.js` is the market's vocabulary and `rustprops.js` the refinery's; a
  * North Shore country estate needs a third one — broadleaf trees, clipped
  * hedges, topiary, garden urns and benches, pool loungers and hay bales.
  * Everything is built with the same `PB` accumulator, so each prototype is ONE
  * merged geometry and one instanced draw call however many parts went into it.
+ *
+ * It is named for Wilmot because Wilmot is what it was written for, but it is
+ * NOT Wilmot's alone: `fishers.js` registers it too rather than growing a
+ * second copy of every garden object, and adds only what a North Shore place
+ * has that a Bannockburn one does not (see `fisherprops.js`). A change here is
+ * a change to both maps.
  *
  * LOW POLY ON PURPOSE, same brief as Rust: forms are blocked out, and the
  * surface interest comes from the shared procedural materials.

@@ -578,6 +578,67 @@ export const PALETTE = {
     opts: { vertexMasks: true, tint: 0x8c3b32, scale: 0.9, weather: [0.5, 0.4, 0.5, 0.5] },
   },
 
+  // ------------------------------------------------- the Fisher's estate --
+  /**
+   * The house's roof and every outbuilding's with it. Wilmot's `roof_tile` is
+   * warm brown shingle-cut tile gone mossy; this place is roofed in cold grey
+   * slate, and from the air that is the first thing that separates the two
+   * estates. Same `tile` bake — the coursing is what makes a roof read as a
+   * roof — under a blue-grey multiply, with the rain and cavity terms up,
+   * because slate greys and streaks rather than growing moss.
+   */
+  roof_slate: {
+    name: 'tile',
+    surface: 'concrete',
+    opts: { vertexMasks: true, tint: 0x555a60, scale: 1.25, normalStrength: 1.4, weather: [0.5, 0.45, 0.7, 0.55] },
+  },
+  /**
+   * Spruce. Deliberately its own key rather than a reuse of `leaf_core`: the
+   * evergreen rows are the estate's architecture — they screen the pool axis,
+   * the court and the whole boundary — and they have to sit DARKER and colder
+   * than the broadleaf crowns and the lawn or the map turns into one green
+   * mass. Opaque, with no alpha shell over it; see `fisherprops.js` for why.
+   */
+  conifer: {
+    name: 'dirt',
+    surface: 'foliage',
+    opts: { vertexMasks: true, tint: 0x2c3b31, scale: 0.85, normalStrength: 1.4, weather: [0.3, 0.2, 0.2, 0.45] },
+  },
+  /**
+   * THE POOL'S SHELL, and the reason the pool is turquoise.
+   *
+   * `pool_water` is a 44%-opaque glass with a light blue-green tint, so what a
+   * player actually sees in a pool is the SHELL through it, tinted. Over
+   * `tile_floor` — a warm bathroom grey — a 24 m basin comes out olive in
+   * daylight and near-black in the terrace's shadow, which is exactly what the
+   * first pass looked like and nothing like the photograph. Pale blue tile
+   * under the same water reads turquoise in sun and still reads blue in shade,
+   * and costs one material: the `tile` bake is already resident for the roofs.
+   */
+  pool_tile: {
+    name: 'tile',
+    surface: 'concrete',
+    opts: { vertexMasks: true, tint: 0x93c4d2, scale: 1.05, weather: [0.3, 0.2, 0.35, 0.4] },
+  },
+  /**
+   * The pool terrace. Cast concrete run almost white and a shade cool, against
+   * the warm `stone_pale` of the house's sills, copings and the garden wall —
+   * the two meet along the terrace edge, and that contrast is what stops 15 x
+   * 40 m of paving reading as one enormous slab of the same stone the house
+   * is trimmed in.
+   */
+  deck_pale: {
+    name: 'concrete',
+    surface: 'concrete',
+    opts: { vertexMasks: true, tint: 0xcdc9be, scale: 1.6, weather: [0.45, 0.3, 0.55, 0.5] },
+  },
+  /** The tennis court's run-off apron: the same acrylic, laid oxide red. */
+  court_clay: {
+    name: 'asphalt',
+    surface: 'concrete',
+    opts: { vertexMasks: true, tint: 0x7c4038, scale: 2.4, detile: 0.6, wear: [0, 0.5, 0.4, 0] },
+  },
+
   // ------------------------------------------------------------- apertures --
   /**
    * The dark core BEHIND a window opening. A window is not a grey rectangle: it

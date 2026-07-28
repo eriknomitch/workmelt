@@ -61,7 +61,7 @@ in that order.
 
 ## Maps
 
-Four levels ship, and the Match Start screen picks between them. All are
+Five levels ship, and the Match Start screen picks between them. All are
 generated in code like everything else.
 
 | | |
@@ -69,11 +69,12 @@ generated in code like everything else.
 | **Market** | A 120 m Middle-Eastern market street in the spirit of Crash/Backlot: one long street, two flanking alleys, an arched gate closing the vista, three enterable and furnished buildings, several thousand props. |
 | **Rust** | A low-poly take on the classic: a 55 m desert oil refinery built around a 13 m steel derrick with two stair-connected platforms and a gantry to the shed roof, rows of shipping containers for cover, and a two-storey office overlooking the yard. |
 | **Wilmot** | A low-poly walled country estate modelled on 1900 Wilmot Rd, Bannockburn IL: a two-storey brick manor you fight through, its listing's own pool terrace, tennis court, sunken-garden trench, hay-loft barn and glass greenhouse arranged around the lawn. |
+| **The Fisher's** | A low-poly North Shore estate built around one long axis: a 24 m lap pool and its spa between raised stone terraces, a red-brick house whose first-floor windows own the whole length of it, a flat-roofed pool house with a walkable roof answering them, and a walled kitchen garden, a spruce-screened tennis court and an orchard around the edges. The lightest map in the game — 24k static triangles and 63 draw calls — because everything vertical on it is built rather than dug. |
 | **The Loop** | A low-poly Chicago corner under the L, played at night: two streets crossing beneath a curve of riveted elevated track, steel columns and lit shopfronts for cover below, a stalled train with its saloon lights on, a wooden station platform and a walkable track deck above, with service alleys behind the brick. The hour belongs to the map — lamp posts, marquee, blade sign and a scatter of lit rooms are what you fight by. |
 
 Deep-link a level with `?map=loop`; otherwise the game remembers whichever you
 last chose. In a room the map belongs to the *room* — pick one and everybody in
-it switches together. Adding a fifth is a module and one line in
+it switches together. Adding a sixth is a module and one line in
 `src/world/maps.js`; see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Multiplayer

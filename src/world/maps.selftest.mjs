@@ -39,6 +39,21 @@ import {
   inSolidWilmot,
   groundYWilmot,
 } from './wilmot.js';
+import { CONIFER } from './fisherprops.js';
+import {
+  FISHER,
+  STRUCTURES as FISHER_STRUCTURES,
+  TREES as FISHER_TREES,
+  GATES as FISHER_GATES,
+  GARDEN,
+  GARDEN_WALLS,
+  BEDS,
+  CONIFER_ROWS,
+  POOL as POOL_F,
+  SPA,
+  inSolidFishers,
+  groundYFishers,
+} from './fishers.js';
 import {
   LOOP,
   EL,
@@ -422,6 +437,123 @@ for (const g of GATES) {
   }
   ok(leaks.length === 0, `the ${g.side === 'n' ? 'drive' : 'service'} gate is sealed`,
     leaks.length ? `open at x=${leaks.join(',')}` : `${g.w} m of opening covered`);
+}
+
+/* ────────────────────────────────────────────────── fishers: the grounds ── */
+console.log(B("\nfishers — the grounds"));
+
+const fRects = [];
+for (const s of FISHER_STRUCTURES) {
+  if (s.id === 'loggia') continue; // open on three sides; only its back wall is solid
+  fRects.push([s.id, s.x - s.w / 2, s.z - s.d / 2, s.x + s.w / 2, s.z + s.d / 2]);
+}
+for (const [cx, cz, ry, len] of GARDEN_WALLS) {
+  const hx = (ry === 0 ? len : GARDEN.t) / 2;
+  const hz = (ry === 0 ? GARDEN.t : len) / 2;
+  fRects.push([`garden-wall(${cx},${cz})`, cx - hx, cz - hz, cx + hx, cz + hz]);
+}
+for (const [x, z, w, d] of BEDS) fRects.push([`bed(${x},${z})`, x - w / 2, z - d / 2, x + w / 2, z + d / 2]);
+for (const [x, z, ry, len] of CONIFER_ROWS) {
+  const hx = (ry === 0 ? len : CONIFER.r * 1.5) / 2;
+  const hz = (ry === 0 ? CONIFER.r * 1.5 : len) / 2;
+  fRects.push([`spruce(${x},${z})`, x - hx, z - hz, x + hx, z + hz]);
+}
+for (const [x, z, s] of FISHER_TREES) fRects.push([`tree(${x},${z})`, x - 0.45 * s, z - 0.45 * s, x + 0.45 * s, z + 0.45 * s]);
+fRects.push(['pool', POOL_F.x0, POOL_F.z0, POOL_F.x1, POOL_F.z1]);
+fRects.push(['spa', SPA.x - SPA.r, SPA.z - SPA.r, SPA.x + SPA.r, SPA.z + SPA.r]);
+const fOverlaps = [];
+for (let i = 0; i < fRects.length; i++) {
+  for (let j = i + 1; j < fRects.length; j++) {
+    const a = fRects[i];
+    const b = fRects[j];
+    // the garden wall's four runs meet at its own corners, by construction
+    if (a[0].startsWith('garden-wall') && b[0].startsWith('garden-wall')) continue;
+    if (a[1] < b[3] && a[3] > b[1] && a[2] < b[4] && a[4] > b[2]) fOverlaps.push(`${a[0]} ∩ ${b[0]}`);
+  }
+}
+ok(fOverlaps.length === 0, 'nothing solid is inside anything else solid', fOverlaps.slice(0, 3).join(', '));
+
+const fOut = fRects.filter(
+  (r) => r[1] < -FISHER.halfX || r[2] < -FISHER.halfZ || r[3] > FISHER.halfX || r[4] > FISHER.halfZ
+);
+ok(fOut.length === 0, 'everything solid is inside the treeline', fOut.map((r) => r[0]).join(' '));
+
+const fishers = getMap('fishers');
+// The house is the landmark and the north end of the axis; the pool house is
+// the map's second storey and the only thing that answers its first floor.
+const fHouse = FISHER_STRUCTURES.find((s) => s.id === 'house');
+const fPool = FISHER_STRUCTURES.find((s) => s.id === 'poolhouse');
+ok(fHouse.floors === 2 && fHouse.h > 6, 'the house is a two-storey landmark', `${fHouse.h} m eaves`);
+ok(fPool.h > 3 && fPool.d > 15, 'the pool house roof is a real firing platform', `${fPool.d} m of it at ${fPool.h} m`);
+ok(CONIFER_ROWS.every(([, , ry]) => ry === 0 || ry === Math.PI / 2), 'the spruce rows are axis-aligned');
+
+/**
+ * The three things the layout is FOR, asked of the tables rather than of a
+ * screenshot: the pool is water and not minimap floor, the terrace it is cut
+ * out of is walkable all the way round it, and the lawn is flat — this map
+ * pays for its cheap terrain by building every height difference on it, so a
+ * dig sneaking back into the height field is a real regression.
+ */
+const poolMid = [(POOL_F.x0 + POOL_F.x1) / 2, (POOL_F.z0 + POOL_F.z1) / 2];
+ok(!fishers.isOpen(poolMid[0], poolMid[1]), 'the pool is not open ground');
+// Both lanes past the spa are probed: it is parked between the pool's head
+// and the house, and a spa that grew until it touched the terrace edge would
+// cut the axis in half with nothing else in the build to say so.
+const rim = [
+  [POOL_F.x0 - 1.6, poolMid[1]],
+  [POOL_F.x1 + 1.6, poolMid[1]],
+  [poolMid[0], POOL_F.z1 + 2.6],
+  [SPA.x - SPA.r - 1.2, SPA.z],
+  [SPA.x + SPA.r + 1.2, SPA.z],
+];
+const walled = rim.filter(([x, z]) => !fishers.isOpen(x, z));
+ok(walled.length === 0, 'the terrace walks all the way round it, and past the spa',
+  walled.map(([x, z]) => `(${x},${z})`).join(' '));
+let flat = true;
+for (let x = -FISHER.halfX; x <= FISHER.halfX && flat; x += 2)
+  for (let z = -FISHER.halfZ; z <= FISHER.halfZ && flat; z += 2) if (Math.abs(groundYFishers(x, z)) > 0.2) flat = false;
+ok(flat, 'the lawn inside the treeline is flat — every rise on this map is built');
+ok(!fishers.isOpen(0, FISHER.halfZ + 3), 'outside the treeline is not playable ground');
+
+// Sample the grounds. An estate is open country compared with the Loop's
+// block, and the buildings sit around the edges of it rather than in it.
+let fOpen = 0;
+let fTotal = 0;
+for (let x = -FISHER.halfX; x <= FISHER.halfX; x += 1)
+  for (let z = -FISHER.halfZ; z <= FISHER.halfZ; z += 1) {
+    fTotal++;
+    if (fishers.isOpen(x, z)) fOpen++;
+  }
+const fFrac = fOpen / fTotal;
+ok(fFrac > 0.5 && fFrac < 0.92, 'most of the grounds are walkable', `${(fFrac * 100).toFixed(0)}% open`);
+
+/**
+ * THE GATES ARE SEALED — same probe as Rust's and Wilmot's, for the same
+ * reason. The treeline has one opening for the drive and one for the service
+ * gate, and the closed leaf is the only thing between them and open parkland.
+ * Unlike Wilmot's, these sit on two different runs, so the probe walks in
+ * along whichever axis the run belongs to.
+ */
+for (const g of FISHER_GATES) {
+  const ns = g.side === 'n' || g.side === 's';
+  const ry = ns ? 0 : Math.PI / 2;
+  const cx = g.side === 'e' ? FISHER.halfX : g.side === 'w' ? -FISHER.halfX : 0;
+  const cz = g.side === 'n' ? -FISHER.halfZ : g.side === 's' ? FISHER.halfZ : 0;
+  const inward = ns ? -Math.sign(cz) : -Math.sign(cx);
+  const leaks = [];
+  for (let u = g.u - g.w / 2 + 0.2; u <= g.u + g.w / 2 - 0.2; u += 0.2) {
+    const px = cx + Math.cos(ry) * u;
+    const pz = cz - Math.sin(ry) * u;
+    let solid = false;
+    for (let dd = 0; dd <= 2 && !solid; dd += 0.2) {
+      const x = ns ? px : px + inward * dd;
+      const z = ns ? pz + inward * dd : pz;
+      if (inSolidFishers(x, z, 0)) solid = true;
+    }
+    if (!solid) leaks.push(u.toFixed(1));
+  }
+  ok(leaks.length === 0, `the ${g.side === 'w' ? 'drive' : 'service'} gate is sealed`,
+    leaks.length ? `open at u=${leaks.join(',')}` : `${g.w} m of opening covered`);
 }
 
 /* ─────────────────────────────────────────────────────── loop: the corner ── */

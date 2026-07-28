@@ -11,10 +11,13 @@ import { MAPS, DEFAULT_MAP_ID, getMap, isMapId, mapSummaries, resolveBootMap, sa
  *
  * THE MAP IS NOW A CHOICE. This system owns the machinery — the Assembler, the
  * level->world transform, spawn validation, the light budget — and a *map
- * descriptor* owns the level. Two ship today:
+ * descriptor* owns the level. Five ship today:
  *
- *   market  the ~120 m Middle-Eastern market street (src/world/market.js)
- *   rust    a low-poly desert oil refinery              (src/world/rust.js)
+ *   market   the ~120 m Middle-Eastern market street   (src/world/market.js)
+ *   rust     a low-poly desert oil refinery            (src/world/rust.js)
+ *   wilmot   a low-poly walled country estate          (src/world/wilmot.js)
+ *   loop     a low-poly Chicago corner, at night       (src/world/loop.js)
+ *   fishers  a low-poly estate down one pool axis      (src/world/fishers.js)
  *
  * See `src/world/maps.js` for the descriptor contract and how the boot choice
  * is resolved (`?map=` > the player's last choice > the default). Nothing is
@@ -33,6 +36,9 @@ import { MAPS, DEFAULT_MAP_ID, getMap, isMapId, mapSummaries, resolveBootMap, sa
  *   interiors.js  furnishes rooms so an interior screenshot is worth taking
  *   props.js      the shared instanced prop library
  *   rustprops.js  the refinery's own prop library (containers, pipe, masts)
+ *   wilmotprops.js the estate garden library — hedges, trees, urns, loungers;
+ *                 shared by both estate maps
+ *   fisherprops.js The Fisher's own: the opaque spruce, parasols, crop rows
  *   dressing.js   places the hundreds of props, cables, laundry and debris
  *   ground.js     terrain, road camber, kerbs, pavement slabs, sand drifts
  *   builder.js    the Assembler: merges statics, batches instances, authors
@@ -42,7 +48,8 @@ import { MAPS, DEFAULT_MAP_ID, getMap, isMapId, mapSummaries, resolveBootMap, sa
  *   world.root                THREE.Group holding everything
  *   world.bounds              THREE.Box3 of the playable area, world space
  *   world.map                 the active map descriptor
- *   world.mapId               its id — 'market' | 'rust' | 'wilmot'
+ *   world.mapId               its id — 'market' | 'rust' | 'wilmot' | 'loop' |
+ *                             'fishers'
  *   world.maps                [{ id, name, subtitle, blurb, size }] for menus
  *   world.setMap(id)          rebuild the level on another map. Awaitable, and
  *                             ONLY legal before a match goes live — see below.
