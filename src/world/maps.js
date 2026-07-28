@@ -2,6 +2,7 @@ import { MARKET_MAP } from './market.js';
 import { RUST_MAP } from './rust.js';
 import { WILMOT_MAP } from './wilmot.js';
 import { LOOP_MAP } from './loop.js';
+import { FISHERS_MAP } from './fishers.js';
 
 /**
  * WORLD — the map list.
@@ -44,7 +45,7 @@ import { LOOP_MAP } from './loop.js';
  * `build` must register its own prop prototypes and must draw only from the
  * `rng` it is handed — the world's fork — so a capture run stays reproducible.
  */
-export const MAPS = [MARKET_MAP, RUST_MAP, WILMOT_MAP, LOOP_MAP];
+export const MAPS = [MARKET_MAP, RUST_MAP, WILMOT_MAP, LOOP_MAP, FISHERS_MAP];
 
 /** The map a fresh session boots on. Every capture baseline is framed on it. */
 export const DEFAULT_MAP_ID = 'market';
@@ -113,4 +114,4 @@ export function saveMapPreference(id) {
   }
 }
 
-export { MARKET_MAP, RUST_MAP, WILMOT_MAP, LOOP_MAP };
+export { MARKET_MAP, RUST_MAP, WILMOT_MAP, LOOP_MAP, FISHERS_MAP };
