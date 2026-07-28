@@ -36,3 +36,5 @@ revcrops/
 .dev.vars
 
 .DS_Store
+
+scratch/
