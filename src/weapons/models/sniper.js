@@ -538,9 +538,10 @@ export function buildSniper() {
       },
       /**
        * Support hand under the forend, clock angle 250 deg, solved exactly as
-       * the carbine's (see models/rifle.js): the forend is a 60.2 mm tube on the
-       * bore axis (26.5 mm chassis + 3.8 mm panels), the knuckle contact stands
-       * 8.6 mm off it so a 16 mm half-palm buries by 7 mm, and the wrist target
+       * the carbine's (see models/rifle.js): the forend is a 60.6 mm tube on the
+       * bore axis (26.5 mm chassis + 3.8 mm panels), the knuckle contact sits at
+       * radius 38.7 mm — 8.4 mm off the surface, so a 16 mm half-palm buries by
+       * 7.6 mm and there is no daylight along the contact — and the wrist target
        * is that contact minus 0.098 along the finger direction.
        *
        * `handZ` is 13 mm FURTHER BACK than the carbine's hand, not further
