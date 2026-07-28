@@ -1065,8 +1065,9 @@ function buildGarden(A, rng) {
     A.add('stone_pale', BOX(A), LL(IDENT, x, 0.27, z, 0, w, 0.54, d), { masks: [0.55, 0.5, 0.35] });
     A.box('concrete', x, 0.27, z, w, 0.54, d);
     A.add('dirt', BOX_THIN(A), LL(IDENT, x, 0.55, z, 0, w - 0.24, 0.06, d - 0.24), { masks: [0.2, 0.6, 0.4] });
-    for (let i = 0; i < 2; i++) {
-      A.put('crop_row', x + rng.range(-1.2, 1.2), 0.56, z - 0.4 + i * 0.8, 0, rng.range(0.85, 1.15));
+    // three rows a bed: two leaves a 5 m box of soil looking half planted
+    for (let i = 0; i < 3; i++) {
+      A.put('crop_row', x - w / 3 + (i * w) / 3 + rng.range(-0.3, 0.3), 0.56, z + rng.range(-0.35, 0.35), 0, rng.range(0.85, 1.15));
     }
   }
   // the potting shed in the corner: a flat-roofed box with one door and one
