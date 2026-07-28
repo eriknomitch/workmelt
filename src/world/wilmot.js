@@ -8,7 +8,8 @@ import { fbm3, paintMasks, patchGeometry, polyPrism, tubeY } from './util.js';
  * WORLD — WILMOT.
  *
  * A low-poly take on 1900 Wilmot Road, Bannockburn, Illinois: a 1935
- * English-revival brick manor on seven landscaped acres, compressed to a
+ * English-revival manor in limewashed brick under a heavy brown tile roof, on
+ * seven landscaped acres, compressed to a
  * ~62 x 58 m walled garden the way Rust compresses a refinery. The real
  * estate's roster is the map's roster — the listing's swimming pool, sunken
  * garden, tennis court, restored barn and Lord & Burnham greenhouse are the
@@ -32,6 +33,17 @@ import { fbm3, paintMasks, patchGeometry, polyPrism, tubeY } from './util.js';
  * capped tubes, with all surface detail carried by the shared procedural
  * materials. Foliage is an opaque dark core plus an alpha-cut leaf shell
  * (see wilmotprops.js), so hedges read clipped, not extruded.
+ *
+ * THE FINISH. The house is WHITE — limewashed brick, not the red brick this
+ * map was first built in. `brick_lime` keeps the brick bake and softens its
+ * joints, so the coursing still reads under the wash and the worn arrises go
+ * pink where the coat has gone. Bare `brick_red` survives in three places,
+ * all deliberate: the chimney stacks above the roofline, which no painter
+ * reaches; the greenhouse plinth, which is a garden structure rather than
+ * part of the house; and the living-room fireplace breast, because an
+ * inglenook is bare brick indoors. Terrace and garden paths are
+ * `flagstone` (cold bluestone); `stone_pale` is now cut stone only — copings,
+ * sills, balustrades and steps.
  *
  * LAYOUT NOTES
  *   Authored in LEVEL space, north at -Z, the manor's front door facing the
@@ -515,8 +527,8 @@ function buildGrounds(A, rng) {
   const barnApron = patchGeometry(rng, 2.6, { lobes: 11, wobble: 0.2 });
   A.addOnce('road_dust', barnApron, LL(IDENT, -15.6, 0.045, 15, 1.1), { masks: [0.2, 0.3, 0.2] });
   // flagstone links: terrace -> pool, forecourt -> sunken garden
-  strip(4, -2.1, H, 2.9, 1.4, 'stone_pale');
-  strip(-13.6, -14.4, 0.83, 14.5, 1.4, 'stone_pale');
+  strip(4, -2.1, H, 2.9, 1.4, 'flagstone');
+  strip(-13.6, -14.4, 0.83, 14.5, 1.4, 'flagstone');
 
   // ---------------------------------------------------- the estate wall --
   // Brick, stone coping, a pier every sixth bay — and nothing on the map
@@ -624,8 +636,8 @@ function buildManor(A, rng) {
   const flips = [true, false, false, true]; // which sides' panes face −Z/−X
   for (let i = 0; i < 4; i++) {
     const [cx, cz, ry, len] = sides[i];
-    ewall(A, 'brick_red', cx, cz, ry, len, 0, MANOR.g, t, g[i], { masks: [0.5, 0.45, 0.28] });
-    ewall(A, 'brick_red', cx, cz, ry, len, MANOR.g, MANOR.top - MANOR.g, t, f[i], { masks: [0.55, 0.42, 0.22] });
+    ewall(A, 'brick_lime', cx, cz, ry, len, 0, MANOR.g, t, g[i], { masks: [0.5, 0.45, 0.28] });
+    ewall(A, 'brick_lime', cx, cz, ry, len, MANOR.g, MANOR.top - MANOR.g, t, f[i], { masks: [0.55, 0.42, 0.22] });
     for (const o of g[i]) if ((o.y ?? 0) > 0) dressOpening(A, cx, cz, ry, 0, o, { glass: i !== 2, flip: flips[i] });
     for (const o of f[i]) dressOpening(A, cx, cz, ry, MANOR.g, o, { glass: glassed.has(o), flip: flips[i] });
   }
@@ -681,20 +693,39 @@ function buildManor(A, rng) {
   A.add('window_void', BOX_THIN(A), LL(IDENT, -9.62, 0.55, z, 0, 0.06, 0.85, 1.0));
   A.add('wood_dark', BOX(A), LL(IDENT, -9.58, 1.42, z, 0, 0.24, 0.1, 1.7), { masks: [0.75, 0.3, 0.1] });
 
-  // the roof: tile, brick gables, two chimneys — the skyline
+  // the roof: tile, limewashed gables, two chimneys — the skyline
   gableRoof(A, 'roof_tile', x, z, MANOR.top, w, d, MANOR.rise);
-  gableEnd(A, 'brick_red', x - w / 2 + t / 2, z, MANOR.top, d - 0.1, MANOR.rise - 0.12, t);
-  gableEnd(A, 'brick_red', x + w / 2 - t - t / 2 + t, z, MANOR.top, d - 0.1, MANOR.rise - 0.12, t);
-  for (const [chx, chz, base, top] of [
-    [x + w / 2 + 0.42, -15.2, 0, 10.2],
-    [-5.2, z, 7.6, 10.0],
+  gableEnd(A, 'brick_lime', x - w / 2 + t / 2, z, MANOR.top, d - 0.1, MANOR.rise - 0.12, t);
+  gableEnd(A, 'brick_lime', x + w / 2 - t - t / 2 + t, z, MANOR.top, d - 0.1, MANOR.rise - 0.12, t);
+  /**
+   * THE STACKS ARE THE ONE PLACE THE BRICK SHOWS. The limewash stops at the
+   * roofline — a painter works off the scaffold, not off the tiles — so an
+   * external stack is a white shaft up the wall and bare red brick above the
+   * eaves, and that two-tone stack is the most recognisable thing on the
+   * house's skyline. `lime` is the height the wash runs to; above it the same
+   * stack is rebuilt in `brick_red`. A stack that never meets a wall (the
+   * second one, which surfaces through the roof slope) was never washed at all.
+   */
+  for (const [chx, chz, base, top, lime] of [
+    [x + w / 2 + 0.42, -15.2, 0, 10.2, MANOR.top],
+    [-5.2, z, 7.6, 10.0, 0],
   ]) {
-    A.add('brick_red', BOX(A), LL(IDENT, chx, (base + top) / 2, chz, 0, 0.95, top - base, 1.5), {
-      masks: [0.55, 0.5, 0.3],
-    });
+    const split = Math.max(base, Math.min(top, lime));
+    for (const [key, y0, y1] of [
+      ['brick_lime', base, split],
+      ['brick_red', split, top],
+    ]) {
+      if (y1 - y0 < 0.02) continue;
+      A.add(key, BOX(A), LL(IDENT, chx, (y0 + y1) / 2, chz, 0, 0.95, y1 - y0, 1.5), {
+        masks: [0.55, 0.5, 0.3],
+      });
+    }
     A.add('stone_pale', BOX_SOFT(A), LL(IDENT, chx, top + 0.08, chz, 0, 1.15, 0.16, 1.7), { masks: [0.8, 0.3, 0.1] });
+    // clay pots. `brick_red` rather than a terracotta key of their own: the
+    // pots and the stack under them are the same fired clay and the same
+    // red-brown, and four 0.16 m cylinders do not earn a draw call.
     for (const pz of [-0.4, 0.4]) {
-      A.addOnce('concrete_dark', tubeY(0.16, 0.5, { radial: 8 }), LL(IDENT, chx, top + 0.14, chz + pz), {
+      A.addOnce('brick_red', tubeY(0.16, 0.5, { radial: 8 }), LL(IDENT, chx, top + 0.14, chz + pz), {
         masks: [0.7, 0.4, 0.2],
       });
     }
@@ -728,14 +759,14 @@ function buildManor(A, rng) {
   const lFlips = [true, true, false];
   for (let i = 0; i < 3; i++) {
     const [cx, cz, ry, len] = lw[i];
-    ewall(A, 'brick_red', cx, cz, ry, len, 0, 3.2, t, lh[i], { masks: [0.5, 0.45, 0.28] });
+    ewall(A, 'brick_lime', cx, cz, ry, len, 0, 3.2, t, lh[i], { masks: [0.5, 0.45, 0.28] });
     for (const o of lh[i]) if ((o.y ?? 0) > 0) dressOpening(A, cx, cz, ry, 0, o, { glass: true, flip: lFlips[i] });
   }
   deck(A, 'floor_wood', L.x, g0, L.z, L.w - t, L.d - t, { t: 0.16 });
   deck(A, 'roof_screed', L.x, L.h, L.z, L.w + 0.2, L.d + 0.2, { t: 0.26, masks: [0.6, 0.3, 0.2] });
   // parapet on the three free sides; the fourth is the manor's own wall
   for (const [cx, cz, ry, len] of lw) {
-    ewall(A, 'brick_red', cx, cz, ry, len + 0.2, L.h, 0.72, 0.24, [], { masks: [0.55, 0.45, 0.25] });
+    ewall(A, 'brick_lime', cx, cz, ry, len + 0.2, L.h, 0.72, 0.24, [], { masks: [0.55, 0.45, 0.25] });
     A.add('stone_pale', BOX_THIN(A), LL(IDENT, cx, L.h + 0.76, cz, ry, len + 0.34, 0.1, 0.36), {
       masks: [0.75, 0.3, 0.1],
     });
@@ -755,7 +786,7 @@ function buildManor(A, rng) {
   ];
   for (let i = 0; i < 3; i++) {
     const [cx, cz, ry, len] = gw[i];
-    ewall(A, 'brick_red', cx, cz, ry, len, 0, G.h, t, gh[i], { masks: [0.5, 0.45, 0.28] });
+    ewall(A, 'brick_lime', cx, cz, ry, len, 0, G.h, t, gh[i], { masks: [0.5, 0.45, 0.28] });
   }
   dressOpening(A, gw[2][0], gw[2][1], 0, 0, gh[2][0], { glass: true });
   // the third door is down: white slats and a real wall behind the look
@@ -763,12 +794,14 @@ function buildManor(A, rng) {
   A.box('wood', G.x + 2.7, 1.32, G.z - G.d / 2, 2.16, 2.3, 0.14);
   deck(A, 'floor_concrete', G.x, 0.08, G.z, G.w - t, G.d - t, { t: 0.14 });
   gableRoof(A, 'roof_tile', G.x, G.z, G.h, G.w, G.d, 1.4, { endOverhang: 0.35 });
-  gableEnd(A, 'brick_red', G.x + G.w / 2 - t / 2, G.z, G.h, G.d - 0.1, 1.3, t);
+  gableEnd(A, 'brick_lime', G.x + G.w / 2 - t / 2, G.z, G.h, G.d - 0.1, 1.3, t);
 
   // ------------------------------------------------------- the terrace --
   const T = TERRACE;
   const tc = [(T.x0 + T.x1) / 2, (T.z0 + T.z1) / 2];
-  A.add('stone_pale', BOX(A), LL(IDENT, tc[0], T.h / 2 - 0.02, tc[1], 0, T.x1 - T.x0, T.h, T.z1 - T.z0), {
+  // bluestone paving under warm stone coping: the terrace is the one place the
+  // two stone keys meet, and the contrast is what stops it reading as one slab
+  A.add('flagstone', BOX(A), LL(IDENT, tc[0], T.h / 2 - 0.02, tc[1], 0, T.x1 - T.x0, T.h, T.z1 - T.z0), {
     masks: [0.55, 0.45, 0.3],
   });
   A.box('concrete', tc[0], T.h / 2 - 0.02, tc[1], T.x1 - T.x0, T.h, T.z1 - T.z0);
@@ -869,7 +902,9 @@ function buildGreenhouse(A, rng) {
   const rise = 1.25;
   const t = 0.22;
   const doorW = 1.25;
-  // brick base: solid down the long sides, a full gap at each end door
+  // brick base: solid down the long sides, a full gap at each end door. Left
+  // bare, unlike the house — a glasshouse plinth is a garden structure and
+  // nobody limewashes the thing the potting benches sit on.
   ewall(A, 'brick_red', x - w / 2, z, H, d, 0, baseH, t, [], { masks: [0.5, 0.5, 0.3] });
   ewall(A, 'brick_red', x + w / 2, z, H, d, 0, baseH, t, [], { masks: [0.5, 0.5, 0.3] });
   ewall(A, 'brick_red', x, z - d / 2, 0, w, 0, baseH, t, [{ u: 0, w: doorW, y: 0, h: baseH }], { masks: [0.5, 0.5, 0.3] });
@@ -1271,7 +1306,7 @@ export const WILMOT_MAP = {
   name: 'Wilmot',
   subtitle: 'Bannockburn estate grounds',
   blurb:
-    'A brick manor over its own lawn: pool terrace, hedge lanes and a sunken garden below the sightlines, with a hay loft and the house windows above them.',
+    'A whitewashed manor over its own lawn: pool terrace, hedge lanes and a sunken garden below the sightlines, with a hay loft and the house windows above them.',
   size: '62 × 58 m',
   /**
    * LEVEL -> WORLD. Off-axis for the same reason Rust is: every mass here is a
