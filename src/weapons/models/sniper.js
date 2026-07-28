@@ -263,8 +263,21 @@ export function buildSniper() {
     zMuzzle: zBarrelEnd,
     rChamber: 0.0138,
     rBarrel: 0.0104,
+    /**
+     * A bolt gun has no gas block, so the profile's gas step is neutralised by
+     * setting `rGas` equal to `rBarrel` — the step is there with zero height.
+     *
+     * `gasAt` still has to sit INSIDE the barrel. The first attempt parked it at
+     * -0.9, "off the barrel", on the assumption that a step outside the extent
+     * would simply not be drawn. It is a lathe profile: the four gas keys are
+     * emitted at `zBreech - gasAt ± 0.012`, so they landed at axial 0.773-0.799
+     * against a 0.483 m barrel, and the lathe ran out to 0.799 and folded back.
+     * Measured on the preview harness's bbox: bmin.z was -0.914 against a muzzle
+     * crown at -0.660 — a quarter-metre of spurious bright tube sticking out
+     * past the brake. -0.36 is mid-barrel and invisible.
+     */
     rGas: 0.0104,
-    gasAt: -0.9, // no gas system on a bolt gun: park the step off the barrel
+    gasAt: -0.36,
     knurl: false,
     seg: 24,
   });
