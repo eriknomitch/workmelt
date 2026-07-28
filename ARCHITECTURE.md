@@ -132,7 +132,7 @@ collider with one of: `concrete`, `metal`, `wood`, `dirt`, `sand`, `glass`,
 The level is one of the descriptors in `src/world/maps.js`, not a hard-coded
 build sequence. Four ship: `market` (the Middle-Eastern street), `rust` (a
 low-poly desert refinery), `wilmot` (a low-poly walled country estate) and
-`loop` (a low-poly Chicago corner under the elevated tracks). Which one boots
+`loop` (a low-poly Chicago corner under the elevated tracks, at night). Which one boots
 is `?map=` > the player's last choice > `market`; a capture run ignores the
 stored choice so the pixel gate always frames the same level unless `?map=`
 says otherwise.
@@ -149,6 +149,18 @@ await world.setMap('rust')  // tear the level down and build another. Emits
 Adding a map means adding a module that exports a descriptor and listing it in
 `MAPS`; no other subsystem changes. `node src/world/maps.selftest.mjs` builds
 every map headlessly and checks the descriptor contract.
+
+A descriptor may also carry an **`environment`** — `{ hour, weather,
+exposureBias }`, the sky that map is set under. `world` hands it to
+`sky.applyEnvironment()` on every build, before the pre-warm and the first
+frame, so a map's time of day is a property of the map and not of whoever
+loaded it. `exposureBias` is EV added to the metering compensation `sky`
+already publishes for the hour (positive is darker) — how far a night frame can
+be stopped down depends on how much light the level itself owns. A map without one plays under
+the sky's defaults, and switching to it *restores* them, so a night map can
+never leak its haze into the next level. `loop` is the one night map today
+(01:30, moonlit, city haze); everything on it that emits — the marquee, the
+lamps, the lit rooms, the stalled train — is dressed for that hour.
 
 ## Spawning
 

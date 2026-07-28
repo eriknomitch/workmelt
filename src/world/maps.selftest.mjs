@@ -118,6 +118,42 @@ for (const m of MAPS) {
   ok(shape, `"${m.id}" satisfies the descriptor contract`);
 }
 
+/**
+ * The optional `environment` — the sky a map is set under. It is handed
+ * straight to `sky.applyEnvironment`, which merges its `weather` over the
+ * sky's defaults and calls `setTimeOfDay(hour)`, so the only things that can
+ * be wrong here are wrong in a way no frame would explain: an hour outside
+ * 0..24 wraps silently to another time of day, and a weather key the sky does
+ * not read is a setting the author believes is applied and is not.
+ */
+const WEATHER_KEYS = new Set([
+  'turbidity', 'cloudCoverage', 'cloudDensity', 'cirrusCoverage', 'cirrusOpacity',
+  'windSpeed', 'windAngle', 'horizonMurk', 'fogDensity', 'fogHeight', 'shaftGain',
+]);
+for (const m of MAPS.filter((m) => m.environment)) {
+  const e = m.environment;
+  ok(Number.isFinite(e.hour) && e.hour >= 0 && e.hour < 24, `"${m.id}" is set at a real hour`, `${e.hour}`);
+  ok(
+    e.exposureBias === undefined || (Number.isFinite(e.exposureBias) && Math.abs(e.exposureBias) <= 3),
+    `"${m.id}" asks for a sane exposure compensation`,
+    `${e.exposureBias ?? 0} EV`
+  );
+  const unknown = Object.keys(e.weather ?? {}).filter((k) => !WEATHER_KEYS.has(k));
+  ok(unknown.length === 0, `"${m.id}" only asks for weather the sky reads`, unknown.join(' '));
+  ok(
+    Object.values(e.weather ?? {}).every((v) => Number.isFinite(v)),
+    `"${m.id}" weather values are numbers`
+  );
+}
+// The Loop is the night map. If this ever passes on a daylight hour the map
+// still builds, still plays and looks nothing like itself — every emitter on
+// it (marquee, blade sign, lit rooms, the stalled train) was placed for 23:30.
+{
+  const loopEnv = getMap('loop').environment;
+  ok(loopEnv != null && (loopEnv.hour < 4.5 || loopEnv.hour > 21), 'the loop is a night map',
+    `${loopEnv?.hour ?? 'no environment'}`);
+}
+
 /* ─────────────────────────────────────────────────────── the boot resolver ── */
 console.log(B('\nwhich map boots'));
 ok(resolveBootMap({}) === DEFAULT_MAP_ID, 'nothing asked for -> the default');
