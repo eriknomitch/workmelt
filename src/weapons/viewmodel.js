@@ -201,7 +201,6 @@ export class Viewmodel {
       ringArcs.push(new THREE.RingGeometry(2.98, 3.42, 4, 1, a0, (TAU / RING_SEGS) * 0.56));
     }
     const ring = mergeAll(ringArcs);
-    this._reticleGeo = [core, halo, rim, ring];
     this.dotCore = new THREE.Mesh(core, mats.reticle(0xff1206, 0.95));
     this.dotHalo = new THREE.Mesh(halo, mats.reticle(0xff2a0c, 0.34));
     this.dotRim = new THREE.Mesh(rim, mats.reticleOutline(0.85));
@@ -210,11 +209,77 @@ export class Viewmodel {
     this.dotRim.renderOrder = 20;
     this.dotRing.renderOrder = 20;
     this.dotCore.renderOrder = 21;
-    this.reticle.add(this.dotHalo);
-    this.reticle.add(this.dotRim);
-    this.reticle.add(this.dotRing);
-    this.reticle.add(this.dotCore);
-    for (const m of [this.dotCore, this.dotHalo, this.dotRim, this.dotRing]) {
+    /** The red-dot reticle, shown behind an optic whose `reticle` is 'dot'. */
+    this.dotGroup = new THREE.Object3D();
+    this.dotGroup.name = 'ow-reticle-dot';
+    this.dotGroup.add(this.dotHalo, this.dotRim, this.dotRing, this.dotCore);
+    this.reticle.add(this.dotGroup);
+
+    /**
+     * THE MAGNIFIED SCOPE'S RETICLE — an etched duplex crosshair, not an emitter.
+     *
+     * A red dot is a collimated emitter and a rifle scope is a wire etched on
+     * glass, and the difference is not decoration: a dot tells you WHERE, a
+     * crosshair tells you where AND how far off-centre you are, which is the
+     * whole reason a 3.3x picture is worth the FOV it costs. Three parts, all
+     * authored at unit radius so they scale as one shape exactly like the dot:
+     *
+     *   posts   four heavy bars in from the edge of the field, 0.38 wide, that
+     *           STOP at 0.28 of the radius. A duplex whose posts reach the
+     *           middle covers the target at the moment you need to see it; the
+     *           gap is the aiming area and the posts are what your eye tracks
+     *           in to find it.
+     *   hairs   the thin cross across that gap, 0.15 wide — a quarter of the
+     *           post, which is the ratio a real duplex uses.
+     *   pip     a 0.09 centre square. Against a clear aperture ~215 px across
+     *           this is ~3 px: the thing the eye actually lands on in a flick.
+     *
+     * Drawn in the OUTLINE material — a normally-blended near-black — rather
+     * than the additive emitter: an etched reticle is opaque and reads against
+     * a bright sky, which is precisely where an additive one disappears. A thin
+     * emissive underlay behind it carries the illuminated-reticle read at night
+     * without turning the whole cross into a glow.
+     */
+    const RETICLE_PARTS = [];
+    const POST_OUT = 3.4;
+    const POST_IN = 0.28;
+    const HAIR_W = 0.075;
+    const POST_W = 0.19;
+    for (let i = 0; i < 4; i++) {
+      // Posts: tapered wedges, wide at the rim, narrow at the tip.
+      const post = new THREE.PlaneGeometry(POST_OUT - POST_IN, POST_W * 2);
+      post.translate((POST_OUT + POST_IN) * 0.5, 0, 0);
+      post.rotateZ((i * TAU) / 4);
+      RETICLE_PARTS.push(post);
+      // Hairs: the thin cross that crosses the gap.
+      const hair = new THREE.PlaneGeometry(POST_IN + 0.02, HAIR_W * 2);
+      hair.translate((POST_IN + 0.02) * 0.5, 0, 0);
+      hair.rotateZ((i * TAU) / 4);
+      RETICLE_PARTS.push(hair);
+    }
+    const pip = new THREE.PlaneGeometry(0.09, 0.09);
+    RETICLE_PARTS.push(pip);
+    const cross = mergeAll(RETICLE_PARTS);
+    const crossGlow = cross.clone();
+    /** Unit-space radius of the post tips — `_updateReticle` scales against it. */
+    this._crossOuter = POST_OUT;
+    // A distinct colour/intensity so this gets its OWN cached material: the dot's
+    // halo uses (0xff2a0c, 0.34) and `WeaponMaterials.reticle` keys on the pair,
+    // so reusing it would hand two meshes one material and two per-frame opacity
+    // writes that fight.
+    this.crossWire = new THREE.Mesh(cross, mats.reticleOutline(0.94));
+    this.crossGlow = new THREE.Mesh(crossGlow, mats.reticle(0xff3a14, 0.3));
+    this.crossGlow.scale.setScalar(1.5);
+    this.crossGlow.renderOrder = 20;
+    this.crossWire.renderOrder = 21;
+    this.crossGroup = new THREE.Object3D();
+    this.crossGroup.name = 'ow-reticle-cross';
+    this.crossGroup.visible = false;
+    this.crossGroup.add(this.crossGlow, this.crossWire);
+    this.reticle.add(this.crossGroup);
+
+    this._reticleGeo = [core, halo, rim, ring, cross, crossGlow];
+    for (const m of [this.dotCore, this.dotHalo, this.dotRim, this.dotRing, this.crossWire, this.crossGlow]) {
       m.frustumCulled = false;
       m.userData.owNoPrepass = true;
       m.userData.owNoShadow = true;
@@ -981,6 +1046,8 @@ export class Viewmodel {
     const offY = _v2.y - _v.y;
     const off = Math.hypot(offX, offY);
     const apertureR = optic.apertureR ?? 0.01;
+    // Eye-to-lens distance, captured BEFORE the lookAt below reuses `_v`.
+    const lensDist = Math.max(1e-4, _v.length());
     let alpha = 1 - smootherstep(apertureR * 0.5, apertureR * 1.05, off);
     alpha *= lerp(0.55, 1, ads); // brighter once the eye is behind the glass
 
@@ -991,6 +1058,35 @@ export class Viewmodel {
     this.reticle.visible = true;
     this.reticle.position.copy(_v2);
     this.reticle.lookAt(this.anchor.getWorldPosition(_v));
+
+    const crosshair = optic.reticle === 'crosshair';
+    this.dotGroup.visible = !crosshair;
+    this.crossGroup.visible = crosshair;
+    if (crosshair) {
+      /**
+       * A SCOPE'S RETICLE IS FIXED TO THE GLASS, not to a legibility budget.
+       *
+       * The dot below cheats its angular size upward as the eye comes into the
+       * sight, because a geometrically honest 2 MOA emitter is a dead subpixel.
+       * A duplex crosshair cannot cheat the same way and must not: its posts are
+       * the RANGING reference, so if they grew as you scoped in, the one thing
+       * the reticle exists to tell you would be a lie. It is pinned to the exit
+       * pupil instead — the post tips land at 84 % of the clear aperture at any
+       * ADS blend, so the cross always frames the sight picture exactly.
+       *
+       * The geometry lives on a plane `s` metres out, so a unit of it subtends
+       * 1/s; the aperture is `apertureR` at `lensDist`. Matching the two:
+       *   scale * POST_OUT / s = apertureR * 0.84 / lensDist
+       */
+      const scale = (s * apertureR * 0.84) / (this._crossOuter * lensDist);
+      this.crossGroup.scale.setScalar(scale);
+      this.crossWire.material.opacity = alpha * 0.94;
+      // The illuminated underlay only earns its place once the eye is behind the
+      // glass; in hipfire it is a red smear on a sight nobody is looking through.
+      this.crossGlow.material.opacity = alpha * 0.075 * ads;
+      return;
+    }
+
     /**
      * SIZE. Angular, so it is FOV-independent within a stance — but not constant
      * across stances, because the requirement is a fixed number of PIXELS.

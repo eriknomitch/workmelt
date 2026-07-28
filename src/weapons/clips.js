@@ -137,6 +137,7 @@ export function buildClips(nodes, def) {
   const charge = nodes.chargeRest
     ? v3(nodes.chargeRest.pos[0] - 0.02, nodes.chargeRest.pos[1] + 0.008, nodes.chargeRest.pos[2] + 0.03)
     : null;
+  const boltAction = def.boltAction === true;
 
   const tac = def.reloadTac ?? 2.15;
   const emp = def.reloadEmpty ?? 2.85;
@@ -199,7 +200,28 @@ export function buildClips(nodes, def) {
     { t: 0.7 * emp, p: seated, finger: magFinger, back: magBack, pose: 'pinch' },
     { t: 0.75 * emp, p: v3(seated[0], seated[1] - 0.01, seated[2]), finger: magFinger, back: magBack, pose: 'open' },
   ];
-  if (charge) {
+  if (boltAction) {
+    /**
+     * THE BOLT IS THROWN BY THE SHOOTING HAND, so no hand track runs it.
+     *
+     * The clip system can move the weapon, the support hand and the moving
+     * parts, but the shooting hand is welded to the grip (`rhand` is a thumb
+     * offset, not an IK target). A bolt handle lives on the RIGHT flank, which
+     * is exactly where the support hand cannot reach without crossing the
+     * receiver — so animating it with the support hand, as the pistol's slide
+     * rack below does, would be visibly wrong on the one weapon whose action is
+     * its signature.
+     *
+     * What sells it instead is the WEAPON: it rolls 0.75 rad to present the
+     * right flank to the camera and comes back off the shoulder, while the bolt
+     * part itself travels its full 78 mm (the `bolt` channel in `emptyParts`).
+     * The hand that is visible stays where a hand belongs, on the forend.
+     */
+    emptyLhand.push(
+      { t: 0.82 * emp, p: v3(hgP[0] + 0.006, hgP[1] - 0.004, hgP[2] + 0.012), finger: wrapFinger, back: wrapBack, pose: 'wrap', ease: 'out' },
+      { t: 0.93 * emp, p: v3(hgP[0] + 0.004, hgP[1] - 0.002, hgP[2] + 0.006), finger: wrapFinger, back: wrapBack, pose: 'wrap' }
+    );
+  } else if (charge) {
     emptyLhand.push(
       { t: 0.82 * emp, p: v3(charge[0], charge[1], charge[2] - 0.01), finger: v3(0.55, 0.2, 0.81), back: v3(-0.2, 0.94, -0.27), pose: 'pinch', ease: 'out' },
       { t: 0.87 * emp, p: charge, finger: v3(0.55, 0.2, 0.81), back: v3(-0.2, 0.94, -0.27), pose: 'pinch' },
@@ -232,6 +254,19 @@ export function buildClips(nodes, def) {
     { t: 1, mag: 0, magVisible: 1, bolt: 0, slide: 0, charge: 0 },
   ];
 
+  // Tail of the weapon track after the magazine seats: the charging stroke for a
+  // self-loader, and a much bigger roll-and-drop for a bolt gun (see above).
+  const emptyWeaponTail = boltAction
+    ? [
+      { t: 0.78 * emp, p: v3(0.014, -0.026, 0.03), r: v3(0.02, 0.3, 0.62), ease: 'out' },
+      { t: 0.88 * emp, p: v3(0.018, -0.032, 0.046), r: v3(0.06, 0.34, 0.75), ease: 'linear' },
+      { t: 0.94 * emp, p: v3(0.012, -0.022, 0.026), r: v3(0.03, 0.28, 0.58), ease: 'out' },
+    ]
+    : [
+      { t: 0.86 * emp, p: v3(0.006, -0.012, 0.016), r: v3(-0.02, 0.42, 0.22) },
+      { t: 0.92 * emp, p: v3(0.004, -0.006, 0.022), r: v3(0.02, 0.44, 0.18), ease: 'linear' },
+    ];
+
   const reloadEmpty = new Clip('reloadEmpty', emp, {
     weapon: [
       { t: 0, p: v3(0, 0, 0), r: v3(0, 0, 0) },
@@ -239,8 +274,7 @@ export function buildClips(nodes, def) {
       { t: 0.44 * emp, p: v3(0.018, -0.034, 0.028), r: v3(-0.12, 0.38, 0.54) },
       { t: 0.7 * emp, p: v3(0.014, -0.026, 0.024), r: v3(-0.14, 0.3, 0.48) },
       { t: 0.72 * emp, p: v3(0.01, -0.014, 0.018), r: v3(-0.06, 0.24, 0.38), ease: 'back' },
-      { t: 0.86 * emp, p: v3(0.006, -0.012, 0.016), r: v3(-0.02, 0.42, 0.22) },
-      { t: 0.92 * emp, p: v3(0.004, -0.006, 0.022), r: v3(0.02, 0.44, 0.18), ease: 'linear' },
+      ...emptyWeaponTail,
       { t: 1, p: v3(0, 0, 0), r: v3(0, 0, 0), ease: 'out' },
     ],
     lhand: emptyLhand,

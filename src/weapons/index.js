@@ -2,13 +2,32 @@ import * as THREE from 'three';
 import { Rng } from '../core/rng.js';
 import { WeaponMaterials, ENV_OCCLUSION } from './materials.js';
 import { Viewmodel } from './viewmodel.js';
-import { ProjectileSim } from './ballistics.js';
-import { WEAPON_DEFS, buildRecoilPattern, SPREAD_MODS } from './defs.js';
+import { ProjectileSim, rangeFalloff } from './ballistics.js';
+import { WEAPON_DEFS, buildRecoilPattern, SPREAD_MODS, HIT_ZONES } from './defs.js';
 import { buildRifle } from './models/rifle.js';
 import { buildSmg } from './models/smg.js';
 import { buildPistol } from './models/pistol.js';
+import { buildSniper } from './models/sniper.js';
 import { Throwables } from './throwables.js';
 import { clamp, clamp01, lerp, damp, DEG } from './mathx.js';
+
+/**
+ * THE LOADOUT — every weapon every player carries, in slot order.
+ *
+ * There is no per-player loadout editor and deliberately so: this is an arena
+ * shooter where both sides start identical, and the only asymmetry is which
+ * weapon you chose to be holding when the corner came. Everyone spawns with all
+ * four, bound to 1-4 (Tab and the mouse wheel cycle them), so a remote player is
+ * carrying exactly what you are — `net` replicates the weapon id on a hit so the
+ * killfeed and the muzzle-flash class agree with what actually shot you.
+ *
+ * The order is the draw order and the escalation order: rate of fire, then
+ * reach, then a sidearm, then the thing that ends an exchange in one round.
+ */
+export const LOADOUT = ['rifle', 'smg', 'pistol', 'sniper'];
+
+/** Slot binds, in `LOADOUT` order. */
+const SLOT_KEYS = ['Digit1', 'Digit2', 'Digit3', 'Digit4'];
 
 /**
  * WEAPONS — weapon meshes, the first-person viewmodel rig, ADS, recoil, sway,
@@ -39,7 +58,9 @@ import { clamp, clamp01, lerp, damp, DEG } from './mathx.js';
  *   wp.spreadDegrees      live cone half-angle — drive the crosshair gap with it
  *   wp.adsProgress        0..1
  *   wp.reloading / wp.firing / wp.switching / wp.inspecting
- *   wp.weaponIds          ['rifle','smg','pistol']
+ *   wp.weaponIds          ['rifle','smg','pistol','sniper']  (= LOADOUT)
+ *   wp.damageAt(d, zone)  what one round would do at `d` metres — `net` settles
+ *                         PvP hits with it so both damage models agree
  *   wp.setWeapon(id)      draw/holster animated swap
  *   wp.nextWeapon()
  *   wp.cycleFireMode()
@@ -51,6 +72,9 @@ import { clamp, clamp01, lerp, damp, DEG } from './mathx.js';
  *   wp.debugPose(kind)    'idle' | 'ads' | 'fire'  (the capture harness)
  *   wp.stats              { tris, drawCalls, live, fired }
  *   wp.throwables         equipment: `.counts`, `.cooking`, beginCook/release
+ *
+ * LOADOUT — 1/2/3/4 select, Tab and the wheel cycle. Every player carries all
+ * four; see the `LOADOUT` note below and the balance contract in defs.js.
  *
  * EQUIPMENT — hold `grenade` (G) or `tactical` (H) to cook, release to throw.
  * The cook burns the real fuse, so a held frag air-bursts and a held-too-long
@@ -162,9 +186,9 @@ export class WeaponSystem {
     this.viewmodel.onClipEvent = (name, clip) => this._onClipEvent(name, clip);
 
     const t0 = performance.now();
-    const builders = { rifle: buildRifle, smg: buildSmg, pistol: buildPistol };
+    const builders = { rifle: buildRifle, smg: buildSmg, pistol: buildPistol, sniper: buildSniper };
     let tris = 0;
-    for (const id of ['rifle', 'smg', 'pistol']) {
+    for (const id of LOADOUT) {
       const def = { ...WEAPON_DEFS[id] };
       def.cycleTime = 60 / def.rpm;
       const model = builders[id]();
@@ -268,6 +292,33 @@ export class WeaponSystem {
 
   muzzleWorld(out) {
     return this.viewmodel.muzzleWorld(out ?? this._tmp);
+  }
+
+  /**
+   * What one round of a weapon does at `distance` metres to `zone`.
+   *
+   * The bullet path never calls this: a round fired at a bot is a real
+   * projectile, and `physics` scales it by the collider it hits. This is for
+   * everything that has to know the answer WITHOUT firing — `net`, which settles
+   * a PvP hit against a remote puppet it raycast itself, and the balance
+   * self-test. Keeping it here rather than reimplementing the sums in `net` is
+   * what stops the two damage models drifting apart, which is exactly what had
+   * happened: PvP was running a hardcoded "1 % per metre past 30 m, floor 55 %"
+   * ramp and a flat x2 headshot against the x4 every bot takes.
+   *
+   * @param {number} distance metres from the muzzle
+   * @param {string} [zone]   key in HIT_ZONES ('head' | 'torso' | 'limb' | ...)
+   * @param {object} [def]    a weapon def; defaults to the one in hand
+   */
+  damageAt(distance, zone = 'torso', def = this.current) {
+    if (!def) return 0;
+    const falloff = rangeFalloff(
+      distance,
+      def.falloffStart ?? 0,
+      def.falloffEnd ?? def.maxRange ?? 400,
+      def.dropoff ?? 1
+    );
+    return def.damage * falloff * (HIT_ZONES[zone] ?? 1);
   }
 
   /**
@@ -418,6 +469,8 @@ export class WeaponSystem {
       penetration: def.penetration,
       dragK: def.dragK,
       dropoff: def.dropoff,
+      falloffStart: def.falloffStart,
+      falloffEnd: def.falloffEnd,
       maxRange: def.maxRange,
       weapon: def,
       tracer: this.stats.fired % def.tracerEvery === 0,
@@ -439,7 +492,15 @@ export class WeaponSystem {
     this._fireSeed = seed;
 
     // Shell leaves the port shortly after the shot, once the bolt is back.
-    this._queueShell(Math.min(0.05, this._fireTimer * 0.45));
+    //
+    // On a self-loader that is 50 ms — the gas system does it for you. On a bolt
+    // gun the case cannot leave until a hand has thrown the bolt, so it rides
+    // the same curve the viewmodel animates (`boltCycle`, which runs over 62 %
+    // of the cycle) and the brass appears a third of a second after the bang.
+    // Ejecting it at 50 ms would have the case flying out of a closed action.
+    this._queueShell(
+      def.boltAction ? this._fireTimer * 0.3 : Math.min(0.05, this._fireTimer * 0.45)
+    );
     return true;
   }
 
@@ -635,9 +696,9 @@ export class WeaponSystem {
       if (input.actionPressed('reload')) this.reload();
       if (input.pressed('KeyB')) this.cycleFireMode();
       if (input.pressed('KeyI')) this.inspect();
-      if (input.pressed('Digit1')) this.setWeapon('rifle');
-      if (input.pressed('Digit2')) this.setWeapon('smg');
-      if (input.pressed('Digit3')) this.setWeapon('pistol');
+      for (let i = 0; i < SLOT_KEYS.length; i++) {
+        if (input.pressed(SLOT_KEYS[i])) this.setWeapon(LOADOUT[i]);
+      }
       if (input.pressed('Tab')) this.nextWeapon();
       if (input.wheel) this.nextWeapon();
       this._runThrowables(input);
@@ -665,7 +726,10 @@ export class WeaponSystem {
     }
 
     // Push the ADS curve to the player so camera FOV / move speed follow it.
-    player?.setAdsProgress?.(this.viewmodel.adsT);
+    // The second argument is the OPTIC: a 3.3x scope and a 1x red dot cannot
+    // share one global zoom, and `player` owns the camera, so the weapon states
+    // what its glass does and the camera decides how to get there.
+    player?.setAdsProgress?.(this.viewmodel.adsT, def.adsFovScale);
 
     this.stats.live = this.sim.stats.live;
     this.stats.fired = this.sim.stats.fired;
@@ -727,6 +791,17 @@ export class WeaponSystem {
     else if (st.speed > 3.2) base *= SPREAD_MODS.walking;
     if (st.sprint) base *= SPREAD_MODS.sprinting;
     if (st.airborne) base *= SPREAD_MODS.airborne;
+    /**
+     * AIRBORNE IS ADDITIVE, and it is the only modifier that is.
+     *
+     * Every other stance scales the aimed cone, which is right — bracing a
+     * weapon makes crouching matter less, not more. But a weapon with a near-zero
+     * ADS cone is immune to a multiplier by construction: 2.0 x 0.02 deg is
+     * still 0.04 deg, so the AX-7 would be pinpoint accurate fired mid-jump and
+     * the jump-shot would be strictly better than standing still. Feet off the
+     * ground adds a fixed cone that no amount of aiming removes.
+     */
+    if (st.airborne) base += def.spreadAirAdd ?? 0.35;
     return base;
   }
 
@@ -813,7 +888,10 @@ export class WeaponSystem {
     // A fixed, non-zero noise phase: a settled but not artificially symmetric pose.
     vm.noiseT = 12.37;
     vm.debugFrozen = true;
-    this._spread = kind === 'ads' ? 0.24 : 2.05;
+    // From the def, not a copy of it: these were the carbine's literal 0.24/2.05
+    // and silently went stale the moment its hip cone was retuned.
+    const dbgDef = this.states.get(this.activeId)?.def;
+    this._spread = kind === 'ads' ? dbgDef?.spreadAds ?? 0.24 : dbgDef?.spreadHip ?? 2.15;
     this._sinceShot = 10;
     this._debugFrame = 0;
 

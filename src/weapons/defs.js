@@ -13,6 +13,48 @@ import { DEG } from './mathx.js';
  *                and counter. Generated once from a fixed seed.
  *   - `spread`   a random cone that grows with sustained fire and shrinks when
  *                aiming, crouched or still. This is the part you cannot learn.
+ *
+ * ────────────────────────────────────────────────────────────────────────────
+ * THE BALANCE CONTRACT
+ * ────────────────────────────────────────────────────────────────────────────
+ * A body is 100 HP and `src/ai` scales incoming damage by the zone it lands in:
+ * head x4.0, upper torso x1.0, lower torso x0.9, arm x0.65, leg x0.7. So base
+ * damage is not a feel number — it is a SHOTS-TO-KILL number, and each weapon's
+ * identity is which side of an integer boundary it lands on:
+ *
+ *   weapon  dmg   torso STK   rpm    TTK (upper torso)   head
+ *   rifle    33      4        800        225 ms          1 shot (132)
+ *   smg      26      4        950        189 ms          1 shot (104)
+ *   pistol   29      4        480        375 ms          1 shot (116)
+ *   sniper  115      1         50        one shot        1 shot (460)
+ *
+ * The SMG wins inside ~18 m and the carbine everywhere past it — which is what
+ * `falloffStart/falloffEnd/dropoff` below are for, and the reason the SMG's is
+ * so much steeper. Before this pass the SMG did 24 (a 5-shot kill at 950 rpm =
+ * 253 ms) with a WIDER hip cone than the carbine, so it lost at every range and
+ * in every stance: strictly dominated, the one thing a weapon set may never do.
+ *
+ * The AX-7 sits outside that table on purpose. It kills in one shot on any HEAD
+ * or TORSO hit at any range the round survives (115 x 0.9 = 103.5 on the lower
+ * torso), and in exactly two on a LIMB — which is the whole balance: a hit is
+ * lethal, a clipped arm hands the target 1.2 s of bolt cycle to kill you back.
+ *
+ * ────────────────────────────────────────────────────────────────────────────
+ * DAMAGE FALLOFF — a two-point ramp, not a curve
+ * ────────────────────────────────────────────────────────────────────────────
+ * Falloff used to be `1 - (1 - dropoff) * (travelled/maxRange)^2` over the
+ * round's whole FLIGHT range. Measured against real engagement distances that
+ * did essentially nothing: the SMG kept 99.4 % of its damage at 25 m and 92.8 %
+ * at 60 m, because a quadratic over 240 m is flat everywhere a fight happens.
+ * Range was therefore not a balance lever at all, and the only thing separating
+ * the weapons was rate of fire.
+ *
+ * It is now the standard two-point ramp every modern shooter uses, decoupled
+ * from flight distance:
+ *   - full damage out to `falloffStart`
+ *   - a straight ramp to `dropoff` of it at `falloffEnd`
+ *   - flat beyond, until `maxRange` retires the round
+ * so the numbers below are readable as metres on a map.
  */
 
 export const WEAPON_DEFS = {
@@ -34,16 +76,21 @@ export const WEAPON_DEFS = {
     muzzleVelocity: 880,
     damage: 33,
     penetration: 1.0,
+    /* Full damage to 42 m, ramping to 62 % by 110 m: still a 4-shot kill at the
+     * far end of any street on the map, 5 across it. */
+    falloffStart: 42,
+    falloffEnd: 110,
     dropoff: 0.62,
     maxRange: 420,
     dragK: 0.28,
     tracerEvery: 3,
     /* --- accuracy (degrees) --- */
-    spreadHip: 2.05,
+    spreadHip: 2.15,
     spreadAds: 0.24,
     spreadPerShot: 0.3,
     spreadMax: 3.4,
     spreadDecay: 3.6,
+    spreadAirAdd: 0.35,
     /* --- recoil --- */
     recoil: {
       pitch: 0.0085, // radians of camera climb per shot
@@ -63,6 +110,11 @@ export const WEAPON_DEFS = {
     adsTime: 0.22,
     adsFov: 0.74,
     viewFov: 0.86,
+    /* World-camera FOV multiplier while aimed — `weapons` pushes it at `player`
+     * every frame (see WeaponSystem.update). 0.72 is what `config.adsFovScale`
+     * applied to every weapon before optics were allowed to differ, so the
+     * carbine's sight picture is unchanged. */
+    adsFovScale: 0.72,
     reloadTac: 2.1,
     reloadEmpty: 2.9,
     inspectTime: 3.2,
@@ -156,17 +208,30 @@ export const WEAPON_DEFS = {
     magSize: 32,
     reserve: 224,
     muzzleVelocity: 400,
-    damage: 24,
+    /* 26, not 24. At 24 the SMG needed five torso hits (253 ms at 950 rpm)
+     * against the carbine's four (225 ms), so it lost the close-range fight it
+     * exists to win. Four hits is 189 ms — 36 ms of daylight inside its band. */
+    damage: 26,
     penetration: 0.45,
-    dropoff: 0.48,
+    /* And it pays for that with the steepest ramp in the set: 44 % by 46 m turns
+     * a 4-shot kill into a 6-shot one, which is 379 ms against the carbine's
+     * 225. The crossover lands around 18 m. */
+    falloffStart: 16,
+    falloffEnd: 46,
+    dropoff: 0.44,
     maxRange: 240,
     dragK: 0.42,
     tracerEvery: 4,
-    spreadHip: 2.5,
+    /* Hipfire is the SMG's identity and its cone was WIDER than the carbine's
+     * (2.5 against 2.05), which is backwards. It is now the tightest of the
+     * three, and the bloom per shot is the steepest, so it rewards a burst from
+     * the hip and punishes holding the trigger at range. */
+    spreadHip: 1.75,
     spreadAds: 0.4,
-    spreadPerShot: 0.26,
-    spreadMax: 3.9,
+    spreadPerShot: 0.3,
+    spreadMax: 4.4,
     spreadDecay: 4.4,
+    spreadAirAdd: 0.4,
     recoil: {
       pitch: 0.0058,
       yaw: 0.0026,
@@ -184,6 +249,9 @@ export const WEAPON_DEFS = {
     adsTime: 0.185,
     adsFov: 0.78,
     viewFov: 0.88,
+    /* A 1x compact red dot has no magnification to give, and the peripheral
+     * vision it keeps is worth more than reach to a weapon that lives at 15 m. */
+    adsFovScale: 0.8,
     reloadTac: 1.85,
     reloadEmpty: 2.5,
     inspectTime: 2.9,
@@ -213,25 +281,35 @@ export const WEAPON_DEFS = {
     label: 'P-19',
     class: 'pistol',
     caliber: '9x19',
-    rpm: 460,
+    /* 480, not 460: a striker-fired 9 mm is trigger-limited, and four hits at
+     * 460 was 391 ms — far enough behind the carbine that the sidearm was never
+     * worth drawing over a reload. 375 ms plus the fastest draw in the game
+     * (0.42 s against the carbine's 2.1 s tactical reload) is what makes the
+     * swap a real decision. */
+    rpm: 480,
     modes: ['semi'],
     burstCount: 1,
-    burstRpm: 460,
+    burstRpm: 480,
     burstDelay: 0.1,
     magSize: 17,
     reserve: 68,
     muzzleVelocity: 360,
-    damage: 28,
+    /* 29 keeps the four-hit kill intact through the whole ramp (29 x 0.52 x 4 =
+     * 60 at 55 m+), so the sidearm degrades in TIME, never in shot count. */
+    damage: 29,
     penetration: 0.35,
-    dropoff: 0.42,
+    falloffStart: 20,
+    falloffEnd: 55,
+    dropoff: 0.52,
     maxRange: 180,
     dragK: 0.46,
     tracerEvery: 5,
-    spreadHip: 3.1,
+    spreadHip: 2.6,
     spreadAds: 0.5,
     spreadPerShot: 0.42,
     spreadMax: 4.6,
     spreadDecay: 5.2,
+    spreadAirAdd: 0.55,
     recoil: {
       pitch: 0.0125,
       yaw: 0.0032,
@@ -249,6 +327,8 @@ export const WEAPON_DEFS = {
     adsTime: 0.16,
     adsFov: 0.86,
     viewFov: 0.92,
+    /* Irons and a mini reflex over a 183 mm slide: almost no zoom, all speed. */
+    adsFovScale: 0.86,
     reloadTac: 1.6,
     reloadEmpty: 2.2,
     inspectTime: 2.6,
@@ -269,6 +349,151 @@ export const WEAPON_DEFS = {
     swayScale: 1.15,
     bobScale: 1.1,
     magLen: 0.108,
+  },
+
+  /**
+   * THE QUICKSCOPE RIFLE.
+   *
+   * Every number below serves one loop, and it is the loop Call of Duty and
+   * Counter-Strike both build a whole skill ceiling on:
+   *
+   *     flick onto the target -> scope -> the instant the glass is up the
+   *     round goes exactly where the crosshair is -> one hit anywhere on the
+   *     head or torso ends it -> 1.2 s of bolt cycle, during which you are a
+   *     man holding a 932 mm rifle in a corridor.
+   *
+   * Four mechanics carry it, and they are all in this block:
+   *
+   *  1. `spreadAds: 0.02`. A cone of 0.02 deg is 1.7 cm at 50 m — the shot goes
+   *     where the reticle is, full stop. That is the non-negotiable half of
+   *     quickscoping: if a scoped sniper round can miss a stationary head, the
+   *     technique does not exist. Counter-Strike's AWP is the same contract.
+   *  2. `spreadHip: 6.5`. And the other half. A 6.5 deg cone is 5.7 m across at
+   *     50 m, so a no-scope is a lottery ticket, not a playstyle. The entire
+   *     value of the weapon is gated behind the scope being up.
+   *  3. `spreadDecay: 24`. This is the number that MAKES the technique work and
+   *     it is the least obvious. Spread relaxes toward its resting value at
+   *     `spreadDecay * (1 + adsProgress)` deg/s, so at the carbine's 3.6 the
+   *     6.5 deg hip cone would take 0.9 s to bleed down after the scope was
+   *     already up — you would be scoped, on target, and still missing. At 24 it
+   *     is gone in 0.14 s, comfortably inside the 0.34 s `adsTime`, so the scope
+   *     coming up IS the shot being ready. Nothing else gates it.
+   *  4. `rpm: 50` and `spreadPerShot: 3.2`. The cost. One shot every 1.2 s, and
+   *     the cone is blown to 3.2 deg the instant you fire, so there is no such
+   *     thing as a fast second shot even if you could cycle faster.
+   *
+   * `adsFovScale: 0.3` is the scope: a 3.3x picture against the carbine's 1.4x.
+   * `adsTime: 0.34` is slow enough to lose a close-quarters trade and fast
+   * enough to win a flick — which is exactly where a sniper belongs.
+   */
+  sniper: {
+    id: 'sniper',
+    label: 'AX-7',
+    class: 'sniper',
+    caliber: '.338 LM',
+    /* --- fire control --- */
+    rpm: 50, // 1.2 s of bolt cycle between rounds
+    modes: ['semi'],
+    burstCount: 1,
+    burstRpm: 50,
+    burstDelay: 0.1,
+    /** Manually cycled: the bolt is thrown on every shot, not by a gas system. */
+    boltAction: true,
+    /* --- ammunition --- */
+    magSize: 5,
+    reserve: 25,
+    /* --- terminal ballistics --- */
+    muzzleVelocity: 915,
+    /**
+     * 115 is a SHOTS-TO-KILL number, not a feel number. Against the zone table
+     * in `src/ai` (head x4, upper torso x1, lower torso x0.9, arm x0.65, leg
+     * x0.7) it is the smallest value that kills on any torso hit — 115 x 0.9 =
+     * 103.5 — while still leaving a limb hit non-lethal at 74.8 and 80.5. That
+     * pair of facts IS the balance: the rifle is decisive when it connects with
+     * a body and hands the fight back when it clips an arm.
+     */
+    damage: 115,
+    /** AP-grade: the one weapon in the set that reliably shoots through cover. */
+    penetration: 2.2,
+    /* Flat to 120 m and 88 % at 420 m, so the torso kill survives any sightline
+     * on any map. Past 420 m the lower-torso hit (91) stops being lethal, which
+     * is the only range band where a body shot is not enough. */
+    falloffStart: 120,
+    falloffEnd: 420,
+    dropoff: 0.88,
+    maxRange: 900,
+    dragK: 0.11,
+    /** Every round traces. A .338 is loud, bright and visible — sniping from the
+     *  same window twice is meant to get you killed. */
+    tracerEvery: 1,
+    /* --- accuracy (degrees) — see the note above this block --- */
+    spreadHip: 6.5,
+    spreadAds: 0.02,
+    spreadPerShot: 3.2,
+    spreadMax: 8.5,
+    spreadDecay: 24,
+    spreadAirAdd: 2.2,
+    /* --- recoil --- */
+    recoil: {
+      pitch: 0.052, // ~3 deg of camera climb per shot
+      yaw: 0.006,
+      kickBack: 0.055,
+      kickUp: 0.022,
+      roll: 0.055,
+      punch: 1.15,
+      freq: 5.2,
+      damping: 0.5,
+      patternLength: 5,
+      patternSeed: 0x7b2c19,
+      climbShape: [1.0],
+      drift: 0.4,
+    },
+    /* --- handling (seconds) --- */
+    adsTime: 0.34,
+    adsFov: 0.42,
+    /**
+     * The VIEWMODEL camera, not the world camera. It zooms far less than the
+     * world does (0.58 against `adsFovScale` 0.3) because the scope housing is
+     * drawn by this camera and the sight picture by the other: at 0.3 the
+     * 35 mm tube would be 1.9x oversized and swallow the frame. 0.58 puts the
+     * housing at 62 % of frame height with 40 % of clear glass inside it, which
+     * is where a modern shooter frames a magnified optic.
+     */
+    viewFov: 0.58,
+    /** 3.3x. The whole reason to carry it. */
+    adsFovScale: 0.3,
+    reloadTac: 3.0,
+    reloadEmpty: 3.9,
+    inspectTime: 3.6,
+    drawTime: 0.78,
+    holsterTime: 0.52,
+    /**
+     * Pushed 35 mm further from the eye than the carbine's -0.30. The weapon is
+     * 932 mm from butt pad to crown against the carbine's 747, and the butt has
+     * to stay in front of the eye rather than behind it: at -0.335 the pad sits
+     * 63 mm forward of the camera, the same clearance the carbine has.
+     * The support hand is the binding constraint on going further — see the
+     * `gripL` note in models/sniper.js.
+     */
+    hipPos: [0.122, -0.196, -0.335],
+    hipRot: [-0.05, 0.081, -0.135],
+    adsCant: [0, 0, 0.002],
+    /**
+     * Solved on the same aperture budget as the carbine's red dot (see
+     * parts.js buildOptic): with a 35 mm tube, a 105 mm body and a 50 mm
+     * objective bore, 105 mm of relief lands the ocular cone at 0.133, the
+     * objective at 0.118 and the housing at 0.183 — a sight picture filling
+     * 65 % of the housing, against the red dot's 69 %.
+     */
+    eyeRelief: 0.105,
+    sprintPos: [0.094, -0.276, -0.3],
+    sprintRot: [-0.42, 0.64, 0.22],
+    lowReadyPos: [0.116, -0.298, -0.322],
+    lowReadyRot: [-0.48, 0.13, -0.09],
+    /** Heavy and long: it wanders more at rest and swings harder on the move. */
+    swayScale: 1.55,
+    bobScale: 1.3,
+    magLen: 0.118,
   },
 };
 
@@ -306,6 +531,31 @@ export function buildRecoilPattern(def, Rng) {
   }
   return out;
 }
+
+/**
+ * Damage multiplier per hit zone.
+ *
+ * This MIRRORS the hitbox table `src/ai` builds its soldiers from (see
+ * `HITBOXES` in src/ai/agent.js) — it does not define it. `ai` owns the capsules
+ * and physics applies `collider.damageScale` at the moment of contact, so a
+ * bullet fired at a bot never reads this object.
+ *
+ * It exists because two other places need to answer "what would this weapon do
+ * to that zone" WITHOUT firing a bullet: `WeaponSystem.damageAt`, which `net`
+ * uses to settle a PvP hit against a remote puppet (there are no ACTOR colliders
+ * on a puppet — `net` raycasts a capsule itself), and the balance self-test,
+ * which asserts the shots-to-kill matrix at the top of this file.
+ *
+ * If `ai` retunes its capsules, this and the self-test both have to follow.
+ */
+export const HIT_ZONES = {
+  head: 4.0,
+  torso: 1.0,
+  torsoLow: 0.9,
+  arm: 0.65,
+  leg: 0.7,
+  limb: 0.7,
+};
 
 export const SPREAD_MODS = {
   crouch: 0.78,

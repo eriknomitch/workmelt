@@ -28,9 +28,29 @@ class Projectile {
     this.maxRange = 400;
     this.age = 0;
     this.dropoff = 0.5;
+    this.falloffStart = 0;
+    this.falloffEnd = 400;
     this.weapon = null;
     this.mask = undefined;
   }
+}
+
+/**
+ * Two-point damage falloff: full damage to `start`, a straight ramp to
+ * `retain` of it at `end`, flat beyond. See the note in defs.js for why this
+ * replaced a quadratic over the round's whole flight range — the short version
+ * is that the quadratic left every weapon at >92 % damage everywhere a fight
+ * actually happens, so range could not be balanced at all.
+ */
+export function rangeFalloff(distance, start, end, retain) {
+  if (distance <= start) return 1;
+  // Both plateaus return their endpoint EXACTLY rather than evaluating the ramp
+  // at t=0/1: `1 - (1 - 0.44) * 1` is 0.43999999999999995, and a shots-to-kill
+  // number is a ceil() of a division by this.
+  if (distance >= end) return retain;
+  const span = end - start;
+  if (span <= 1e-3) return retain;
+  return 1 - (1 - retain) * ((distance - start) / span);
 }
 
 export class ProjectileSim {
@@ -80,6 +100,8 @@ export class ProjectileSim {
     p.dragK = o.dragK ?? 0.3;
     p.dropoff = o.dropoff ?? 0.5;
     p.maxRange = o.maxRange ?? 400;
+    p.falloffStart = o.falloffStart ?? 0;
+    p.falloffEnd = o.falloffEnd ?? p.maxRange;
     p.travelled = 0;
     p.age = 0;
     p.weapon = o.weapon ?? null;
@@ -128,8 +150,9 @@ export class ProjectileSim {
         if (hit?.hit) {
           // Contact: hand the round to the penetration solver, which emits
           // `bullet:impact` for every entry and exit face it goes through.
-          const range01 = Math.min(1, p.travelled / p.maxRange);
-          const falloff = 1 - (1 - p.dropoff) * range01 * range01;
+          // `dropoff: 1` below because the range term is applied HERE, against
+          // the distance the round actually flew, not re-derived downrange.
+          const falloff = rangeFalloff(p.travelled, p.falloffStart, p.falloffEnd, p.dropoff);
           phys.fireBullet({
             origin: p.prev,
             dir: this._hitDir,

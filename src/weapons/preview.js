@@ -21,6 +21,7 @@ import { WEAPON_DEFS } from './defs.js';
 import { buildRifle } from './models/rifle.js';
 import { buildSmg } from './models/smg.js';
 import { buildPistol } from './models/pistol.js';
+import { buildSniper } from './models/sniper.js';
 
 const params = new URLSearchParams(location.search);
 const WEAPON = params.get('w') ?? 'rifle';
@@ -116,9 +117,9 @@ if (!FIRST_PERSON) {
   vm.rigOverride = { position: new THREE.Vector3(), quaternion: new THREE.Quaternion() };
 }
 
-const builders = { rifle: buildRifle, smg: buildSmg, pistol: buildPistol };
+const builders = { rifle: buildRifle, smg: buildSmg, pistol: buildPistol, sniper: buildSniper };
 const stats = {};
-for (const id of ['rifle', 'smg', 'pistol']) {
+for (const id of Object.keys(builders)) {
   const def = { ...WEAPON_DEFS[id] };
   def.cycleTime = 60 / def.rpm;
   const entry = vm.addWeapon(builders[id](), def);

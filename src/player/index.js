@@ -608,12 +608,21 @@ export class PlayerSystem {
     return this.rig.bobPhase;
   }
 
-  /** `weapons` owns the ADS curve; hand it over and everything else follows. */
-  setAdsProgress(v) {
+  /**
+   * `weapons` owns the ADS curve; hand it over and everything else follows.
+   *
+   * @param {number} v          0..1 through the weapon's own ADS blend
+   * @param {number} [fovScale] the OPTIC on that weapon, as a multiplier on
+   *   `config.fov`. Omit for the config default — a 1x sight. The camera cannot
+   *   derive this: only the weapon knows whether it is looking through a red dot
+   *   or a 3.3x scope, and the difference is the whole point of carrying one.
+   */
+  setAdsProgress(v, fovScale) {
     this.adsAmount = clamp01(v);
     this._adsExternal = true;
     this._adsExternalAge = 0;
     this.movement.adsAmount = this.adsAmount;
+    this.rig.adsFovScale = fovScale ?? null;
   }
 
   addRecoil(pitch, yaw, roll, punch) {
