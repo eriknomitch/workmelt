@@ -6,8 +6,8 @@ URL, send it to a friend, and you're in the same match.
 
 ```bash
 npm install
-npm run dev:mp        # runs the client (:5173) + relay (:8787) together
-# open http://localhost:5173 — a ?room=CODE is added to the URL automatically
+npm run dev:mp        # runs the client (:5273) + relay (:8787) together
+# open http://localhost:5273 — a ?room=CODE is added to the URL automatically
 # copy the invite link (top bar) and open it in another tab or send it to a friend
 ```
 

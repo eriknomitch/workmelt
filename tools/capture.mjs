@@ -24,7 +24,7 @@ const args = Object.fromEntries(
   })
 );
 
-const PORT = Number(args.port ?? 5173);
+const PORT = Number(args.port ?? process.env.OW_PORT ?? 5273);
 const W = Number(args.w ?? 1920);
 const H = Number(args.h ?? 1080);
 const SHOT = args.shot ?? 'default';

@@ -27,7 +27,7 @@ const args = Object.fromEntries(process.argv.slice(2).map((a) => {
   const m = a.match(/^--([^=]+)(?:=(.*))?$/); return m ? [m[1], m[2] ?? true] : [a, true];
 }));
 
-const PORT = Number(args.port ?? 5173);
+const PORT = Number(args.port ?? process.env.OW_PORT ?? 5273);
 const W = Number(args.w ?? 1920);
 const H = Number(args.h ?? 1080);
 const SETTLE = Number(args.settle ?? 90);

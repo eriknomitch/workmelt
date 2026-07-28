@@ -29,7 +29,7 @@ const args = Object.fromEntries(
   })
 );
 
-const PORT = Number(args.port ?? 5173);
+const PORT = Number(args.port ?? process.env.OW_PORT ?? 5273);
 const SHOT = args.shot ?? 'combat';
 const QUALITY = args.quality ?? 'high';
 const W = Number(args.w ?? 960);

@@ -11,7 +11,7 @@ layer with sampled sound effects. The only runtime dependency is `three`.
 
 ```bash
 npm install
-npm run dev          # http://127.0.0.1:5173
+npm run dev          # http://127.0.0.1:5273  (override with OW_PORT)
 ```
 
 The game opens on a **Match Start** screen rather than dropping you mid-firefight:
@@ -81,7 +81,7 @@ it switches together. Adding a fifth is a module and one line in
 It's also a room-based free-for-all you invite friends to with a link.
 
 ```bash
-npm run dev:mp       # client (:5173) + relay (:8787) together
+npm run dev:mp       # client (:5273) + relay (:8787) together
 ```
 
 Open the URL — a `?room=CODE` is added automatically, so the address bar is
@@ -236,7 +236,7 @@ The Auto-only Performance tier has an isolated acceptance gate that is
 independent of the user's foreground tab:
 
 ```bash
-node tools/profile.mjs --port=5173 --dpr=2 --w=1280 --h=720 --frames=360 \
+node tools/profile.mjs --port=5273 --dpr=2 --w=1280 --h=720 --frames=360 \
   --target=120 --query=q=performance\&mp=0\&prewarm=0
 ```
 
