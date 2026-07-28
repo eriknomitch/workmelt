@@ -72,6 +72,13 @@ export class CameraRig {
     this.fov = this.baseFov;
     this.fovMove = 1;
     this.fovAds = 1;
+    /**
+     * The optic currently on the weapon, as a multiplier on `config.fov`, or
+     * null for "whatever the config says". `weapons` writes it through
+     * `Player.setAdsProgress`, because a 3.3x scope and a 1x red dot cannot
+     * share one global zoom — see `adsFovScale` in src/weapons/defs.js.
+     */
+    this.adsFovScale = null;
 
     // ---- slide -----------------------------------------------------------
     this.slideBlend = 0;
@@ -302,7 +309,8 @@ export class CameraRig {
     else if (m.sprinting) moveTarget = F.sprint;
     else if (!m.grounded && m.velocity.y < -6) moveTarget = F.air;
     this.fovMove = approach(this.fovMove, moveTarget, F.moveTau, dt);
-    this.fovAds = approach(this.fovAds, lerp(1, cfg.adsFovScale, ads), F.adsTau, dt);
+    const adsScale = this.adsFovScale ?? cfg.adsFovScale;
+    this.fovAds = approach(this.fovAds, lerp(1, adsScale, ads), F.adsTau, dt);
     this.baseFov = cfg.fov;
     this.fov = this.baseFov * this.fovMove * this.fovAds;
 

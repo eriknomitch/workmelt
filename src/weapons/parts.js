@@ -1070,6 +1070,168 @@ export function addCarbineStock(asm, matAlu, matPoly, matRubber, o) {
   addQdSocket(asm, matPoly, matAlu, -0.0215, yAxis - 0.014, bz - 0.026, 'x', 0.005);
 }
 
+/**
+ * Fixed precision-chassis stock — a machined skeleton, not a moulded shell.
+ *
+ * The silhouette is the whole point of it. A carbine stock is a solid wedge on a
+ * buffer tube and reads as "assault rifle" from any angle; a chassis stock is a
+ * spine with a THUMBHOLE cut through it, an adjustable comb standing proud on
+ * two posts, and a butt plate on a length-of-pull rail. That cut-out is the one
+ * feature that says "bolt gun" at 40 px of screen width, which is what the rear
+ * half of the weapon occupies in hipfire framing.
+ *
+ *   spine     top rail of the stock, receiver face to the butt plate
+ *   under     the lower strap that closes the thumbhole
+ *   comb      adjustable cheek riser on two 8 mm posts
+ *   plate     butt plate + rubber pad on the LOP rail
+ *   monopod   the rear support spigot under the toe
+ */
+export function addChassisStock(asm, matAlu, matPoly, matRubber, o) {
+  const bore = o.bore;
+  const zFront = o.zFront; // receiver face
+  const zRear = o.zRear; // butt pad
+  const yAxis = o.y ?? bore - 0.016;
+  const w = o.w ?? 0.0205;
+  const len = zRear - zFront;
+
+  // ---- spine: the top strap, running level with the receiver -------------
+  const spine = box(w, 0.0235, len - 0.012, 0.0018, 2);
+  asm.add(spine, matAlu, { y: yAxis + 0.0195, z: (zFront + zRear) / 2 - 0.004 });
+  spine.dispose();
+  // Lightening cuts along the spine flanks — a chassis is always milled out.
+  for (let i = 0; i < 3; i++) {
+    const cut = box(0.006, 0.013, 0.026, 0.0012, 2);
+    asm.addMirrored(cut, 'cavity', {
+      x: w * 0.5 - 0.002,
+      y: yAxis + 0.0195,
+      z: zFront + 0.03 + i * 0.036,
+    });
+    cut.dispose();
+  }
+
+  // ---- lower strap: closes the thumbhole and carries the grip tang -------
+  const strap = extrude(
+    [
+      [-len * 0.5 + 0.006, yAxis - 0.006],
+      [-len * 0.5 + 0.05, yAxis - 0.052],
+      [len * 0.5 - 0.036, yAxis - 0.056],
+      [len * 0.5 - 0.006, yAxis - 0.012],
+      [len * 0.5 - 0.006, yAxis + 0.002],
+      [len * 0.5 - 0.03, yAxis - 0.038],
+      [-len * 0.5 + 0.058, yAxis - 0.034],
+      [-len * 0.5 + 0.02, yAxis - 0.002],
+    ],
+    w - 0.003,
+    { bevel: 0.0016, bevelSegments: 2 }
+  );
+  strap.rotateY(Math.PI / 2); // outline-X is fore/aft; extrude across the weapon
+  asm.add(strap, matAlu, { z: (zFront + zRear) / 2 });
+  strap.dispose();
+
+  // ---- adjustable comb on two posts -------------------------------------
+  for (const dz of [-0.03, 0.028]) {
+    const post = rodZ(0.0042, 0.0042, 0.026, 10, 0.0005);
+    asm.add(post, matAlu, {
+      y: yAxis + 0.031 + 0.013,
+      z: zFront + len * 0.46 + dz,
+      rx: Math.PI / 2,
+    });
+    post.dispose();
+    addScrew(asm, matAlu, w * 0.5 - 0.001, yAxis + 0.028, zFront + len * 0.46 + dz, 0.0026, 'x', 0.008);
+  }
+  const comb = blob(w + 0.008, 0.0155, 0.104, 0.005, 3);
+  asm.add(comb, matPoly, { y: yAxis + 0.052, z: zFront + len * 0.46, rx: -0.035 });
+  comb.dispose();
+  // Cheek pad: rubber, so the one surface a face touches is not anodised alloy.
+  const cheekPad = blob(w + 0.0035, 0.005, 0.09, 0.003, 3);
+  asm.add(cheekPad, matRubber, { y: yAxis + 0.0605, z: zFront + len * 0.46, rx: -0.035 });
+  cheekPad.dispose();
+
+  // ---- butt plate on the length-of-pull rail -----------------------------
+  const lopRail = box(w - 0.004, 0.008, 0.052, 0.0009, 1);
+  asm.add(lopRail, matAlu, { y: yAxis - 0.004, z: zRear - 0.03 });
+  lopRail.dispose();
+  const plate = extrude(roundRect(w + 0.014, 0.096, 0.008, 4), 0.009, { bevel: 0.0014 });
+  asm.add(plate, matAlu, { y: yAxis + 0.004, z: zRear - 0.006, rx: 0.05 });
+  plate.dispose();
+  const pad = blob(w * 0.5 + 0.009, 0.048, 0.0105, 0.004, 3);
+  asm.add(pad, matRubber, { y: yAxis + 0.004, z: zRear + 0.001, rx: 0.05 });
+  pad.dispose();
+  for (let i = 0; i < 4; i++) {
+    const g = box(w + 0.008, 0.0032, 0.005, 0.0011, 2);
+    asm.add(g, matRubber, { y: yAxis + 0.026 - i * 0.0155, z: zRear + 0.0038, rx: 0.05 });
+    g.dispose();
+  }
+
+  // ---- monopod spigot under the toe --------------------------------------
+  const spigot = rodZ(0.0062, 0.0062, 0.03, 12, 0.0006);
+  asm.add(spigot, matAlu, { y: yAxis - 0.046, z: zRear - 0.022, rx: Math.PI / 2 });
+  spigot.dispose();
+  const wheel = latheZ(
+    [
+      [0, 0],
+      [0, 0.0092],
+      [0.005, 0.0098],
+      [0.009, 0.0092],
+      [0.009, 0],
+    ],
+    16
+  );
+  asm.add(wheel, matAlu, { y: yAxis - 0.062, z: zRear - 0.022, rx: -Math.PI / 2 });
+  wheel.dispose();
+
+  addSlingLoop(asm, matAlu, w * 0.5 + 0.002, yAxis - 0.036, zFront + 0.05, 0.0075, {
+    ry: Math.PI / 2,
+  });
+  addQdSocket(asm, matAlu, matAlu, -(w * 0.5 + 0.001), yAxis - 0.03, zFront + 0.078, 'x', 0.005);
+}
+
+/**
+ * Folded bipod under the forend.
+ *
+ * Deployed it would be a prop that never touches the ground in a run-and-gun
+ * shooter; folded it is two 150 mm legs lying back along the underside, which is
+ * the read a marksman rifle needs from the side and costs a few hundred tris.
+ */
+export function addBipod(asm, matSteel, matPoly, o) {
+  const y = o.y;
+  const z = o.z;
+  const spread = o.spread ?? 0.019;
+  const legLen = o.legLen ?? 0.15;
+
+  const hub = blob(0.026, 0.016, 0.03, 0.0026, 2);
+  asm.add(hub, matPoly, { y: y + 0.005, z });
+  hub.dispose();
+  addPin(asm, matSteel, 0, y, z + 0.006, 0.0028, 0.03);
+
+  for (const sx of [-1, 1]) {
+    // Legs fold BACK and outward, so the feet end up under the magwell.
+    const leg = rodZ(0.0055, 0.0048, legLen, 10, 0.0006);
+    asm.add(leg, matSteel, {
+      x: sx * spread,
+      y: y - 0.004,
+      z: z + legLen * 0.5 - 0.008,
+      rx: 0.14,
+      ry: sx * 0.05,
+    });
+    leg.dispose();
+    const foot = blob(0.0072, 0.0062, 0.012, 0.0022, 2);
+    asm.add(foot, matPoly, { x: sx * spread, y: y - 0.011, z: z + legLen - 0.006 });
+    foot.dispose();
+    const collar = latheZ(
+      [
+        [0, 0.0058],
+        [0, 0.0072],
+        [0.006, 0.0072],
+        [0.006, 0.0058],
+      ],
+      12
+    );
+    asm.add(collar, matSteel, { x: sx * spread, y: y - 0.004, z: z + 0.042 });
+    collar.dispose();
+  }
+}
+
 /* -------------------------------------------------------------------------- */
 /*  magazine                                                                  */
 /* -------------------------------------------------------------------------- */
@@ -1266,10 +1428,18 @@ export function buildOptic(asm, o) {
    * A 230 px sight picture inside a 336 px housing: 69% instead of 34%, and the
    * housing itself drops from 50% of frame height to 31%, which is where a modern
    * shooter actually frames a tube sight.
+   *
+   * A MAGNIFIED scope has to solve the same budget with a much longer tube, and
+   * the only variable that pays for the length is the objective: a 3-4x glass is
+   * a 35 mm tube with a 50-56 mm front bell, not a straight pipe. `boreOb` /
+   * `bellOb` exist for that — the objective cone is what keeps
+   * `boreOb*rTube / (relief + len)` on top of `boreOc*rTube / relief` once `len`
+   * doubles. The defaults are the red dot's, so the carbine and the SMG are
+   * bit-identical to before.
    */
-  const rBoreOc = rTube * 0.787; // 12.2 mm on a 15.5 mm tube
-  const rBoreOb = rTube * 1.065; // flared to 16.5 mm at the objective
-  const rBellOb = rTube * 1.226; // 19.0 mm objective bell
+  const rBoreOc = rTube * (o.boreOc ?? 0.787); // 12.2 mm on a 15.5 mm tube
+  const rBoreOb = rTube * (o.boreOb ?? 1.065); // flared to 16.5 mm at the objective
+  const rBellOb = rTube * (o.bellOb ?? 1.226); // 19.0 mm objective bell
   const zOc = len / 2;
   const zOb = -len / 2;
 
@@ -1499,6 +1669,13 @@ export function buildOptic(asm, o) {
    */
   const mountTop = y - rTube;
   const mountH = mountTop - railTop;
+  /**
+   * `ringZ` is where the two clamps sit relative to the tube centre. A 52 mm red
+   * dot carries one short cantilever, so the default pair is 26 mm apart; a
+   * 105 mm scope in a one-piece mount needs them spread over most of the tube or
+   * the glass reads as balanced on a peg. Same part, two spacings.
+   */
+  const ringZ = o.ringZ ?? [-0.014, 0.012];
   const base = extrude(
     [
       [-0.0092, 0],
@@ -1514,7 +1691,7 @@ export function buildOptic(asm, o) {
       [-0.0072, -mountH * 0.45],
       [-0.0105, -0.0025],
     ],
-    0.03,
+    o.mountLen ?? 0.03,
     { bevel: 0.0008 }
   );
   asm.add(base, matBody, { y: mountTop, z: z + 0.002 });
@@ -1529,14 +1706,13 @@ export function buildOptic(asm, o) {
     ],
     SEG
   );
-  asm.add(clamp, matBody, { y, z: z - 0.014 });
-  asm.add(clamp, matBody, { y, z: z + 0.012 });
+  for (const rz of ringZ) asm.add(clamp, matBody, { y, z: z + rz });
   clamp.dispose();
-  for (const cz of [z - 0.0115, z + 0.0145]) {
-    addScrew(asm, matSteel, 0.0135, mountTop - 0.004, cz, 0.0028, 'x', 0.01);
+  for (const rz of ringZ) {
+    addScrew(asm, matSteel, 0.0135, mountTop - 0.004, z + rz + 0.0025, 0.0028, 'x', 0.01);
   }
   // recoil lug + rail clamp bolts
-  const clampBar = box(0.032, 0.006, 0.03, 0.0008, 1);
+  const clampBar = box(0.032, 0.006, (o.mountLen ?? 0.03) + 0.002, 0.0008, 1);
   asm.add(clampBar, matBody, { y: railTop + 0.001, z: z + 0.002 });
   clampBar.dispose();
   addScrew(asm, matSteel, 0.0165, railTop + 0.001, z - 0.008, 0.003, 'x', 0.012);
@@ -1627,6 +1803,9 @@ export function buildOptic(asm, o) {
     apertureR: lensR * 0.94,
     tubeR: rTube,
     len,
+    // Which reticle the viewmodel collimates behind this glass: a red dot's
+    // emitter, or a magnified scope's etched crosshair. See Viewmodel._updateReticle.
+    reticle: o.reticle ?? 'dot',
   };
 }
 

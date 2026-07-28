@@ -15,6 +15,11 @@ The browser client lives in `src/`. Features are divided into subsystem director
 - `npm run serve` builds, then serves the client and Node relay.
 - `node src/physics/selftest.js` and `node src/ai/selftest.mjs` run subsystem checks.
 - `node src/weapons/throwables.selftest.mjs` checks the equipment inventory contract (a pulled pin is never refunded), the cook-off, and which event each throwable detonates with.
+- `node src/weapons/balance.selftest.mjs` checks the weapon balance contract: the
+  shots-to-kill matrix, the two-point damage falloff, that no weapon is strictly
+  dominated by another, the AX-7's quickscope invariants (including a simulation
+  of the spread integrator, which is what makes the technique possible), and that
+  recoil patterns stay deterministic.
 - `node src/audio/attenuation.selftest.mjs` checks which sounds are head-locked and
   which are spatialised — the near field is flat at 1.0 and the dry path has no
   distance law, so the routing decision is what keeps either from running away.

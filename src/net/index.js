@@ -435,7 +435,6 @@ export class NetSystem {
     this._origin.copy(e.origin);
     this._dir.copy(e.dir).normalize();
 
-    const baseDmg = this.weapons?.current?.damage ?? 30;
     let best = null;
     let bestT = Infinity;
     for (const p of this.peers.values()) {
@@ -455,26 +454,45 @@ export class NetSystem {
       // occlusion by the world
       this._v.copy(this._origin).addScaledVector(this._dir, res.t);
       if (!this.physics.lineOfSight(this._origin, this._v, this.physics.MASK.SIGHT)) continue;
+      /**
+       * ZONE, not just head-or-not.
+       *
+       * A puppet carries no ACTOR colliders — `net` raycasts one capsule — so
+       * the zone has to come out of where along the segment the round landed.
+       * Three bands against the same multipliers every bot uses (see
+       * `WeaponSystem.damageAt`): the top 180 mm is the head, everything below
+       * 45 % of standing height is legs, and the rest is torso.
+       *
+       * Before this there were two bands and a flat x2 head multiplier, so the
+       * SAME weapon killed a bot in four torso hits and a player in four, but
+       * one-tapped the bot on a headshot and needed two on the player — and a
+       * shot through the ankle did full torso damage. A weapon set cannot be
+       * balanced against two different damage models.
+       */
       const headY = feet.y + top;
-      const headshot = res.py > headY - 0.18;
+      const legY = feet.y + top * 0.45;
+      const zone = res.py > headY - 0.18 ? 'head' : res.py < legY ? 'limb' : 'torso';
       bestT = res.t;
-      best = { p, headshot, dist: res.t };
+      best = { p, zone, dist: res.t };
     }
     if (!best) return;
 
-    const falloff = best.dist > 30 ? Math.max(0.55, 1 - (best.dist - 30) * 0.01) : 1;
-    let dmg = baseDmg * falloff * (best.headshot ? 2 : 1);
-    dmg = Math.round(dmg);
+    // The weapon's OWN falloff ramp and zone table, so PvP and PvE agree.
+    const dmg = Math.round(this.weapons?.damageAt?.(best.dist, best.zone) ?? 30);
+    const headshot = best.zone === 'head';
     this._send({
       t: 'hit',
       target: best.p.id,
       dmg,
-      part: best.headshot ? 'head' : 'body',
+      part: headshot ? 'head' : 'body',
       o: [this._origin.x, this._origin.y, this._origin.z],
-      w: e.weapon ?? 'rifle',
+      // The ID, not the def. `weapon:fire` carries the whole weapon definition
+      // object, and this used to put all ~50 fields of it on the wire on every
+      // connecting shot; the receiver only ever wanted a name for the killfeed.
+      w: typeof e.weapon === 'string' ? e.weapon : e.weapon?.id ?? 'rifle',
     });
     // Immediate local feedback (server confirms the kill).
-    this.uiSys?.hitmarker?.(best.headshot ? 'head' : 'hit');
+    this.uiSys?.hitmarker?.(headshot ? 'head' : 'hit');
   }
 
   /* ==================================================================== */
