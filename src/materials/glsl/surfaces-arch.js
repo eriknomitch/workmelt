@@ -328,6 +328,41 @@ void owSurface(vec2 uv, out vec3 alb, out float h, out float rough, out float me
   float cavity = 1.0 - smoothstep(0.50, 0.74, h);
   c = mix(c, owSRGB(vec3(0.16, 0.15, 0.14)), cavity * 0.32);
 
+  // ---------------- limewash (uParam.x = coat opacity) ----------------
+  // A LIMEWASHED WALL IS NOT A WHITE-CLAY WALL. The coat is a thin mineral
+  // slurry brushed onto a finished wall, so it belongs HERE — over the brick,
+  // the mortar, the efflorescence and the runoff — rather than in the kiln
+  // colours above. Everything underneath survives in the relief and in what
+  // shows through, which is precisely what a photograph of one looks like:
+  // white, and unmistakably still brick.
+  //
+  // Three things stop it reading as flat paint, and all three are visible on
+  // the real house:
+  //   brushed   the coat is thin where the brush dragged, so the wall is
+  //             blotchy at ~1 m rather than uniform
+  //   wear      it wears off what stands proud first, so arrises and chipped
+  //             corners go pink where the clay comes back through
+  //   joints    it pools in the recessed joints and holds there, which keeps
+  //             the coursing legible instead of burying it
+  if (uParam.x > 0.001) {
+    float brushed = owFbm01(owWarp(p * 3.4 + 12.0, P * 3.4, 0.6, 3), P * 3.4, 4, 0.55);
+    float thin = smoothstep(0.24, 0.90, brushed);
+    float worn = clamp(smoothstep(0.63, 0.92, h) * 0.5 + chip * 0.85, 0.0, 0.8);
+    // 0.48, not the 0.32 this started at: at a third the coat never dropped
+    // below ~0.68 anywhere, so the densest passages went fully opaque and the
+    // wall came back an even, synthetic white. The house is visibly blotchy —
+    // the brush leaves the clay showing through in patches, and that mottle is
+    // most of what says "limewash" rather than "painted render" at 3 m.
+    float coat = uParam.x * (1.0 - thin * 0.48) * (1.0 - worn);
+    // the wash sits a shade cooler and denser down in the joints than on the
+    // brick faces, which is the whole reason the coursing survives the coat
+    vec3 washCol = owSRGB(vec3(0.895, 0.880, 0.836));
+    washCol = mix(washCol * 0.93, washCol, m);
+    c = mix(c, washCol, clamp(coat, 0.0, 1.0));
+    // limewash is chalk: flat matte, and flatter than the brick it covers
+    rough = mix(rough, 0.95, uParam.x * 0.75);
+  }
+
   alb = clamp(c, vec3(0.02), vec3(0.85));
   rough = clamp(rough, 0.35, 0.99);
   ao = clamp(ao, 0.12, 1.0);

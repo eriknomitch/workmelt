@@ -70,6 +70,43 @@ export const LIBRARY = {
       roughness: [0.98, -0.01, 0.26],
     },
   },
+  /**
+   * The same brick under a coat of limewash (BRICK's `uParam.x`). It needs its
+   * own bake rather than a palette tint because the runtime tint is a MULTIPLY
+   * — it can only darken, and no multiple of red brick is white.
+   *
+   * It is deliberately the cheap half of that trade: 512 px, not the 1024 the
+   * bare wall gets. A coated wall has most of its albedo detail painted out by
+   * definition, so the texels are doing far less work — what has to survive is
+   * the relief, and that is carried by the normal map at any resolution. One
+   * 512 three-map set is roughly a quarter of a 1024 one, i.e. ~3 MB against
+   * the library's 288 MB. See TEXTURE-PERF.md on why `bake:` overrides are
+   * worth counting: twelve careless ones are the 243 -> 288 MB gap.
+   *
+   * `relief` is roughly half the bare wall's, which is the coat part-filling
+   * the joints, and `parallax` follows it down. The macro and detail albedo
+   * terms are pulled back for the same reason: paint has less colour variation
+   * than fired clay, and leaving them at brick's values reads as a dirty wall
+   * rather than a painted one.
+   */
+  brick_limewash: {
+    glsl: BRICK,
+    surface: 'concrete',
+    bake: { size: 512, worldSize: 1.35, relief: 0.03, seed: 23, param: [1, 0, 0, 0] },
+    mat: {
+      scale: 1.35,
+      parallax: 0.012,
+      parallaxLayers: 16,
+      detile: 0,
+      detail: [7, 0.7, 0.32, 22],
+      macro: [0.09, 0.4, 0.18, 0.28],
+      macroBig: [1.95, 0.09, 0.03, 0],
+      weather: [0.4, 0.5, 0.7, 0.5],
+      wearColor: 0xa8786a,
+      grimeColor: 0x3a352c,
+      roughness: [0.99, 0.0, 0.4],
+    },
+  },
   plaster: {
     glsl: PLASTER,
     surface: 'plaster',

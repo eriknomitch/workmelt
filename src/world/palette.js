@@ -413,17 +413,55 @@ export const PALETTE = {
     surface: 'foliage',
     opts: { vertexMasks: true, tint: 0xc08a92 },
   },
-  /** The manor's English-revival brick: tighter and redder than the market's. */
+  /**
+   * The manor's English-revival brick, left bare: the chimney stacks above the
+   * roofline and the greenhouse plinth. Everything else on the house is
+   * `brick_lime` — see there for why the two are one wall in two finishes.
+   */
   brick_red: {
     name: 'brick',
     surface: 'concrete',
     opts: { vertexMasks: true, tint: 0x96604c, scale: 0.6, weather: [0.4, 0.45, 0.8, 0.55] },
   },
-  /** The clay tile roof the listing calls out. Dark, cool, matte. */
+  /**
+   * LIMEWASHED BRICK — the house's actual finish, and the one thing a
+   * photograph of it settles instantly: the walls are white, not red.
+   *
+   * It is emphatically not plaster: it is a thin coat brushed ONTO brick, so
+   * the coursing still reads in raking light and the wash wears off the
+   * arrises first. That comes from the `brick_limewash` BAKE, not from here —
+   * `tint` is a multiply and no multiple of red brick is white. See the note
+   * on the library entry, and on BRICK's `uParam.x`, for the coat itself.
+   *
+   * What is left to do here is hold the result near white (the tint is a hair
+   * off neutral, warm, so it does not tip blue against the lawn) and let the
+   * wall weather. The rain and ground-splash terms run well above
+   * `brick_red`'s: a white wall shows its streaking and its grubby bottom
+   * metre, and a clean one would read as new paint on a 1935 house.
+   */
+  brick_lime: {
+    name: 'brick_limewash',
+    surface: 'concrete',
+    opts: {
+      vertexMasks: true,
+      tint: 0xf2ece0,
+      scale: 0.6,
+      weather: [0.45, 0.5, 0.85, 0.45],
+      wear: [0.55, 0.55, 0.35, 0],
+      wearColor: 0xa8786a,
+      grimeColor: 0x45463a,
+    },
+  },
+  /**
+   * The roof. Warm brown, coarse and thick — the house is roofed in heavy
+   * shingle-cut tile that has gone mossy, not the cool blue-grey slate the
+   * first pass assumed. `normalStrength` and the cavity-grime term do the
+   * work: the surface is visibly uneven course to course.
+   */
   roof_tile: {
     name: 'tile',
     surface: 'concrete',
-    opts: { vertexMasks: true, tint: 0x6a5a52, scale: 1.1, normalStrength: 1.3, weather: [0.5, 0.3, 0.5, 0.5] },
+    opts: { vertexMasks: true, tint: 0x5e4c3a, scale: 1.3, normalStrength: 1.5, weather: [0.5, 0.3, 0.5, 0.65] },
   },
   /** Interior hardwood, per the listing. Plank field at floor scale. */
   floor_wood: {
@@ -460,11 +498,33 @@ export const PALETTE = {
     surface: 'metal',
     opts: { vertexMasks: true, tint: 0xc9c6bc, scale: 0.9, weather: [0.45, 0.3, 0.4, 0.45] },
   },
-  /** Cut stone for terraces, copings and steps — paler than raw concrete. */
+  /** Cut stone for copings, sills, balustrades and steps — paler than raw concrete. */
   stone_pale: {
     name: 'concrete',
     surface: 'concrete',
     opts: { vertexMasks: true, tint: 0xb3a892, scale: 1.5, weather: [0.5, 0.35, 0.6, 0.5] },
+  },
+  /**
+   * Bluestone paving for the terrace and the garden paths. Cooler and greyer
+   * than the cut stone it used to share a key with, which matters because the
+   * two now meet along the terrace edge: warm coping over cold paving is the
+   * contrast that reads as two different stones instead of one big slab.
+   *
+   * The cavity-grime term is the highest on the map. Every joint in these
+   * paths has moss and weed in it, and grime pooling in the cavities is what
+   * puts it there without a single extra triangle.
+   */
+  flagstone: {
+    name: 'concrete',
+    surface: 'concrete',
+    opts: {
+      vertexMasks: true,
+      tint: 0x8e9490,
+      scale: 2.2,
+      normalStrength: 1.15,
+      weather: [0.4, 0.25, 0.5, 0.75],
+      grimeColor: 0x3a4030,
+    },
   },
   /** Baled hay: hessian run bright and dry. */
   straw: {
