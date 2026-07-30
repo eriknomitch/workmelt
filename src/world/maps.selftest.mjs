@@ -23,7 +23,16 @@
 import * as THREE from 'three';
 import { Rng } from '../core/rng.js';
 import { Assembler } from './builder.js';
-import { MAPS, DEFAULT_MAP_ID, getMap, isMapId, mapSummaries, resolveBootMap } from './maps.js';
+import {
+  MAPS,
+  ALL_MAPS,
+  DEFAULT_MAP_ID,
+  getMap,
+  isMapId,
+  mapRegistry,
+  mapSummaries,
+  resolveBootMap,
+} from './maps.js';
 import { CONTAINER } from './rustprops.js';
 import { CONTAINERS, STRUCTURES, RUST, DERRICK, inSolid } from './rust.js';
 import { HEDGE } from './wilmotprops.js';
@@ -98,6 +107,13 @@ const stubMaterials = {
   setGroundLevel() {},
 };
 
+/**
+ * Look a map up REGARDLESS of its enable flag — `getMap` deliberately hides a
+ * disabled one, and the per-map geometry checks below must keep running on a
+ * parked map. That is the whole point of parking rather than deleting it.
+ */
+const mapById = (id) => ALL_MAPS.find((m) => m.id === id) ?? null;
+
 function buildMap(map) {
   const rng = new Rng(0x51ed2b73).fork();
   const A = new Assembler({ materials: stubMaterials, rng, render: null });
@@ -112,14 +128,68 @@ function buildMap(map) {
 /* ────────────────────────────────────────────────────────────── the list ── */
 console.log(B('\nthe map list'));
 ok(MAPS.length >= 2, 'at least two maps ship', MAPS.map((m) => m.id).join(', '));
-ok(new Set(MAPS.map((m) => m.id)).size === MAPS.length, 'ids are unique');
+ok(new Set(ALL_MAPS.map((m) => m.id)).size === ALL_MAPS.length, 'ids are unique');
 ok(isMapId(DEFAULT_MAP_ID) && getMap(DEFAULT_MAP_ID) != null, 'the default map exists', DEFAULT_MAP_ID);
 ok(getMap('nope') === null && !isMapId('nope'), 'an unknown id resolves to null');
 ok(
-  mapSummaries().every((s) => s.id && s.name && s.subtitle && s.blurb && s.size),
+  mapSummaries().every((s) => s.id && s.name && s.description && s.blurb && s.size),
   'every summary the menu renders is complete'
 );
-for (const m of MAPS) {
+
+/**
+ * THE REGISTRY — the failures that come from editing that one table.
+ *
+ * None of these is visible in a frame. Disabling the boot map or leaving a
+ * stale id in `localStorage` both end as "the game does not start", and a menu
+ * string that drifted back onto a descriptor is a string nobody renders.
+ */
+ok(MAPS.every((m) => ALL_MAPS.includes(m)), 'the enabled list is a subset of every map');
+{
+  const reg = mapRegistry();
+  ok(new Set(reg.map((e) => e.order)).size === reg.length, 'menu orders are unique',
+    reg.map((e) => e.order).join(', '));
+  ok(reg.every((e, i) => i === 0 || reg[i - 1].order < e.order), 'the registry is exposed in menu order');
+  ok(reg.every((e) => typeof e.enabled === 'boolean'), 'every entry states enabled explicitly');
+  ok(
+    reg.map((e) => e.id).join() === ALL_MAPS.map((m) => m.id).join(),
+    'ALL_MAPS follows the registry order'
+  );
+  ok(
+    mapSummaries().map((s) => s.id).join() ===
+      reg.filter((e) => e.enabled).map((e) => e.id).join(),
+    'the menu renders in registry order'
+  );
+}
+ok(
+  MAPS.some((m) => m.id === DEFAULT_MAP_ID),
+  'the default map is ENABLED — disabling it bricks boot',
+  DEFAULT_MAP_ID
+);
+{
+  const disabled = ALL_MAPS.filter((m) => !MAPS.includes(m));
+  ok(
+    disabled.every((m) => !isMapId(m.id) && getMap(m.id) === null),
+    'a disabled map is unreachable by id',
+    disabled.length ? disabled.map((m) => m.id).join(', ') : 'none disabled'
+  );
+  ok(
+    disabled.every((m) =>
+      resolveBootMap({ search: `?map=${m.id}` }) === DEFAULT_MAP_ID &&
+      resolveBootMap({ preferred: m.id }) === DEFAULT_MAP_ID),
+    'a disabled map falls back to the default rather than failing boot'
+  );
+  ok(
+    mapSummaries().every((s) => !disabled.some((m) => m.id === s.id)),
+    'the menu never offers a disabled map'
+  );
+}
+ok(
+  ALL_MAPS.every((m) => m.name === undefined && m.subtitle === undefined),
+  'no descriptor carries its own menu strings — the registry owns them',
+  ALL_MAPS.filter((m) => m.name !== undefined || m.subtitle !== undefined).map((m) => m.id).join(', ')
+);
+
+for (const m of ALL_MAPS) {
   const shape =
     typeof m.build === 'function' &&
     typeof m.standable === 'function' &&
@@ -145,7 +215,7 @@ const WEATHER_KEYS = new Set([
   'turbidity', 'cloudCoverage', 'cloudDensity', 'cirrusCoverage', 'cirrusOpacity',
   'windSpeed', 'windAngle', 'horizonMurk', 'fogDensity', 'fogHeight', 'shaftGain',
 ]);
-for (const m of MAPS.filter((m) => m.environment)) {
+for (const m of ALL_MAPS.filter((m) => m.environment)) {
   const e = m.environment;
   ok(Number.isFinite(e.hour) && e.hour >= 0 && e.hour < 24, `"${m.id}" is set at a real hour`, `${e.hour}`);
   ok(
@@ -164,7 +234,7 @@ for (const m of MAPS.filter((m) => m.environment)) {
 // still builds, still plays and looks nothing like itself — every emitter on
 // it (marquee, blade sign, lit rooms, the stalled train) was placed for 23:30.
 {
-  const loopEnv = getMap('loop').environment;
+  const loopEnv = mapById('loop').environment;
   ok(loopEnv != null && (loopEnv.hour < 4.5 || loopEnv.hour > 21), 'the loop is a night map',
     `${loopEnv?.hour ?? 'no environment'}`);
 }
@@ -176,7 +246,7 @@ ok(resolveBootMap({ search: '?map=rust' }) === 'rust', '?map= wins');
 ok(resolveBootMap({ search: '?map=atlantis' }) === DEFAULT_MAP_ID, 'an unknown ?map= falls back');
 ok(resolveBootMap({ preferred: 'rust' }) === 'rust', 'an explicit override is honoured');
 ok(
-  resolveBootMap({ search: '?map=market', preferred: 'rust' }) === 'market',
+  resolveBootMap({ search: '?map=fishers', preferred: 'rust' }) === 'fishers',
   '?map= beats the override'
 );
 ok(
@@ -189,7 +259,7 @@ ok(
 );
 
 /* ───────────────────────────────────────────────────────── build every map ── */
-for (const map of MAPS) {
+for (const map of ALL_MAPS) {
   console.log(B(`\n${map.id} — build`));
   let out = null;
   let err = null;
@@ -309,7 +379,7 @@ ok(
   'the crow’s nest clears the flight that reaches it'
 );
 
-const rust = getMap('rust');
+const rust = mapById('rust');
 // The only route to the deck. If a container ever lands on its run-up the map
 // loses its vertical half and nothing else in the build would say so.
 const footOpen =
@@ -387,7 +457,7 @@ const wOut = wRects.filter(
 );
 ok(wOut.length === 0, 'everything solid is inside the wall', wOut.map((r) => r[0]).join(' '));
 
-const wilmot = getMap('wilmot');
+const wilmot = mapById('wilmot');
 // The manor is the landmark: two real storeys and the map's tallest eaves.
 const manor = WILMOT_STRUCTURES.find((s) => s.id === 'manor');
 ok(manor.floors === 2 && manor.h > 6, 'the manor is a two-storey landmark', `${manor.h} m eaves`);
@@ -478,7 +548,7 @@ const fOut = fRects.filter(
 );
 ok(fOut.length === 0, 'everything solid is inside the treeline', fOut.map((r) => r[0]).join(' '));
 
-const fishers = getMap('fishers');
+const fishers = mapById('fishers');
 // The house is the landmark and the north end of the axis; the pool house is
 // the map's second storey and the only thing that answers its first floor.
 const fHouse = FISHER_STRUCTURES.find((s) => s.id === 'house');
@@ -608,7 +678,7 @@ ok(TRAIN.z < 0 && Math.abs(TRAIN.z) + TRAIN.w / 2 < EL.deckHalf, 'on the north t
 ok(STATION.z0 - (TRAIN.z + TRAIN.w / 2) > 1.2, 'the platform lane squeezes past the train',
   `${(STATION.z0 - (TRAIN.z + TRAIN.w / 2)).toFixed(1)} m`);
 
-const loop = getMap('loop');
+const loop = mapById('loop');
 // Both stair feet start from open ground, or the second storey is scenery.
 // The station flight is entered from the intersection's sidewalk to its west,
 // the scaffold flight from the roadway south of it.

@@ -12,11 +12,11 @@ import { FISHERS_MAP } from './fishers.js';
  * new module rather than a fork of the world subsystem, and so the player can
  * choose one on the Match Start screen.
  *
- * A MAP DESCRIPTOR provides:
+ * A MAP DESCRIPTOR provides the level itself. Its menu NAME and DESCRIPTION are
+ * not here — they live in `REGISTRY` below, beside the enable flag and the menu
+ * order, so that one table answers "what ships, in what order, called what".
  *
  *   id           stable string, used in the URL (`?map=rust`) and on the wire
- *   name         what the menu shows
- *   subtitle     one line under the name
  *   blurb        two lines of "what is it like to play"
  *   size         human-readable extent, for the menu card
  *   transform    { yaw, tx, tz } — LEVEL -> WORLD, baked into every vertex
@@ -45,10 +45,112 @@ import { FISHERS_MAP } from './fishers.js';
  * `build` must register its own prop prototypes and must draw only from the
  * `rng` it is handed — the world's fork — so a capture run stays reproducible.
  */
-export const MAPS = [MARKET_MAP, RUST_MAP, WILMOT_MAP, LOOP_MAP, FISHERS_MAP];
+/**
+ * THE REGISTRY — the one table to edit.
+ *
+ * Everything that is a DEPLOY decision rather than a level-design one lives
+ * here, so "what ships, in what order, called what" is one file to read:
+ *
+ *   map          the descriptor module
+ *   order        menu position, low to high. Sparse on purpose (10, 20, 30…)
+ *                so a map can be slotted between two others without renumbering
+ *                the rest. Ties break on registry position.
+ *   enabled      false hides it from the menu, the URL and the boot resolver.
+ *                It is NOT deleted: `ALL_MAPS` still carries it and
+ *                `maps.selftest.mjs` still builds it, so a parked map cannot
+ *                rot quietly and come back broken.
+ *   name         what the menu shows
+ *   description  one line under the name
+ *
+ * `name`/`description` live here rather than on the descriptor so that the
+ * modules stay pure geometry, and so there is exactly one place a menu string
+ * can be wrong. The descriptor keeps `blurb` and `size` — those are written
+ * with the level, not with the release.
+ *
+ * This list is a MODULE, not `game.json`, because it holds live references to
+ * `build`/`standable`/`groundY` closures, because `resolveBootMap` needs it
+ * synchronously at boot, and because `maps.selftest.mjs` runs under node where
+ * a fetch of the public root would silently resolve to nothing.
+ */
+const REGISTRY = [
+  {
+    map: WILMOT_MAP,
+    order: 10,
+    enabled: true,
+    name: 'Wilmot',
+    description: 'Bannockburn estate grounds',
+  },
+  {
+    map: FISHERS_MAP,
+    order: 20,
+    enabled: true,
+    name: "The Fisher's",
+    description: 'North Shore estate, down the pool axis',
+  },
+  {
+    map: RUST_MAP,
+    order: 30,
+    enabled: true,
+    name: 'Rust',
+    description: 'Desert oil refinery',
+  },
+  {
+    map: MARKET_MAP,
+    order: 40,
+    enabled: false,
+    name: 'Market',
+    description: 'Middle-Eastern market street',
+  },
+  {
+    map: LOOP_MAP,
+    order: 50,
+    enabled: false,
+    name: 'The Loop',
+    description: 'Chicago corner under the L, after dark',
+  },
+];
 
-/** The map a fresh session boots on. Every capture baseline is framed on it. */
-export const DEFAULT_MAP_ID = 'market';
+/** Registry order, resolved once. `sort` is stable, so ties keep listed order. */
+const ORDERED = [...REGISTRY].sort((a, b) => a.order - b.order);
+
+/** Registry metadata by map id — what `mapSummaries` merges over the descriptor. */
+const META = new Map(ORDERED.map((e) => [e.map.id, e]));
+
+/**
+ * EVERY map, enabled or not, in menu order.
+ *
+ * This is the selftest's surface. Nothing in the running game should read it:
+ * a disabled map has no spawns validated against a live match and must not be
+ * reachable from the menu, the URL or a stored preference.
+ */
+export const ALL_MAPS = ORDERED.map((e) => e.map);
+
+/** The maps a player can actually reach, in menu order. */
+export const MAPS = ORDERED.filter((e) => e.enabled).map((e) => e.map);
+
+/**
+ * The registry as plain data, in menu order — for tooling and the selftest.
+ * Copies, so a reader cannot enable a map by mutating what it was handed.
+ */
+export function mapRegistry() {
+  return ORDERED.map((e) => ({
+    id: e.map.id,
+    order: e.order,
+    enabled: e.enabled,
+    name: e.name,
+    description: e.description,
+  }));
+}
+
+/**
+ * The map a fresh session boots on. Every capture baseline is framed on it.
+ *
+ * MUST be an ENABLED id — a default that is parked resolves to nothing and boot
+ * fails. `maps.selftest.mjs` guards exactly that. Moved off the market when the
+ * market was parked; every baseline shot before that framed the market and is
+ * not comparable to one shot now.
+ */
+export const DEFAULT_MAP_ID = 'wilmot';
 
 /** Where the chosen map is remembered between sessions. */
 const STORAGE_KEY = 'workmelt.map';
@@ -61,12 +163,17 @@ export function isMapId(id) {
   return typeof id === 'string' && MAPS.some((m) => m.id === id);
 }
 
-/** The menu's model: everything `src/match` needs, and nothing it does not. */
+/**
+ * The menu's model: everything `src/match` needs, and nothing it does not.
+ *
+ * Menu order is registry order, and the presentation strings are the registry's
+ * — the descriptor supplies only what was authored with the level.
+ */
 export function mapSummaries() {
   return MAPS.map((m) => ({
     id: m.id,
-    name: m.name,
-    subtitle: m.subtitle,
+    name: META.get(m.id).name,
+    description: META.get(m.id).description,
     blurb: m.blurb,
     size: m.size,
   }));

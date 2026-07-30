@@ -1643,8 +1643,6 @@ export function buildLoop(A, rng) {
 
 export const LOOP_MAP = {
   id: 'loop',
-  name: 'The Loop',
-  subtitle: 'Chicago corner under the L, after dark',
   blurb:
     'Two streets cross under the elevated at half past eleven: steel columns and lit shopfronts below, a stalled train, a station platform and a walkable curve of track above.',
   size: '76 × 76 m',
