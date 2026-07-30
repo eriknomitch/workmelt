@@ -5,13 +5,14 @@ registered and verified. Line references drift; trust the named files.
 
 ## The descriptor
 
-`src/world/maps.js` documents this in full. Every map exports one object:
+`src/world/maps.js` documents this in full. The menu NAME and DESCRIPTION are
+**not** on the descriptor — they live in the `REGISTRY` table in `maps.js`,
+beside the enable flag and the menu order, so the descriptor carries only what
+is authored with the level. Every map exports one object:
 
 ```js
 export const FOO_MAP = {
   id: 'foo',            // stable slug: URL (?map=foo) and the wire
-  name: 'Foo',          // menu card title
-  subtitle: '…',        // one line under the name
   blurb: '…',           // two lines of "what is it like to play"
   size: '80 × 80 m',    // human-readable extent for the menu card
   transform: { yaw, tx, tz },  // LEVEL -> WORLD, baked into every vertex
@@ -51,12 +52,21 @@ The test builds every map for real (real Assembler, stub materials) in Node.
 For every map in `MAPS`:
 
 - descriptor shape: all functions present, `bounds.length === 6`, finite yaw
-- menu summary complete: id, name, subtitle, blurb, size all truthy
+- menu summary complete: id, name, description, blurb, size all truthy
+  (name/description come from the registry, the rest from the descriptor)
 - builds without throwing
 - `staticTris > 5000` — real merged geometry
 - `instances > 100` — a real instanced prop cloud
 - `collideTris > 500` — authored collision proxies
 - `0 < drawCalls < 320` — the draw-call budget; typical maps land 100–250
+  (an arena blockout can land far lower — Nuketown ships 37)
+- every vertex the build emits is finite and within ±500 m. This is the ONLY
+  check that looks at a coordinate: `kit.js`'s `LL` returns a SHARED scratch
+  matrix, so holding its result as a panel matrix makes every later
+  `LL(pm, …)` compound the transform into itself and walks the building off to
+  10^13 m — with the triangle counts, the draw calls and every layout check
+  still green. Build panel matrices as their own `new THREE.Matrix4()`, and
+  copy anything `worldOf` returns (also shared) before storing it
 - `buildings` non-empty, every footprint has finite `x, z` and `w, d > 0`
 - spawn table: length ≥ 8; every point except index 0 passes `standable`
   AND `isOpen`; every point inside `bounds`; `groundY` finite at every point
@@ -104,10 +114,14 @@ than the minimum to survive that cull.
 
 1. `src/world/<id>.js` — the module, descriptor exported.
 2. (optional) `src/world/<id>props.js` — map-specific prototypes.
-3. `src/world/maps.js` — import, append to `MAPS`, add to the re-export
-   line. Leave `DEFAULT_MAP_ID` alone.
+3. `src/world/maps.js` — import, add a row to the `REGISTRY` table
+   (`{ map, order, enabled, name, description }`) and add to the re-export
+   line. Orders are sparse (10, 20, 30…) so a map slots between two others
+   without renumbering. `MAPS` and `ALL_MAPS` are derived — do not edit them.
+   Leave `DEFAULT_MAP_ID` alone; it must name an ENABLED map or boot fails.
 4. `src/world/maps.selftest.mjs` — import the new map's tables, add its
-   layout section.
+   layout section. Mutation-check every guard you add: break the thing on
+   purpose, confirm that guard (and ideally only that guard) fails.
 5. `ARCHITECTURE.md` — extend the `world.mapId` union in the doc comment.
 
 Nothing else: lobby menu, minimap, `?map=` boot resolution, localStorage
@@ -129,8 +143,9 @@ Browser/GPU (run when the environment has one; otherwise say so):
 ```
 node src/world/spawns.probe.mjs      # collision-validated spawns, bot
                                      # garrison, 30 respawns in the built level
-node tools/capture.mjs               # GPU visual smoke test (frames the
-                                     # market; pass ?map=<id> to shoot the new map)
+node tools/capture.mjs               # GPU visual smoke test (frames the BOOT
+                                     # map from its spawn 0; pass
+                                     # --query="map=<id>" to shoot the new map)
 node src/world/probe.mjs --query="map=<id>" --eval="w.spawnPoints.length"
                                      # ad-hoc queries against the real build
 ```

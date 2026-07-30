@@ -64,6 +64,17 @@ import {
   groundYFishers,
 } from './fishers.js';
 import {
+  NUKE,
+  HOUSES as NUKE_HOUSES,
+  SHEDS as NUKE_SHEDS,
+  SIGN as NUKE_SIGN,
+  YARD_WALLS as NUKE_YARD_WALLS,
+  STREET_BLOCKS as NUKE_STREET_BLOCKS,
+  MOUTH_BLOCKS as NUKE_MOUTH_BLOCKS,
+  inSolid as inSolidNuketown,
+  groundYNuketown,
+} from './nuketown.js';
+import {
   LOOP,
   EL,
   STATION,
@@ -273,9 +284,46 @@ for (const map of ALL_MAPS) {
   ok(!err, 'builds without throwing', err ? `${err.message}` : `${ms.toFixed(0)}ms`);
   if (!out) continue;
 
-  const { A, built } = out;
+  const { A, root, built } = out;
   const s = A.stats;
   ok(s.staticTris > 5000, 'has real static geometry', `${(s.staticTris / 1000).toFixed(0)}k tris`);
+
+  /**
+   * EVERY VERTEX LANDS SOMEWHERE REAL.
+   *
+   * Nothing else in this file looks at a coordinate. The stats above count
+   * triangles and draw calls, and the layout sections below interrogate the
+   * TABLES — so a build that emits the right number of triangles at the wrong
+   * place passes the entire suite.
+   *
+   * That is not hypothetical. `kit.js`'s `LL` returns a shared scratch matrix;
+   * hold onto it as a panel matrix and every subsequent call compounds the
+   * transform into itself, and a building walks off to 10^13 m. The map builds,
+   * every check here goes green, and the house is simply not on screen. Only a
+   * GPU capture caught it, which is a slow way to learn about a typo.
+   *
+   * The bound is deliberately loose — terrain planes legitimately run to ±95 m
+   * around a 50 m map — because it is not measuring composition. It is asking
+   * whether the numbers are numbers.
+   */
+  const SANE = 500;
+  let vmin = Infinity;
+  let vmax = -Infinity;
+  let stray = null;
+  root.traverse((o) => {
+    if (stray || !o.isMesh || !o.geometry?.attributes?.position) return;
+    o.geometry.computeBoundingBox();
+    const b = o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld);
+    for (const v of [b.min, b.max])
+      for (const c of [v.x, v.y, v.z]) {
+        if (!Number.isFinite(c) || Math.abs(c) > SANE) stray = `${o.name ?? 'mesh'} at ${c.toExponential(1)}`;
+        vmin = Math.min(vmin, c);
+        vmax = Math.max(vmax, c);
+      }
+  });
+  ok(!stray, 'every vertex the build emits lands somewhere real',
+    stray ?? `${vmin.toFixed(0)}..${vmax.toFixed(0)} m`);
+
   ok(s.instances > 100, 'has an instanced prop cloud', `${s.instances} instances`);
   ok(s.collideTris > 500, 'authored collision proxies', `${(s.collideTris / 1000).toFixed(1)}k tris`);
   // The whole point of the Assembler is that a map of hundreds of thousands of
@@ -726,6 +774,144 @@ for (const m of MOUTHS) {
   }
   ok(leaks.length === 0, `the ${m.side}${m.u !== 0 ? ` alley (${m.u})` : ' street'} mouth is sealed`,
     leaks.length ? `open at u=${leaks.join(',')}` : `${m.w} m of opening covered`);
+}
+
+/* ─────────────────────────────────────────────────── nuketown — the block ── */
+console.log(B('\nnuketown — the block'));
+
+const nuketown = mapById('nuketown');
+const nRects = [];
+for (const h of NUKE_HOUSES) nRects.push([h.id, h.x - h.w / 2, h.z - h.d / 2, h.x + h.w / 2, h.z + h.d / 2]);
+const nWallRect = (label, x, z, ry, len, t) => {
+  const hx = (ry === 0 ? len : t) / 2;
+  const hz = (ry === 0 ? t : len) / 2;
+  return [label, x - hx, z - hz, x + hx, z + hz];
+};
+for (const [x, z, w, d] of NUKE_SHEDS) nRects.push([`shed(${x},${z})`, x - w / 2, z - d / 2, x + w / 2, z + d / 2]);
+for (const [x, z, ry, len] of NUKE_YARD_WALLS) nRects.push(nWallRect(`yard-wall(${x},${z})`, x, z, ry, len, 0.35));
+for (const [x, z, ry, len] of NUKE_STREET_BLOCKS) nRects.push(nWallRect(`street-block(${x},${z})`, x, z, ry, len, 0.8));
+for (const [x, z, ry, len] of NUKE_MOUTH_BLOCKS) nRects.push(nWallRect(`mouth-block(${z})`, x, z, ry, len, 0.9));
+
+const nOverlaps = [];
+for (let i = 0; i < nRects.length; i++)
+  for (let j = i + 1; j < nRects.length; j++) {
+    const a = nRects[i];
+    const b = nRects[j];
+    if (a[1] < b[3] && a[3] > b[1] && a[2] < b[4] && a[4] > b[2]) nOverlaps.push(`${a[0]} ∩ ${b[0]}`);
+  }
+ok(nOverlaps.length === 0, 'nothing solid is inside anything else solid', nOverlaps.slice(0, 3).join(', '));
+
+const nOut = nRects.filter((r) => r[1] < -NUKE.halfX || r[2] < -NUKE.halfZ || r[3] > NUKE.halfX || r[4] > NUKE.halfZ);
+ok(nOut.length === 0, 'everything solid is inside the compound wall', nOut.map((r) => r[0]).join(' '));
+
+/**
+ * The two houses ARE the map, and three things about them are load-bearing in a
+ * way no still frame shows: that both are two storeys (the upstairs windows are
+ * the whole risk/reward economy), that they are mirrored across the street
+ * rather than merely near it, and that they are STAGGERED along it.
+ *
+ * The stagger is the one deliberate deviation from the reference layout. If a
+ * later edit quietly lines the houses up, the map still builds, still plays and
+ * silently becomes a first-shot-wins duel across 34 m — exactly the failure the
+ * offset exists to prevent, and exactly the kind a screenshot cannot show.
+ */
+const west = NUKE_HOUSES.find((h) => h.id === 'west');
+const east = NUKE_HOUSES.find((h) => h.id === 'east');
+ok(NUKE_HOUSES.every((h) => h.floors === 2 && h.h > 6), 'both houses are two storeys', `${west.h} m ridge`);
+ok(west.x === -east.x && west.face === -east.face, 'the houses mirror across the street');
+ok(Math.abs(west.z - east.z) >= 4, 'and are staggered along it, so the upstairs windows do not face off',
+  `${Math.abs(west.z - east.z)} m of offset`);
+ok(
+  Math.min(Math.abs(west.x) - west.w / 2, Math.abs(east.x) - east.w / 2) > NUKE.kerb,
+  'neither house is built out over its own yard'
+);
+
+/**
+ * The sheds exist to break standing sightlines in the end lots, which only
+ * works if they are TALL — a shed that drifted down to barricade height would
+ * leave the failure `spawns.probe.mjs` found still there, with nothing in the
+ * build to say so. And a shed dropped on a spawn point does not fail anything
+ * either: `buildSpawnPoints` silently culls the point against real collision,
+ * so the map just quietly ships a zone short.
+ */
+ok(NUKE_SHEDS.every(([, , , , h]) => h > 2.4), 'the sheds stand above head height',
+  `${Math.min(...NUKE_SHEDS.map((s) => s[4]))} m shortest`);
+{
+  const swallowed = nuketown.spawnPoints.filter(([x, z]) =>
+    NUKE_SHEDS.some(([sx, sz, w, d]) => Math.abs(x - sx) < w / 2 + 0.6 && Math.abs(z - sz) < d / 2 + 0.6));
+  ok(swallowed.length === 0, 'and none of them is parked on a spawn point',
+    swallowed.map(([x, z, , zone]) => `${zone}(${x},${z})`).join(' '));
+}
+
+/**
+ * The alleys behind the houses are the map's only route between the north and
+ * south ends that does not cross the street. Without them each end is a pocket
+ * with one watched exit — the dead end the playbook exists to forbid — so the
+ * corridor is walked end to end rather than spot-checked.
+ */
+for (const h of NUKE_HOUSES) {
+  const ax = Math.sign(h.x) * (Math.abs(h.x) + h.w / 2 + 1.5);
+  const blocked = [];
+  for (let z = -NUKE.halfZ + 2; z <= NUKE.halfZ - 2; z += 0.5)
+    if (!nuketown.isOpen(ax, z)) blocked.push(z.toFixed(1));
+  ok(blocked.length === 0, `the ${h.id} alley runs the length of the map`,
+    blocked.length ? `blocked at z=${blocked.slice(0, 4).join(',')}` : `x=${ax.toFixed(1)}, wall to wall`);
+}
+
+/**
+ * The sign is the landmark: the one thing visible from every corner, and the
+ * only reason to look up on a map with no reachable roof. It has to span the
+ * street to read as a gantry, clear head height so it costs no sightline it
+ * does not mean to, and stand on ground a player can actually walk to.
+ */
+ok(NUKE_SIGN.poleX * 2 >= NUKE.streetHalf, 'the sign spans a real part of the street',
+  `${(NUKE_SIGN.poleX * 2).toFixed(1)} m across ${NUKE.streetHalf * 2} m of road`);
+ok(NUKE_SIGN.boardY > 2.4 && NUKE_SIGN.poleH > 6, 'it clears head height and stands above the houses’ eaves line',
+  `board at ${NUKE_SIGN.boardY} m, ${NUKE_SIGN.poleH} m tall`);
+ok(
+  [-1, 1].every((s) => nuketown.isOpen(s * (NUKE_SIGN.poleX + 1.2), NUKE_SIGN.z)),
+  'and you can walk up to both of its feet'
+);
+
+// The apron is a poured slab: this map pays for cheap terrain by building every
+// height difference on top of it, so a dig sneaking into the height field is a
+// real regression.
+let nFlat = true;
+for (let x = -NUKE.halfX; x <= NUKE.halfX && nFlat; x += 2)
+  for (let z = -NUKE.halfZ; z <= NUKE.halfZ && nFlat; z += 2) if (Math.abs(groundYNuketown(x, z)) > 0.2) nFlat = false;
+ok(nFlat, 'the compound floor is flat — every rise on this map is built');
+ok(!nuketown.isOpen(0, NUKE.halfZ + 3) && !nuketown.isOpen(NUKE.halfX + 3, 0), 'outside the wall is not playable ground');
+
+// Sample the block. Two 11 x 15 m houses in 51 x 42 m leaves a lot of street,
+// so this sits nearer Rust's yard than the Loop's dense block.
+let nOpen = 0;
+let nTotal = 0;
+for (let x = -NUKE.halfX; x <= NUKE.halfX; x += 1)
+  for (let z = -NUKE.halfZ; z <= NUKE.halfZ; z += 1) {
+    nTotal++;
+    if (nuketown.isOpen(x, z)) nOpen++;
+  }
+const nFrac = nOpen / nTotal;
+ok(nFrac > 0.45 && nFrac < 0.85, 'most of the compound is walkable', `${(nFrac * 100).toFixed(0)}% open`);
+
+/**
+ * THE STREET MOUTHS ARE SEALED — same probe as Rust's gates and the Loop's
+ * street mouths, for the same reason. The compound wall is deliberately open
+ * where the road leaves it at each end, and the barrier line parked across is
+ * the only thing between that opening and empty desert.
+ *
+ * The probe stays 3 m deep on purpose: run it deeper and it reaches the first
+ * street barricade 5 m inside, and becomes an assertion that cannot fail.
+ */
+for (const sz of [-1, 1]) {
+  const leaks = [];
+  for (let x = -NUKE.streetHalf + 0.2; x <= NUKE.streetHalf - 0.2; x += 0.2) {
+    let solid = false;
+    for (let d = 0; d <= 3 && !solid; d += 0.2) if (inSolidNuketown(x, sz * (NUKE.halfZ - d), 0)) solid = true;
+    if (!solid) leaks.push(x.toFixed(1));
+  }
+  ok(leaks.length === 0, `the ${sz < 0 ? 'north' : 'south'} street mouth is sealed`,
+    leaks.length ? `open at x=${leaks.join(',')}` : `${NUKE.streetHalf * 2} m of opening covered`);
 }
 
 console.log(

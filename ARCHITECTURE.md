@@ -144,7 +144,10 @@ says otherwise.
 ```js
 const world = ctx.get('world');
 world.mapId                 // 'market' | 'rust' | 'wilmot' | 'loop' | 'fishers'
-world.maps                  // [{ id, name, subtitle, blurb, size }] for menus
+                            // | 'nuketown' — see the REGISTRY in world/maps.js,
+                            // which is also where a map is enabled or parked
+world.maps                  // [{ id, name, description, blurb, size }] for menus
+                            // — enabled maps only, in registry order
 await world.setMap('rust')  // tear the level down and build another. Emits
                             // `world:rebuilt`. ONLY legal before a match is
                             // live — `src/match` is the only caller.

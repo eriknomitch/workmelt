@@ -49,7 +49,7 @@ import { MAPS, DEFAULT_MAP_ID, getMap, isMapId, mapSummaries, resolveBootMap, sa
  *   world.bounds              THREE.Box3 of the playable area, world space
  *   world.map                 the active map descriptor
  *   world.mapId               its id — 'market' | 'rust' | 'wilmot' | 'loop' |
- *                             'fishers'
+ *                             'fishers' | 'nuketown'
  *   world.maps                [{ id, name, description, blurb, size }] for
  *                             menus — enabled maps only, in registry order
  *   world.setMap(id)          rebuild the level on another map. Awaitable, and
