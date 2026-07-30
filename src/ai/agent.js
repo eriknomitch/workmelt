@@ -87,6 +87,40 @@ const DOLL = [
 
 const DEG = Math.PI / 180;
 
+/**
+ * Should this actor evaluate its pose on this frame?
+ *
+ * The pose write, the three IK chains and the two foot ground rays are the whole
+ * per-actor animation cost, and how much of it reaches a pixel falls off with
+ * distance long before it reaches zero. `AiSystem._updateRelevance` grades that
+ * into `Agent.animEvery`: every frame up close, every second at mid range, every
+ * third far away or when the actor provably cannot be seen at all.
+ *
+ * Pure, and exported, because both of its guards are easy to get subtly wrong
+ * and neither failure is visible in a screenshot — see `lod.selftest.mjs`.
+ *
+ *   - PHASE. `phase` (the actor id) offsets which frame inside the window this
+ *     actor lands on. Without it every actor in a tier evaluates on the same
+ *     frame: the same total work, delivered as a spike every Nth frame instead
+ *     of spread flat. That is a hitch, which is worse than the cost it saves.
+ *   - RUN BOUND. `skip` is how many consecutive frames this actor has already
+ *     been held. The phase test alone can starve an actor indefinitely when
+ *     `every` changes underneath it — a bot walking toward the camera re-tiers
+ *     while its phase never comes up — and a pose frozen under a moving owner is
+ *     the one failure the accumulated dt cannot repair.
+ *
+ * @param {number} frame  monotonic frame counter (`ctx.time.frame`)
+ * @param {number} phase  stable per-actor offset
+ * @param {number} every  evaluate one frame in `every`; 1 is every frame
+ * @param {number} skip   consecutive frames already held
+ * @returns {boolean} true to evaluate this frame
+ */
+export function animGate(frame, phase, every, skip) {
+  if (!(every > 1)) return true;
+  if (skip >= every - 1) return true;
+  return ((frame + phase) % every) === 0;
+}
+
 let _nextId = 1;
 
 export class Agent {
@@ -249,6 +283,20 @@ export class Agent {
     /* ---------------- LOD ---------------- */
     /** set by AiSystem._updateRelevance: nothing this actor does reaches a pixel */
     this.lodIrrelevant = false;
+    /**
+     * Evaluate the pose every Nth frame. Written by `AiSystem._updateRelevance`
+     * from view distance; 1 is every frame.
+     */
+    this.animEvery = 1;
+    /**
+     * Which frame within an `animEvery` window this actor evaluates on.
+     *
+     * Without it a whole tier shares one phase and evaluates on the same frame,
+     * which turns a steady per-frame cost into a spike every Nth frame — the
+     * same total work, arriving as a hitch. Derived from the actor id so it is
+     * stable for the actor's life and spread across ids.
+     */
+    this.lodPhase = this.id;
     this._animSkip = 0;
     this._animAccum = 0;
 
@@ -1018,24 +1066,16 @@ export class Agent {
       suppress: Math.min(1, this.suppression * 0.8),
     });
 
-    // ANIMATION RATE LOD. The pose write, the three IK chains and the two foot
-    // ground rays are the whole per-actor cost, and for an actor that cannot
-    // reach a pixel this frame (see AiSystem._updateRelevance) they buy nothing.
-    // Evaluate a third as often and hand the solver the accumulated dt, so the
-    // stride phase, the recoil envelope and the reload timeline stay on the same
-    // clock — nothing skates or slides when the actor becomes visible again, and
-    // the frame it does become visible is always a full evaluation because
-    // lodIrrelevant is false by then.
+    // ANIMATION RATE LOD — see `animGate`. The solver is handed the ACCUMULATED
+    // dt, so the stride phase, the recoil envelope and the reload timeline stay
+    // on the same clock as everyone else's: nothing skates or slides when an
+    // actor crosses a tier or comes back into view.
     this._animAccum += dt;
-    if (this.lodIrrelevant) {
-      if (this._animSkip > 0) {
-        this._animSkip--;
-        return;
-      }
-      this._animSkip = 2; // one evaluation in three while nothing can see it
-    } else {
-      this._animSkip = 0;
+    if (!animGate(this.ctx.time.frame, this.lodPhase, this.animEvery, this._animSkip)) {
+      this._animSkip++;
+      return;
     }
+    this._animSkip = 0;
     an.update(this._animAccum, this.ctx.time.elapsed);
     this._animAccum = 0;
     if (an.footPlant && this.alive) this.ai.actorFootstep(this, an.footPlant);

@@ -31,12 +31,15 @@
  *                                          shader without spawning anything
  *   ai.grid / ai.cover                     navigation + cover queries
  *   ai.stats                               { agents, alive, navMs, coverPts,
- *                                            pathsDeferred, lodIrrelevant }
+ *                                            pathsDeferred, lodIrrelevant,
+ *                                            lodUnshadowed }
  *
  * FRAME BUDGETS — navigation and the garrison are built during init(), not on
  * the first frame of play; A* is rationed to `ai.pathsPerFrame` solves per frame;
- * and an actor that provably cannot reach a pixel this frame (see
- * `_updateRelevance`) animates at a third rate and leaves the shadow cascades.
+ * and per-actor cost is graded by view distance in `_updateRelevance`: the pose
+ * is evaluated every frame / every second / every third, and an actor past a
+ * fraction of the shadow distance leaves the cascades. An actor that provably
+ * cannot reach a pixel at all takes the cheapest tier of both.
  *
  * EVENTS consumed: weapon:fire, bullet:impact, damage:dealt, explosion,
  *   equipment:flash, player:footstep
@@ -67,6 +70,26 @@ const REINFORCE_SECONDS = 4;
 const STEP_EMIT_RANGE = 36;
 /** Half the stance width — the planted foot is beside the body, not under it. */
 const STEP_LATERAL = 0.17;
+
+/**
+ * View-distance LOD bands, in metres (see `_updateRelevance`).
+ *
+ * `ANIM_NEAR` is the range a player actually fights at, where a dropped pose
+ * frame is visible on a strafing target. `ANIM_FAR` is roughly where a soldier
+ * stops being a readable figure and becomes a silhouette: past it the pose
+ * delta between two frames is well under a pixel.
+ */
+const ANIM_NEAR = 25;
+const ANIM_FAR = 45;
+/** Widen whichever band an actor is already in, so a tier cannot oscillate. */
+const ANIM_BAND = 3;
+/**
+ * Actor sun shadows reach this fraction of `q.shadowDistance`. Past it a body's
+ * own shadow lands in the coarsest cascade and is a handful of texels wide.
+ */
+const ACTOR_SHADOW_FRACTION = 0.45;
+/** Shadows come back at this fraction of the drop distance, never at it. */
+const SHADOW_RESTORE = 0.92;
 
 export class AiSystem {
   static id = 'ai';
@@ -159,7 +182,8 @@ export class AiSystem {
     this._sphere = new THREE.Sphere();
     this._sweep = new THREE.Sphere();
     this._sun = new THREE.Vector3(0, 1, 0);
-    this._lodStats = { irrelevant: 0 };
+    this._eye = new THREE.Vector3();
+    this._lodStats = { irrelevant: 0, unshadowed: 0 };
 
     this._wireEvents(ctx);
     console.info(`[ai] materials ${(performance.now() - t0).toFixed(0)}ms (no texture bake)`);
@@ -1266,6 +1290,25 @@ export class AiSystem {
    * shadow cascades (`userData.owNoShadow`, which render honours per frame). They
    * are still simulated, still shootable, still make noise — only the parts that
    * can exclusively affect pixels are skipped.
+   *
+   * Relevance is not a boolean, though, and treating it as one left the whole
+   * middle of the curve unpriced: a bot in frame at 80 m posed, solved three IK
+   * chains and cast into the cascades at exactly the cost of one at 5 m, for a
+   * silhouette a few pixels across. So the same pass also grades the two things
+   * that fall off with distance:
+   *
+   *   - `animEvery` (see `Agent._drive`) — full rate inside `ANIM_NEAR`, half to
+   *     `ANIM_FAR`, a third beyond it or when the actor cannot be seen at all.
+   *   - sun shadow casting, dropped past `_actorShadowCut()`. The cascades
+   *     already cull a caster that cannot reach them (`src/render/csm.js`
+   *     `_cullCascade`), so this only ever removes an actor from a cascade it
+   *     genuinely lands in — the far, coarse one, where its own shadow is a
+   *     handful of texels.
+   *
+   * Both tiers are hysteretic. The shadow one has to be: a bot loitering on the
+   * threshold would otherwise drop and restore its shadow every frame, which
+   * reads as a flickering silhouette on the ground and is far more visible than
+   * the shadow being absent.
    */
   _updateRelevance(ctx) {
     const cam = ctx.camera;
@@ -1275,13 +1318,19 @@ export class AiSystem {
     // how far a shadow ray can travel before it is under the level
     const floorY = (this.grid ? -6 : -20);
     const sunY = Math.max(0.06, sun.y);
+    const eye = this._eye.setFromMatrixPosition(cam.matrixWorld);
+    const shadowCut = this._actorShadowCut(ctx);
+    const shadowCut2 = shadowCut * shadowCut;
+    // Restore a little inside the drop distance, never at it.
+    const shadowBack2 = (shadowCut * SHADOW_RESTORE) ** 2;
     let irrelevant = 0;
+    let unshadowed = 0;
 
     for (let i = 0; i < this.agents.length; i++) {
       const a = this.agents[i];
       const geo = a.mesh.geometry;
       const bs = geo.boundingSphere;
-      if (!bs) { a.lodIrrelevant = false; continue; }
+      if (!bs) { a.lodIrrelevant = false; a.animEvery = 1; continue; }
       const s = this._sphere.copy(bs).applyMatrix4(a.mesh.matrixWorld);
       s.radius += 4;
       let visible = this._frustum.intersectsSphere(s);
@@ -1297,10 +1346,54 @@ export class AiSystem {
       }
       a.lodIrrelevant = !visible;
       if (!visible) irrelevant++;
-      a.mesh.userData.owNoShadow = !visible;
+
+      // Distance to the body, not to its inflated sphere: the 4 m of slack
+      // above exists to make the frustum test conservative and would otherwise
+      // pull every tier boundary 4 m closer to the camera.
+      const d2 = eye.distanceToSquared(s.center);
+
+      // ---- animation rate ----
+      // Hysteresis by widening whichever boundary the actor is currently INSIDE,
+      // so leaving a tier costs more distance than it took to enter it. Widening
+      // the boundary an actor is already outside does the opposite and makes the
+      // pair oscillate, which is the same total work arriving as a stutter.
+      if (!visible) a.animEvery = 3;
+      else {
+        const e = a.animEvery;
+        const near2 = (ANIM_NEAR + (e === 1 ? ANIM_BAND : 0)) ** 2;
+        const far2 = (ANIM_FAR + (e <= 2 ? ANIM_BAND : 0)) ** 2;
+        a.animEvery = d2 <= near2 ? 1 : d2 <= far2 ? 2 : 3;
+      }
+
+      // ---- sun shadow ----
+      let noShadow = !visible;
+      if (visible) {
+        const wasOff = a.mesh.userData.owNoShadow === true;
+        noShadow = wasOff ? d2 > shadowBack2 : d2 > shadowCut2;
+      }
+      if (noShadow) unshadowed++;
+      a.mesh.userData.owNoShadow = noShadow;
     }
     this._lodStats.irrelevant = irrelevant;
+    this._lodStats.unshadowed = unshadowed;
     this.stats.lodIrrelevant = irrelevant;
+    this.stats.lodUnshadowed = unshadowed;
+  }
+
+  /**
+   * How far an actor casts a sun shadow, in metres.
+   *
+   * A FRACTION OF `config.q.shadowDistance`, deliberately, rather than a
+   * constant or anything re-derived from the tier name: the cascades only cover
+   * that distance in the first place, so scaling with it means this can never
+   * cut a shadow the renderer was going to draw at full extent, and the player's
+   * own Shadow Distance slider carries the actor cutoff with it for free.
+   * `src/core/` belongs to the lead, so a preset field of our own is not ours to
+   * add — reading an existing one gets the same live-tunable behaviour.
+   */
+  _actorShadowCut(ctx) {
+    const d = ctx.config?.q?.shadowDistance;
+    return (Number.isFinite(d) ? d : 90) * ACTOR_SHADOW_FRACTION;
   }
 
   /* ================================================================== */
