@@ -43,4 +43,11 @@ scratch/
 .env.*
 !.env.example
 
-.claude/
+# Personal Claude Code state — local commands, skills and scratch settings.
+# (`.claude/*`, not `.claude/`: git will not look inside an excluded directory,
+# so the re-includes below would never be reached.)
+.claude/*
+# ...except the session bootstrap. A cloud session clones the repo fresh with no
+# node_modules, so these two have to be tracked or every session starts broken.
+!.claude/settings.json
+!.claude/hooks/
