@@ -23,7 +23,7 @@
  *
  * and exactly one secondary button, live in every one of those states:
  *
- *   COPY INVITE LINK / SHARE  one click, whatever else is on screen
+ *   COPY INVITE LINK  one click, whatever else is on screen
  *
  * Under the primary sits one optional link, which follows the same rule — it is
  * always the *other* reasonable move, and never a required one (`_paintAlt`):

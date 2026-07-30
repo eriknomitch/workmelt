@@ -241,6 +241,11 @@ export class PauseMenu {
       this.ctx.peek('quality')?.resetDefaults();
     });
     el('div', 'grow', btns);
+    // Only shown when a room exists — absent under `?mp=0`.
+    this.copyLinkBtn = el('button', 'ow-btn', btns, 'Copy Link');
+    this.copyLinkBtn.type = 'button';
+    this.copyLinkBtn.addEventListener('click', () => this._copyLink());
+    setStyle(this.copyLinkBtn, 'display', 'none');
     // Only offered in a live match — from the lobby there is nothing to leave.
     this.leaveBtn = el('button', 'ow-btn danger', btns, 'Leave match');
     this.leaveBtn.type = 'button';
@@ -664,6 +669,7 @@ export class PauseMenu {
     const canLeave =
       this._resumeToGame && typeof this.ctx.peek('match')?.returnToSetup === 'function';
     setStyle(this.leaveBtn, 'display', canLeave ? '' : 'none');
+    setStyle(this.copyLinkBtn, 'display', this.ctx.peek('net') ? '' : 'none');
 
     this.syncFromConfig();
     setStyle(this.root, 'display', '');
@@ -712,6 +718,16 @@ export class PauseMenu {
     setStyle(this.lockHint, 'display', on ? '' : 'none');
   }
 
+  /** Copy the room's invite link to the clipboard. */
+  _copyLink() {
+    const net = this.ctx.peek('net');
+    if (!net) return;
+    net.copyInvite();
+    clearTimeout(this._copyLinkT);
+    setText(this.copyLinkBtn, 'Copied');
+    this._copyLinkT = setTimeout(() => setText(this.copyLinkBtn, 'Copy Link'), 1600);
+  }
+
   /** "Leave match" — hand the player back to the lobby, keeping the room. */
   _leave() {
     const match = this.ctx.peek('match');
@@ -744,6 +760,7 @@ export class PauseMenu {
 
   dispose() {
     this._cancelRebind();
+    clearTimeout(this._copyLinkT);
     removeEventListener('keydown', this._onKey, true);
     this.lockHint.remove();
     this.root.remove();
