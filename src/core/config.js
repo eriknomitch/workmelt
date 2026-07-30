@@ -36,6 +36,19 @@ const SHARED = {
   detailScale: 1,
   /** Ceiling on devicePixelRatio for the canvas backbuffer. */
   pixelRatioCap: 1.5,
+  /**
+   * Hard ceiling on the pixel AREA of the backbuffer and the internal targets,
+   * whatever the window size — 3840x2160 worth of pixels.
+   *
+   * Every other knob in the resolution chain is a ratio of the window, and the
+   * window has no upper bound: one unchanged profile asks for 2.1 MP on a
+   * laptop, 8.3 MP on a 4K panel, 14.7 MP on a 5K one and 33 MP on an 8K one,
+   * against a render-target set that costs ~160 MB per megapixel at `high`.
+   * This is the number that makes "how big is your monitor" stop being an
+   * unbounded input. Area rather than width x height, so an ultrawide is not
+   * singled out for being wide. See src/render/resolution.js.
+   */
+  maxPixels: 8294400,
 };
 
 export const QUALITY_PRESETS = {

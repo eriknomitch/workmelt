@@ -16,6 +16,12 @@ import { createGradeLut } from './lut.js';
 import { createComposite, createFxaa, createDebug, createViewComposite } from './composite.js';
 import { buildFallbackEnvironment } from './env.js';
 import { RenderProbeScene } from './probe.js';
+import {
+  DEFAULT_PIXEL_BUDGET,
+  MIN_PIXEL_BUDGET,
+  fitToBudget,
+  sanitizePixelBudget,
+} from './resolution.js';
 
 const QUALITY_LEVEL = { performance: 0, low: 0, medium: 1, high: 2, ultra: 3 };
 
@@ -78,6 +84,15 @@ const REF_DAYLIGHT = 4.6;
  *                             Resolution Scale goes to 2x (supersampling)
  *   r.setPixelRatioCap(cap)   ceiling on devicePixelRatio for the backbuffer
  *                             (shipped default 1.5; 2.0 is native Retina)
+ *   r.setPixelBudget(px)      absolute ceiling on the pixel AREA of both the
+ *                             backbuffer and the internal targets, whatever the
+ *                             window size. The only non-ratio limit in the
+ *                             chain — see src/render/resolution.js
+ *   r.budgetLimited           true while that ceiling is actually binding, so
+ *                             the menu can say why the resolution is not what
+ *                             the player asked for
+ *   r.contextLost             true between `webglcontextlost` and its recovery;
+ *                             `render()` is a no-op while it is set
  *   r.applySettings(patch?)   push `settings` at the passes that cache them
  *   r.setAmbientFill(k)       scale every indirect term at once ("Shadow Lift")
  *   r.depthTexture            R32F linear view depth in METRES (positive)
@@ -250,6 +265,32 @@ export class RenderSystem {
     this._viewSamples = q.viewSamples ?? (this.qLevel >= 2 ? 4 : this.qLevel >= 1 ? 2 : 0);
     /** Ceiling on devicePixelRatio for the canvas backbuffer; see resize(). */
     this._pixelRatioCap = q.pixelRatioCap ?? 1.5;
+    /**
+     * Absolute pixel-area ceiling, and the device's own per-axis limit. The
+     * second one is not a budget but a cliff: a target wider than
+     * MAX_TEXTURE_SIZE is an incomplete framebuffer, i.e. a black screen, and
+     * nothing upstream of here has any reason to know that number.
+     */
+    this._maxPixels = sanitizePixelBudget(q.maxPixels, DEFAULT_PIXEL_BUDGET);
+    {
+      // Both limits matter: colour targets are textures, but the viewmodel's
+      // MSAA buffer is a renderbuffer, and the two maxima are not required to
+      // agree. 8192 is a real shipping value (this repo's own SwiftShader
+      // harness reports exactly that), not a theoretical floor.
+      const gl = renderer.getContext();
+      this._maxDimension = Math.max(
+        2048,
+        Math.min(
+          renderer.capabilities.maxTextureSize || 4096,
+          gl.getParameter(gl.MAX_RENDERBUFFER_SIZE) || 4096
+        )
+      );
+    }
+    /** True while the pixel budget or the device limit is actually binding. */
+    this.budgetLimited = false;
+    /** Set between `webglcontextlost` and recovery; `render()` no-ops meanwhile. */
+    this.contextLost = false;
+    this._budgetNote = '';
 
     // Always on: depthTexture/velocityTexture are part of the public contract
     // (soft particles, SSR, motion blur) even when our own effects are off.
@@ -542,12 +583,58 @@ export class RenderSystem {
     const h = ctx.canvas.clientHeight || 1080;
     this.resize(w, h, ctx);
 
+    this._installContextGuards(ctx);
+
     console.info(
       `[render] WebGL2 · ${cfg.quality} · ${this.csm.cascades}x${this.csm.mapSize} CSM · ` +
         `aa:${aa} gtao:${!!this.gtao} ssr:${!!this.ssr} mb:${!!this.motionBlur} · ` +
         `${this.screenSize.width}x${this.screenSize.height} ` +
         `(${Math.round(this._renderScale * 100)}% @ ${renderer.getPixelRatio()}x dpr)`
     );
+  }
+
+  /**
+   * Survive a lost GL context.
+   *
+   * Before this existed the failure mode for asking a GPU for more than it has
+   * — the realistic outcome of an unbounded window size, which is exactly what
+   * the pixel budget above now prevents — was a permanently black canvas with
+   * nothing logged and no way back. Two things are load-bearing here:
+   *
+   *   • `preventDefault()` on the lost event. Without it the browser never
+   *     sends `webglcontextrestored`, so the context can never come back.
+   *   • Reporting the pixel count we died at. This subsystem does not own
+   *     persistence or reloads — `core/quality.js` does — so it states the
+   *     facts on the bus and lets the quality system come back smaller. That
+   *     keeps the recovery policy in one place instead of two.
+   */
+  _installContextGuards(ctx) {
+    const canvas = ctx.canvas;
+    this._onContextLost = (e) => {
+      e.preventDefault();
+      this.contextLost = true;
+      const pixels = this.screenSize.width * this.screenSize.height;
+      console.error(
+        `[render] WebGL context lost at ${this.screenSize.width}x${this.screenSize.height} ` +
+          `(${(pixels / 1e6).toFixed(1)} MP internal, ${(this._maxPixels / 1e6).toFixed(1)} MP budget)`
+      );
+      ctx.events.emit('render:contextlost', {
+        pixels,
+        maxPixels: this._maxPixels,
+        // What a recovery should try instead: half the area we just failed at.
+        suggestedMaxPixels: Math.max(MIN_PIXEL_BUDGET, Math.floor(pixels / 2)),
+      });
+    };
+    this._onContextRestored = () => {
+      this.contextLost = false;
+      console.info('[render] WebGL context restored');
+      // three rebuilds its own GL state on this event; the targets are ours, so
+      // reallocate them at whatever budget is in force now.
+      this.resize(canvas.clientWidth || innerWidth, canvas.clientHeight || innerHeight, this.ctx);
+      ctx.events.emit('render:contextrestored', { maxPixels: this._maxPixels });
+    };
+    canvas.addEventListener('webglcontextlost', this._onContextLost);
+    canvas.addEventListener('webglcontextrestored', this._onContextRestored);
   }
 
   // ==========================================================================
@@ -968,6 +1055,22 @@ export class RenderSystem {
     return this._pixelRatioCap;
   }
 
+  /**
+   * Absolute ceiling on the pixel area of the backbuffer and the internal
+   * targets. Unlike `renderScale` and `pixelRatioCap` — both ratios of a window
+   * that has no upper bound — this is the limit that makes display size stop
+   * being an unbounded input. See src/render/resolution.js.
+   */
+  setPixelBudget(px) {
+    const next = sanitizePixelBudget(px, DEFAULT_PIXEL_BUDGET);
+    if (next === this._maxPixels) return this._maxPixels;
+    this._maxPixels = next;
+    this.q.maxPixels = next;
+    const canvas = this.ctx.canvas;
+    this.resize(canvas.clientWidth || innerWidth, canvas.clientHeight || innerHeight, this.ctx);
+    return this._maxPixels;
+  }
+
   _applySettings() {
     const s = this.settings;
     const cu = this.composite.uniforms;
@@ -1009,19 +1112,62 @@ export class RenderSystem {
     return this._renderScale;
   }
 
+  /** The two absolute limits, as `fitToBudget` wants them. */
+  _limits() {
+    return { maxPixels: this._maxPixels, maxDimension: this._maxDimension };
+  }
+
   resize(w, h, ctx) {
-    const pr = Math.min(globalThis.devicePixelRatio || 1, this._pixelRatioCap ?? 1.5);
+    const limits = this._limits();
+    let pr = Math.min(globalThis.devicePixelRatio || 1, this._pixelRatioCap ?? 1.5);
+
+    // THE BACKBUFFER comes first, because it is not free either: at 5K it is
+    // 14.7 MP of RGBA8 + depth that every composite writes end to end, and the
+    // pixel-ratio cap cannot bound it (a cap of 1.5 on a DPR-1 panel does
+    // nothing at all — the window is the whole input). Trimming `pr` is the
+    // right lever: the canvas keeps its CSS box and the browser upscales, which
+    // is what every resolution scaler in the business does.
+    const fitDisplay = fitToBudget(w * pr, h * pr, limits);
+    if (fitDisplay.scale < 1) pr *= fitDisplay.scale;
     this.renderer.setPixelRatio(pr);
     this.renderer.setSize(w, h, false);
 
     const dw = Math.max(1, Math.floor(w * pr));
     const dh = Math.max(1, Math.floor(h * pr));
-    const rw = Math.max(1, Math.floor(dw * this._renderScale));
-    const rh = Math.max(1, Math.floor(dh * this._renderScale));
+    // THE INTERNAL TARGETS carry ~160 MB per megapixel at `high`, so they get
+    // the same ceiling. Beyond the backbuffer clamp this only binds when
+    // `renderScale` is above 1 — i.e. the menu's 150-200% supersampling, which
+    // is otherwise a 4x pixel multiplier with nothing above it.
+    const fit = fitToBudget(dw * this._renderScale, dh * this._renderScale, limits);
+    const rw = fit.width;
+    const rh = fit.height;
 
     this.displaySize.width = dw;
     this.displaySize.height = dh;
+    this.budgetLimited = fitDisplay.scale < 1 || fit.scale < 1;
+    if (this.budgetLimited) {
+      // One line per distinct outcome, not per resize: a window drag would
+      // otherwise print this sixty times a second.
+      const note = `${rw}x${rh}`;
+      if (note !== this._budgetNote) {
+        this._budgetNote = note;
+        console.info(
+          `[render] resolution budget: ${w}x${h} css @ ${(globalThis.devicePixelRatio || 1).toFixed(
+            2
+          )}x dpr -> ${dw}x${dh} backbuffer, ${rw}x${rh} internal ` +
+            `(${(this._maxPixels / 1e6).toFixed(1)} MP budget, ${this._maxDimension} px axis limit)`
+        );
+      }
+    } else {
+      this._budgetNote = '';
+    }
+
     if (this.screenSize.width === rw && this.screenSize.height === rh && this.hdrRt) return;
+    // How much the frame area actually moved, before screenSize is overwritten.
+    // Auto-exposure adaptation is content-referred, not resolution-referred, so
+    // it only needs re-seeding when the frame is genuinely a different picture.
+    const areaBefore = this.screenSize.width * this.screenSize.height;
+    const areaRatio = areaBefore > 0 ? (rw * rh) / areaBefore : Infinity;
     this.screenSize.width = rw;
     this.screenSize.height = rh;
 
@@ -1073,8 +1219,13 @@ export class RenderSystem {
     this.normalTexture = this.gbuffer.normalTexture;
 
     for (const p of this.passes) p.resize?.(rw, rh);
+    // TAA history is resolution-bound and must always go.
     this.taa?.reset();
-    this.exposure.reset();
+    // Exposure adaptation is not. Re-seeding it on every resize is what made a
+    // window drag pump the brightness for the whole duration of the drag, since
+    // each event restarted the adaptation from scratch. Only a real change of
+    // frame — first allocation, or a big jump in area — justifies it.
+    if (!Number.isFinite(areaRatio) || areaRatio < 0.8 || areaRatio > 1.25) this.exposure.reset();
   }
 
   // ==========================================================================
@@ -1505,6 +1656,10 @@ export class RenderSystem {
   // ==========================================================================
 
   render(ctx) {
+    // Every GL call between here and the end of the frame would throw or be
+    // silently dropped while the context is gone. The loop keeps running so
+    // simulation, input and the menu stay alive.
+    if (this.contextLost) return;
     const renderer = this.renderer;
     const { scene, camera, viewScene, viewCamera } = ctx;
     const dt = Math.min(0.1, Math.max(1 / 480, ctx.time.dt || 1 / 60));
@@ -1908,6 +2063,11 @@ export class RenderSystem {
   }
 
   dispose() {
+    const canvas = this.ctx?.canvas;
+    if (canvas && this._onContextLost) {
+      canvas.removeEventListener('webglcontextlost', this._onContextLost);
+      canvas.removeEventListener('webglcontextrestored', this._onContextRestored);
+    }
     this.csm.dispose();
     this.gbuffer.dispose();
     this.gtao?.dispose();

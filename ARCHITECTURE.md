@@ -35,7 +35,7 @@ export class MySystem {
   fixedUpdate(h, ctx) {}        // optional, 120 Hz, deterministic gameplay
   update(dt, ctx) {}            // optional, once per frame
   lateUpdate(dt, ctx) {}        // optional, after all update()
-  resize(w, h, ctx) {}          // optional
+  resize(w, h, ctx) {}          // optional; COALESCED, see below
   dispose() {}                  // optional
 }
 ```
@@ -111,6 +111,9 @@ Emit and listen via `ctx.events`. Payloads are plain objects. The canonical set:
 | `explosion` | `{ position, radius, damage }` | any |
 | `equipment:flash` | `{ position, radius, duration, source }` — a stun grenade detonated. Every listener folds in its own range / line-of-sight / facing falloff rather than trusting a pre-scaled intensity, so the player's whiteout (`ui`) and the bots' blindness (`ai`) stay consistent with each other. | weapons |
 | `resize` | `{ width, height }` | engine |
+| ↳ | COALESCED, not one per browser event. A window drag delivers a `resize` event every frame, and each one would rebuild the whole post chain (~160 MB of render targets per megapixel — ~1.3 GB per event at 4K). The engine waits for the window to hold still for 120 ms, timed off the frame clock, so a drag costs one reallocation. Meanwhile the backbuffer keeps its old size and the browser scales it into the new CSS box; because the camera aspect moves at the same moment the targets do, that is a uniform stretch rather than a geometry error. `engine.resize()` remains synchronous for `init()` and for harnesses that need the new size on the very next frame. | |
+| `render:contextlost` | `{ pixels, maxPixels, suggestedMaxPixels }` — the GPU dropped the WebGL context, most likely because it was asked for more pixels than it has. `render` stops drawing and states the facts; `quality` owns the recovery (persist a smaller budget, reload). | render |
+| `render:contextrestored` | `{ maxPixels }` | render |
 | `net:lobby` | `{ connected, everConnected, live, players, myId, ready }` | net |
 | `net:join` / `net:leave` | `{ id, name, colour, count }` — somebody else entered or left the room. `colour` is their livery as a CSS colour (null until the relay has assigned a slot) and `count` is how many are in the room afterwards, so a listener can raise the presence card (`src/ui/presence.js`) without reaching into `net`'s peer table | net |
 | `net:countdown` | `{ ms }` — the relay fired the pre-match start signal | net |
@@ -210,6 +213,9 @@ r.velocityTexture     // motion vectors, for TAA / motion blur
 r.setRenderScale(n)   // resize targets within the active preset's scale range
 r.setRenderScaleLimits(min, max)  // widen that range (manual scale goes to 2x)
 r.setPixelRatioCap(n) // ceiling on devicePixelRatio for the backbuffer
+r.setPixelBudget(px)  // absolute ceiling on pixel AREA, whatever the window size
+r.budgetLimited       // true while that ceiling is binding
+r.contextLost         // true between webglcontextlost and recovery
 r.applySettings(patch?)           // push `r.settings` at the passes caching it
 r.setAmbientFill(k)   // scale every indirect term at once ("Shadow Lift")
 ```
@@ -217,6 +223,27 @@ r.setAmbientFill(k)   // scale every indirect term at once ("Shadow Lift")
 The last four exist for the advanced graphics menu, which drives `r.settings`
 live. Anything else that writes `r.settings` directly must call
 `r.applySettings()` afterwards or the passes will not see it.
+
+### The resolution budget
+
+`renderScale` and `pixelRatioCap` are both ratios of the window, and a window
+has no upper bound — the same profile asks for 2.1 MP on a laptop and 33 MP on
+an 8K panel, against a render-target set that costs roughly **160 MB per
+megapixel** at `high`. `q.maxPixels` is therefore an absolute ceiling on pixel
+*area*, applied to the backbuffer and the internal targets alike by
+`src/render/resolution.js`, alongside the device's own `MAX_TEXTURE_SIZE` (which
+is a cliff, not a budget: one pixel over is a black screen).
+
+Two invariants, both covered by `npm run test:viewport`:
+
+- **Area, not width × height.** A 32:9 ultrawide and a 16:9 4K panel are treated
+  on the same footing; no aspect ratio is singled out for being unusual.
+- **One factor, both axes.** The aspect ratio *is* the field of view, so the
+  clamp only ever makes the frame softer, never a different shape.
+
+A lost GL context is reported as `render:contextlost` rather than handled in
+`render`: recovery means persisting a smaller budget and reloading, and
+`core/quality.js` already owns persistence and reloads. Keep that split.
 
 Anything drawn into `viewScene` is composited after the world with a cleared
 depth buffer.

@@ -28,6 +28,11 @@ The browser client lives in `src/`. Features are divided into subsystem director
 - `node src/audio/probe.mjs --port=5213` is the audio equivalent of the capture
   harness: offline render of every voice plus a live-graph event storm.
 - `npm run test:input` checks input aggregation and the persisted control binds.
+- `npm run test:viewport` checks how the engine reacts to the window changing
+  size: that a window drag costs one render-target reallocation rather than one
+  per event, that a devicePixelRatio move at a fixed CSS size still reaches the
+  renderer, and the resolution budget's clamp arithmetic — area respected,
+  aspect ratio exact, `MAX_TEXTURE_SIZE` never breached.
 - `node src/core/graphics.selftest.mjs` checks the advanced graphics option schema, including that an empty override set is a bit-exact no-op on every preset.
 - `node src/core/selftest.mjs` covers adaptive quality and the option persistence/live-apply contract.
 - `npm run playtest:ads` drives the pause menu and ADS binds in a real browser.
