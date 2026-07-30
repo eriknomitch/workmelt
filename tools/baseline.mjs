@@ -22,6 +22,7 @@ import { spawn } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import net from 'node:net';
+import { resolveChromium } from './lib/chromium.mjs';
 
 const args = Object.fromEntries(process.argv.slice(2).map((a) => {
   const m = a.match(/^--([^=]+)(?:=(.*))?$/); return m ? [m[1], m[2] ?? true] : [a, true];
@@ -64,7 +65,8 @@ const launch = {
 // not install itself (cloud sandboxes ship one that its version does not match).
 // Both sides of a comparison must use the SAME binary for the diff to mean
 // anything — this only exists so a run is possible at all, never to mix them.
-if (args.chrome) launch.executablePath = String(args.chrome);
+// `resolveChromium` is the same auto-detect fallback; `--chrome` still wins.
+launch.executablePath = String(args.chrome ?? resolveChromium() ?? '') || undefined;
 const browser = await chromium.launch(launch);
 
 mkdirSync(OUTDIR, { recursive: true });

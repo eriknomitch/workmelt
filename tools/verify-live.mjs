@@ -1,6 +1,7 @@
 import { chromium } from 'playwright';
+import { launchOpts } from './lib/chromium.mjs';
 const URL = process.argv[2];
-const b = await chromium.launch({ headless:true, args:['--use-angle=metal','--ignore-gpu-blocklist','--mute-audio'] });
+const b = await chromium.launch(launchOpts({ headless:true, args:['--use-angle=metal','--ignore-gpu-blocklist','--mute-audio'] }));
 const p = await b.newPage({ viewport:{width:1600,height:900} });
 const errs=[]; p.on('pageerror',e=>errs.push(e.message)); p.on('console',m=>m.type()==='error'&&errs.push(m.text()));
 const t0=Date.now();

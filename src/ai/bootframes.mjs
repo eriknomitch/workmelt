@@ -12,15 +12,16 @@
  *   node src/ai/bootframes.mjs --port=5401
  */
 import { chromium } from 'playwright';
+import { launchOpts } from '../../tools/lib/chromium.mjs';
 const args = Object.fromEntries(process.argv.slice(2).map((a) => {
   const m = a.match(/^--([^=]+)(?:=(.*))?$/); return m ? [m[1], m[2] ?? true] : [a, true];
 }));
 const PORT = Number(args.port ?? 5333);
 const WAIT = Number(args.wait ?? 4000);
-const browser = await chromium.launch({
+const browser = await chromium.launch(launchOpts({
   headless: true,
   args: ['--use-angle=metal', '--ignore-gpu-blocklist', '--mute-audio', '--disable-frame-rate-limit', '--disable-gpu-vsync'],
-});
+}));
 const page = await browser.newPage({ viewport: { width: 1512, height: 982 }, deviceScaleFactor: 2 });
 await page.addInitScript(() => {
   window.__FRAMES__ = [];

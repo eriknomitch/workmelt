@@ -16,6 +16,7 @@ import { spawn } from 'node:child_process';
 import { mkdirSync, existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import net from 'node:net';
+import { launchOpts } from './lib/chromium.mjs';
 
 const args = Object.fromEntries(
   process.argv.slice(2).map((a) => {
@@ -61,7 +62,7 @@ async function ensureServer() {
 
 const server = await ensureServer();
 
-const browser = await chromium.launch({
+const browser = await chromium.launch(launchOpts({
   headless: true,
   args: [
     '--use-angle=metal',
@@ -75,7 +76,7 @@ const browser = await chromium.launch({
     '--hide-scrollbars',
     '--mute-audio',
   ],
-});
+}));
 
 const page = await browser.newPage({
   viewport: { width: W, height: H },

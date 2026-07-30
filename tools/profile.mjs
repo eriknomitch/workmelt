@@ -17,6 +17,7 @@
  */
 import { chromium } from 'playwright';
 import { resolve } from 'node:path';
+import { launchOpts } from './lib/chromium.mjs';
 
 const args = Object.fromEntries(process.argv.slice(2).map((a) => {
   const m = a.match(/^--([^=]+)(?:=(.*))?$/); return m ? [m[1], m[2] ?? true] : [a, true];
@@ -29,11 +30,11 @@ const DPR = Number(args.dpr ?? 2);
 const FRAMES = Number(args.frames ?? 900);
 const TARGET_FPS = Number(args.target ?? 0);
 
-const browser = await chromium.launch({
+const browser = await chromium.launch(launchOpts({
   headless: true,
   args: ['--use-angle=metal', '--ignore-gpu-blocklist', '--mute-audio',
          '--disable-frame-rate-limit', '--disable-gpu-vsync'],
-});
+}));
 const page = await browser.newPage({ viewport: { width: W, height: H }, deviceScaleFactor: DPR });
 const errs = [];
 page.on('pageerror', (e) => errs.push(e.message));

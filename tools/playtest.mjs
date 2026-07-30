@@ -1,5 +1,6 @@
 import { chromium } from 'playwright';
-const b = await chromium.launch({ headless: true, args:['--use-angle=metal','--ignore-gpu-blocklist','--mute-audio','--disable-frame-rate-limit'] });
+import { launchOpts } from './lib/chromium.mjs';
+const b = await chromium.launch(launchOpts({ headless: true, args:['--use-angle=metal','--ignore-gpu-blocklist','--mute-audio','--disable-frame-rate-limit'] }));
 const p = await b.newPage({ viewport:{width:1280,height:720} });
 const errs=[]; p.on('pageerror',e=>errs.push(e.message)); p.on('console',m=>m.type()==='error'&&errs.push(m.text()));
 // ?match=0 skips the Match Start view: this harness wants the old "live on the

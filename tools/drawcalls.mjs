@@ -21,6 +21,7 @@ import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import net from 'node:net';
+import { resolveChromium } from './lib/chromium.mjs';
 
 const args = Object.fromEntries(
   process.argv.slice(2).map((a) => {
@@ -60,7 +61,7 @@ async function ensureServer() {
 
 const server = await ensureServer();
 const launch = { headless: true, args: ['--ignore-gpu-blocklist', '--mute-audio', '--disable-frame-rate-limit', '--disable-gpu-vsync'] };
-if (args.chrome) launch.executablePath = String(args.chrome);
+launch.executablePath = String(args.chrome ?? resolveChromium() ?? '') || undefined;
 const browser = await chromium.launch(launch);
 const page = await browser.newPage({ viewport: { width: W, height: H } });
 page.on('pageerror', (e) => console.error('page error:', e.message));

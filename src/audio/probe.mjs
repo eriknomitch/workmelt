@@ -23,6 +23,7 @@ import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import net from 'node:net';
+import { launchOpts } from '../../tools/lib/chromium.mjs';
 
 const args = Object.fromEntries(
   process.argv.slice(2).map((a) => {
@@ -59,7 +60,7 @@ async function ensureServer() {
 
 const server = await ensureServer();
 
-const browser = await chromium.launch({
+const browser = await chromium.launch(launchOpts({
   headless: true,
   args: [
     '--use-angle=metal',
@@ -68,7 +69,7 @@ const browser = await chromium.launch({
     '--autoplay-policy=no-user-gesture-required',
     '--hide-scrollbars',
   ],
-});
+}));
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 
 const logs = [];

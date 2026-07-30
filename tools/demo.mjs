@@ -24,6 +24,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, existsSync, rmSync, writeFileSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
 import net from 'node:net';
+import { launchOpts } from './lib/chromium.mjs';
 
 const args = Object.fromEntries(
   process.argv.slice(2).map((a) => {
@@ -78,7 +79,7 @@ mkdirSync(dirname(OUT), { recursive: true });
 const server = await ensureServer();
 log(`[demo] vite on :${PORT}${server ? '' : ' (already running)'}`);
 
-const browser = await chromium.launch({
+const browser = await chromium.launch(launchOpts({
   headless: true,
   args: [
     '--use-angle=metal',
@@ -91,7 +92,7 @@ const browser = await chromium.launch({
     '--hide-scrollbars',
     '--mute-audio',
   ],
-});
+}));
 
 const page = await browser.newPage({ viewport: { width: W, height: H }, deviceScaleFactor: 1 });
 

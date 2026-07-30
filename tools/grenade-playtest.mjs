@@ -14,36 +14,25 @@
  */
 
 import { chromium } from 'playwright';
-import { spawn } from 'node:child_process';
-import net from 'node:net';
+import { ensureServer } from './lib/harness.mjs';
+import { launchOpts } from './lib/chromium.mjs';
 
-const PORT = Number(process.env.NADE_PLAYTEST_PORT ?? 5183);
+// Falls back to OW_PORT (5273) so this can share an already-running dev server
+// with the rest of the playtest/capture suite instead of always booting its
+// own — NADE_PLAYTEST_PORT still wins when set explicitly.
+const PORT = Number(process.env.NADE_PLAYTEST_PORT ?? process.env.OW_PORT ?? 5183);
 const URL = `http://127.0.0.1:${PORT}/?match=0&mp=0&q=performance`;
 const SHOT = process.argv[2] ?? null;
 
-const portOpen = (port) =>
-  new Promise((res) => {
-    const s = net.connect(port, '127.0.0.1');
-    s.on('connect', () => (s.end(), res(true)));
-    s.on('error', () => res(false));
-  });
+// `ensureServer` (tools/lib/harness.mjs) spawns vite's real binary directly
+// rather than through `node`, which is what the old inline spawn here worked
+// around by pointing at vite/bin/vite.js instead of the .bin shell wrapper.
+const vite = await ensureServer(PORT);
 
-// `node_modules/.bin/vite` is a SHELL wrapper, so `node` cannot run it — it dies
-// with a SyntaxError on the shebang script and the harness then fails with a
-// bare ERR_CONNECTION_REFUSED that says nothing about why. Point at the real
-// entry point instead. (tools/ads-playtest.mjs still has the .bin form.)
-const vite = spawn('node', ['node_modules/vite/bin/vite.js', '--port', String(PORT), '--strictPort'], {
-  stdio: 'ignore',
-});
-for (let i = 0; i < 80; i++) {
-  await new Promise((r) => setTimeout(r, 250));
-  if (await portOpen(PORT)) break;
-}
-
-const browser = await chromium.launch({
+const browser = await chromium.launch(launchOpts({
   headless: true,
   args: ['--ignore-gpu-blocklist', '--use-gl=angle', '--hide-scrollbars'],
-});
+}));
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
 
@@ -190,6 +179,6 @@ try {
   const failed = results.filter((r) => r.startsWith('  FAIL')).length;
   console.log(failed ? `\n${failed} FAILED` : `\n${results.length} checks passed`);
   await browser.close();
-  vite.kill();
+  vite?.kill();
   process.exit(failed ? 1 : 0);
 }
