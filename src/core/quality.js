@@ -121,7 +121,7 @@ export function resolveGraphicsBoot({ capture = false, explicitQuality = null, s
   const enabled = !capture && !explicitQuality;
   const quality =
     explicitQuality ??
-    (!enabled ? 'ultra' : settings.mode === 'auto' ? settings.tier ?? 'ultra' : settings.mode);
+    (!enabled ? 'ultra' : settings.mode === 'auto' ? settings.tier ?? 'medium' : settings.mode);
   return { enabled, quality };
 }
 
