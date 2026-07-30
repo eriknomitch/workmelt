@@ -453,13 +453,20 @@ export const WEAPON_DEFS = {
     adsFov: 0.42,
     /**
      * The VIEWMODEL camera, not the world camera. It zooms far less than the
-     * world does (0.58 against `adsFovScale` 0.3) because the scope housing is
+     * world does (0.44 against `adsFovScale` 0.3) because the scope housing is
      * drawn by this camera and the sight picture by the other: at 0.3 the
-     * 35 mm tube would be 1.9x oversized and swallow the frame. 0.58 puts the
-     * housing at 62 % of frame height with 40 % of clear glass inside it, which
-     * is where a modern shooter frames a magnified optic.
+     * 35 mm tube would be 1.9x oversized and swallow the frame.
+     *
+     * 0.58 put the housing at 62 % of frame height with 40 % of clear glass
+     * inside it — and the glass, the part the shot actually depends on, was a
+     * quarter of the frame's height. Played, that read as aiming through a
+     * porthole. 0.44 (half-FOV 13.2 deg, tan 0.235 against the housing's 0.183
+     * and the aperture stop's 0.118) frames the housing at 78 % of frame height
+     * and the glass at 50 % — the scope fills the frame the way a magnified
+     * optic is actually shouldered, and the tube exterior falls into the frame
+     * corners instead of floating in the middle of the sky.
      */
-    viewFov: 0.58,
+    viewFov: 0.44,
     /** 3.3x. The whole reason to carry it. */
     adsFovScale: 0.3,
     reloadTac: 3.0,

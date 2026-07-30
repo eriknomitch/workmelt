@@ -224,15 +224,21 @@ export class Viewmodel {
      * whole reason a 3.3x picture is worth the FOV it costs. Three parts, all
      * authored at unit radius so they scale as one shape exactly like the dot:
      *
-     *   posts   four heavy bars in from the edge of the field, 0.38 wide, that
-     *           STOP at 0.28 of the radius. A duplex whose posts reach the
-     *           middle covers the target at the moment you need to see it; the
-     *           gap is the aiming area and the posts are what your eye tracks
-     *           in to find it.
-     *   hairs   the thin cross across that gap, 0.15 wide — a quarter of the
-     *           post, which is the ratio a real duplex uses.
-     *   pip     a 0.09 centre square. Against a clear aperture ~215 px across
-     *           this is ~3 px: the thing the eye actually lands on in a flick.
+     *   posts   four bars in from the edge of the field that STOP at 35 % of
+     *           the radius — the outer two thirds only. A duplex whose posts
+     *           reach the middle covers the target at the moment you need to
+     *           see it; the gap is the aiming area and the posts are what your
+     *           eye tracks in to find it.
+     *   hairs   the thin cross across that gap. WIRE-thin: measured on the ADS
+     *           frame the first pass was 20 px of post and 8 px of hair against
+     *           a ~230 px aperture — 11 % of the field radius was reticle, and
+     *           with the glow underlay behind it the cross read as four red
+     *           slabs that hid whatever was being aimed at. A real duplex is
+     *           etched wire: ~1 % of the field for the hair, 3x that for the
+     *           post. That is what these widths are now (2 px / 6 px), and the
+     *           sight picture is scene, not reticle.
+     *   pip     a small centre square, ~3 px: the thing the eye actually lands
+     *           on in a flick, kept just proud of the hair width.
      *
      * Drawn in the OUTLINE material — a normally-blended near-black — rather
      * than the additive emitter: an etched reticle is opaque and reads against
@@ -242,9 +248,9 @@ export class Viewmodel {
      */
     const RETICLE_PARTS = [];
     const POST_OUT = 3.4;
-    const POST_IN = 0.28;
-    const HAIR_W = 0.075;
-    const POST_W = 0.19;
+    const POST_IN = 1.19;
+    const HAIR_W = 0.016;
+    const POST_W = 0.048;
     for (let i = 0; i < 4; i++) {
       // Posts: tapered wedges, wide at the rim, narrow at the tip.
       const post = new THREE.PlaneGeometry(POST_OUT - POST_IN, POST_W * 2);
@@ -257,7 +263,7 @@ export class Viewmodel {
       hair.rotateZ((i * TAU) / 4);
       RETICLE_PARTS.push(hair);
     }
-    const pip = new THREE.PlaneGeometry(0.09, 0.09);
+    const pip = new THREE.PlaneGeometry(0.05, 0.05);
     RETICLE_PARTS.push(pip);
     const cross = mergeAll(RETICLE_PARTS);
     const crossGlow = cross.clone();
@@ -269,7 +275,9 @@ export class Viewmodel {
     // writes that fight.
     this.crossWire = new THREE.Mesh(cross, mats.reticleOutline(0.94));
     this.crossGlow = new THREE.Mesh(crossGlow, mats.reticle(0xff3a14, 0.3));
-    this.crossGlow.scale.setScalar(1.5);
+    // Tight: at 1.5x the glow was a second, wider cross behind the wire — half
+    // the on-screen footprint of the old slab reticle was this underlay.
+    this.crossGlow.scale.setScalar(1.2);
     this.crossGlow.renderOrder = 20;
     this.crossWire.renderOrder = 21;
     this.crossGroup = new THREE.Object3D();
