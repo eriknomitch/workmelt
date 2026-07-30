@@ -758,4 +758,61 @@ export const PALETTE = {
       three: { emissive: 0xffc47a, emissiveIntensity: 0, opacity: 0.5 },
     },
   },
+
+  /* ───────────────────────────────────────────────────────── the blockout ── */
+  /**
+   * `gb_*` — the greybox family, used by Nuketown and nothing else.
+   *
+   * These exist as SEPARATE KEYS rather than as edits to `plaster_cream`,
+   * `concrete` and friends because those are shared with Wilmot, Rust, Market
+   * and the Loop; changing one in place restyles four maps nobody asked to
+   * restyle. A new key cannot leak — it is only a look if something references
+   * it.
+   *
+   * Four of the five reuse a resident bake and cost NO texture memory: `tint`
+   * is a linear multiply on an already-baked albedo, so a family of flat
+   * colours is free. Only `gb_grid` names its own surface, and that bake is
+   * 512 (see `library.js`). Do not add `bake:` to any of the others.
+   *
+   * FLATNESS IS THE WHOLE LOOK, and it is entirely configuration — every key
+   * below shares `FLAT`, and none of it needed a shader change. `weather` all
+   * zeroes drops the `OW_WEATHER` block from the compile outright, and
+   * `vertexMasks: false` compiles out the wear/grime/AO block regardless of the
+   * masks the geometry supplies. What is left is the colour and the light.
+   *
+   * Tints stay inside the 0.02-0.9 reflectance band this file opens with, which
+   * is why "white" here is 0xd9d6d1 and not 0xffffff: a pure-white albedo is
+   * not a material, it is a blown highlight with a mesh behind it.
+   */
+  ...(() => {
+    const FLAT = {
+      vertexMasks: false,
+      weather: [0, 0, 0, 0],
+      macro: [0.05, 0, 0, 0],
+      macroBig: [1, 0, 0, 0],
+      patch: [0, 0, 0, 0],
+      detail: [8, 0, 0, 0],
+      parallax: 0,
+      detile: 0,
+      normalStrength: 0,
+      aoStrength: 0,
+      roughness: [0, 0.85, 0.85],
+    };
+    return {
+      /** Every large mass: both houses, the sheds, the porch. */
+      gb_white: { name: 'flat_matte', surface: 'plaster', opts: { ...FLAT, tint: 0xeeebe6 } },
+      /** The perimeter wall, the roofs, the ground outside, the backdrop. */
+      gb_grey: { name: 'flat_matte', surface: 'concrete', opts: { ...FLAT, tint: 0x9a9ca0 } },
+      /** The deck: apron, street, kerbs and every low block. */
+      gb_grid: { name: 'grid', surface: 'concrete', opts: { ...FLAT, scale: 4.0 } },
+      /**
+       * The single accent. Storage Orange from DESIGN.md's world palette — one
+       * dominant environmental accent per map is the rule, so this is the only
+       * saturated colour on Nuketown and it belongs to the barrels and the sign.
+       */
+      gb_accent: { name: 'flat_matte', surface: 'metal', opts: { ...FLAT, tint: 0xc46d2e } },
+      /** Crate bracing and doors — the dark value that keeps the whites apart. */
+      gb_dark: { name: 'flat_matte', surface: 'wood', opts: { ...FLAT, tint: 0x44484e } },
+    };
+  })(),
 };

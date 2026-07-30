@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { BOX, BOX_THIN, IDENT, LL, stairRun, worldOf, ryOf } from './kit.js';
 import { registerProps } from './props.js';
+import { registerNuketownProps } from './nuketownprops.js';
 import { fbm3, paintMasks } from './util.js';
 
 /**
@@ -10,12 +11,12 @@ import { fbm3, paintMasks } from './util.js';
  * suburban houses facing each other across a street, inside a sealed test-site
  * compound. 51 x 42 m of playable ground.
  *
- *   THE STREET    12 m of asphalt running north-south through the middle, with
- *                 a sidewalk each side. It is the map's spine and its longest
+ *   THE STREET    12 m of gridded deck running north-south through the middle,
+ *                 with a kerb each side. It is the map's spine and its longest
  *                 sightline, broken every 8 m by a staggered barricade so it is
  *                 a fighting lane rather than a shooting gallery.
- *   THE HOUSES    one cream, one blue, mirrored across the street and offset 5 m
- *                 along it so neither upstairs window looks straight into the
+ *   THE HOUSES    two identical white masses, mirrored across the street and
+ *                 offset 5 m along it so neither upstairs window looks into the
  *                 other. Both are enterable, both have a stair, and both have
  *                 first-floor windows over the street — that overlook is the
  *                 map's whole risk/reward economy.
@@ -26,10 +27,18 @@ import { fbm3, paintMasks } from './util.js';
  *                 without crossing the street. Every space on this map has two
  *                 ways out.
  *
- * ARENA BLOCKOUT IS THE BRIEF. Forms are plain chamfered boxes — no foliage, no
- * vehicles, no facade furniture — and the whole map is drawn from nine palette
- * keys. Surface interest comes from the shared procedural materials, not from
- * geometry or textures, which is what keeps a map this readable this cheap.
+ * ARENA BLOCKOUT IS THE BRIEF, IN THE GEOMETRY AND IN THE SURFACES. Forms are
+ * plain chamfered boxes — no foliage, no vehicles, no facade furniture — and
+ * every surface comes from the five `gb_*` palette keys: flat near-white masses,
+ * a blue-grey deck ruled into 1 m squares, mid-grey for the wall and the
+ * horizon, and Storage Orange on the barrels and the sign as the map's single
+ * accent (DESIGN.md's one-accent-per-map rule).
+ *
+ * Those keys are FLAT BY CONFIGURATION, not by a special shader: weathering,
+ * edge wear, grime, macro variation and normal strength are all zeroed in
+ * `palette.js`, which compiles the weather and vertex-mask blocks out of the
+ * material entirely. Nothing here is cheaper to draw than the rest of the game
+ * because it is a blockout — it is cheaper because it asks for less.
  *
  * PROVENANCE. Proportions were measured off a reference model with
  * `tools/glb-plan.mjs` (1 unit = 1 cm; houses ~11 x 15 m, 6 m eaves, ~35 m
@@ -86,8 +95,8 @@ export const NUKE = {
  * instead of its window, so the duel is winnable from the ground.
  */
 export const HOUSES = [
-  { id: 'west', x: -17, z: -2.5, w: 11, d: 15, face: 1, key: 'plaster_cream', floors: 2, h: NUKE.ridge },
-  { id: 'east', x: 17, z: 2.5, w: 11, d: 15, face: -1, key: 'plaster_blue', floors: 2, h: NUKE.ridge },
+  { id: 'west', x: -17, z: -2.5, w: 11, d: 15, face: 1, key: 'gb_white', floors: 2, h: NUKE.ridge },
+  { id: 'east', x: 17, z: 2.5, w: 11, d: 15, face: -1, key: 'gb_white', floors: 2, h: NUKE.ridge },
 ];
 
 /**
@@ -390,7 +399,7 @@ function buildGround(A, rng) {
     out[1] = 0.2 + fbm3(x * 0.28, 2.1, z * 0.28, 2) * 0.4;
     out[0] = 0.18;
   });
-  A.add('sand', terrain, null);
+  A.add('gb_grey', terrain, null);
   A.collideGeo('sand', terrain);
   terrain.dispose();
 
@@ -413,7 +422,7 @@ function buildGround(A, rng) {
     out[0] = 0.2 + n * 0.26;
     out[1] = 0.12 + n * 0.2;
   });
-  A.add('concrete', apron, null);
+  A.add('gb_grid', apron, null);
   A.box('dirt', 0, -0.25, 0, W, 0.5, D);
   apron.dispose();
 
@@ -435,13 +444,13 @@ function buildGround(A, rng) {
     out[0] = 0.15;
     out[1] = 0.25 + Math.abs(x / NUKE.streetHalf) * 0.35;
   });
-  A.add('asphalt', street, null);
+  A.add('gb_grid', street, null);
   street.dispose();
 
   // Kerbs: a 0.14 m step each side. Low enough to walk over, which is what the
   // controller's mantle is for, and the one line that makes a road read as a road.
   for (const sx of [-1, 1]) {
-    A.add('concrete_dark', BOX(A), LL(IDENT, sx * (NUKE.streetHalf + 0.7), 0.07, 0, 0, 1.4, 0.14, D), {
+    A.add('gb_grid', BOX(A), LL(IDENT, sx * (NUKE.streetHalf + 0.7), 0.07, 0, 0, 1.4, 0.14, D), {
       masks: [0.7, 0.4, 0.2],
     });
   }
@@ -456,7 +465,7 @@ function buildGround(A, rng) {
  */
 function buildPerimeter(A, rng) {
   const { halfX, halfZ, wallH, wallT, streetHalf } = NUKE;
-  const key = 'concrete_dark';
+  const key = 'gb_grey';
   const masks = [0.5, 0.55, 0.35];
 
   // East and west runs: unbroken, full depth.
@@ -496,14 +505,14 @@ function buildPerimeter(A, rng) {
     }
 
   // The barrier line across each mouth.
-  for (const [x, z, ry, len] of MOUTH_BLOCKS) lowWall(A, 'concrete', x, z, ry, len, 1.25, 0.9, [0.6, 0.6, 0.4]);
+  for (const [x, z, ry, len] of MOUTH_BLOCKS) lowWall(A, 'gb_grid', x, z, ry, len, 1.25, 0.9, [0.6, 0.6, 0.4]);
 
   // Background masses past the wall. `A.box` is skipped: they are outside the
   // sealed perimeter, so nothing can ever reach them and a proxy would only be
   // BVH the physics has to walk.
   for (const [x, z, w, d, h] of BACKDROP) {
     const gy = groundYNuketown(x, z);
-    A.add('concrete_dark', BOX(A), LL(IDENT, x, gy + h / 2, z, 0.3, w, h, d), { masks: [0.4, 0.6, 0.5] });
+    A.add('gb_grey', BOX(A), LL(IDENT, x, gy + h / 2, z, 0.3, w, h, d), { masks: [0.4, 0.6, 0.5] });
   }
 }
 
@@ -529,15 +538,15 @@ function buildHouse(A, rng, spec) {
   const key = spec.key;
 
   // ---- slab and first floor ---------------------------------------------
-  pbox(A, pm, 'floor_concrete', 0, -0.06, 0, 0, spec.w + 0.5, 0.24, spec.d + 0.5, [0.5, 0.55, 0.35]);
+  pbox(A, pm, 'gb_grid', 0, -0.06, 0, 0, spec.w + 0.5, 0.24, spec.d + 0.5, [0.5, 0.55, 0.35]);
 
   // The upper floor, minus a stairwell void at the back-north corner. A stair
   // can only land on a platform at its EDGE — a flight rising inside a solid
   // slab would come up through it.
   const voidX = -hw + 2.4; // void spans x < voidX
   const voidZ = -hd + 5.2; // void spans z < voidZ
-  pbox(A, pm, 'floor_wood', (voidX + hw) / 2, floorH - 0.1, 0, 0, hw - voidX, 0.2, spec.d, [0.5, 0.5, 0.3]);
-  pbox(A, pm, 'floor_wood', (-hw + voidX) / 2, floorH - 0.1, (voidZ + hd) / 2, 0, voidX + hw, 0.2, hd - voidZ, [0.5, 0.5, 0.3]);
+  pbox(A, pm, 'gb_white', (voidX + hw) / 2, floorH - 0.1, 0, 0, hw - voidX, 0.2, spec.d, [0.5, 0.5, 0.3]);
+  pbox(A, pm, 'gb_white', (-hw + voidX) / 2, floorH - 0.1, (voidZ + hd) / 2, 0, voidX + hw, 0.2, hd - voidZ, [0.5, 0.5, 0.3]);
 
   // ---- the four walls ----------------------------------------------------
   const masks = [0.45, 0.5, 0.3];
@@ -575,7 +584,7 @@ function buildHouse(A, rng, spec) {
   // house's upper floor unreachable, and no screenshot shows it.
   const stairX = -hw + 1.3;
   const stairZ = -hd + 0.6;
-  stairRun(A, pm, stairX, 0, stairZ, 1.9, 16, floorH / 16, 0.27, { key: 'concrete', railing: 'right' });
+  stairRun(A, pm, stairX, 0, stairZ, 1.9, 16, floorH / 16, 0.27, { key: 'gb_grid', railing: 'right' });
 
   // ---- gable roof --------------------------------------------------------
   // Two tilted slabs and a stepped gable end. Not reachable, so the collision is
@@ -587,7 +596,7 @@ function buildHouse(A, rng, spec) {
   const ang = Math.atan2(rise, runX);
   const slabLen = Math.hypot(runX, rise);
   for (const sx of [-1, 1]) {
-    A.add('roof_screed', BOX(A),
+    A.add('gb_grey', BOX(A),
       LL(pm, sx * runX / 2, eaves + rise / 2, 0, 0, slabLen, 0.24, spec.d + over * 2, 0, -sx * ang),
       { masks: [0.6, 0.45, 0.25] });
   }
@@ -611,13 +620,13 @@ function buildHouse(A, rng, spec) {
   // A flat canopy on two posts over the front door. Overhead only: it is 3 m up
   // and unreachable, so it costs cover nothing and gives the facade a shadow.
   const px = hw + 1.5;
-  A.add('frame_white', BOX(A), LL(pm, px, floorH - 0.15, -1.2, 0, 3.4, 0.2, 4.6), { masks: [0.7, 0.35, 0.2] });
+  A.add('gb_white', BOX(A), LL(pm, px, floorH - 0.15, -1.2, 0, 3.4, 0.2, 4.6), { masks: [0.7, 0.35, 0.2] });
   for (const pz of [-3.3, 0.9]) {
-    pbox(A, pm, 'frame_white', hw + 2.9, floorH / 2, pz, 0, 0.22, floorH, 0.22, [0.75, 0.3, 0.15]);
+    pbox(A, pm, 'gb_white', hw + 2.9, floorH / 2, pz, 0, 0.22, floorH, 0.22, [0.75, 0.3, 0.15]);
   }
   // Two steps up to the threshold.
   for (let i = 0; i < 2; i++)
-    pbox(A, pm, 'concrete', hw + 0.6 + i * 0.42, 0.09 + i * 0.09, -1.2, 0, 0.5, 0.18, 2.2, [0.6, 0.5, 0.3]);
+    pbox(A, pm, 'gb_grid', hw + 0.6 + i * 0.42, 0.09 + i * 0.09, -1.2, 0, 0.5, 0.18, 2.2, [0.6, 0.5, 0.3]);
 
   // Copied, not aliased: `worldOf` returns a shared scratch array, so both
   // houses would otherwise hand back the same one and report the same stair.
@@ -628,34 +637,34 @@ function buildHouse(A, rng, spec) {
 function buildSign(A, rng) {
   const { poleX, poleH, boardY, boardH, boardT } = SIGN;
   for (const sx of [-1, 1]) {
-    A.add('steel_frame', BOX(A), LL(IDENT, sx * poleX, poleH / 2, SIGN.z, 0, 0.3, poleH, 0.3), {
+    A.add('gb_grey', BOX(A), LL(IDENT, sx * poleX, poleH / 2, SIGN.z, 0, 0.3, poleH, 0.3), {
       masks: [0.8, 0.45, 0.2],
     });
     A.box('metal', sx * poleX, poleH / 2, SIGN.z, 0.34, poleH, 0.34);
     // A foot, so the pole meets the road instead of ending in it.
-    A.add('concrete', BOX(A), LL(IDENT, sx * poleX, 0.16, SIGN.z, 0, 0.8, 0.32, 0.8), { masks: [0.6, 0.5, 0.3] });
+    A.add('gb_grid', BOX(A), LL(IDENT, sx * poleX, 0.16, SIGN.z, 0, 0.8, 0.32, 0.8), { masks: [0.6, 0.5, 0.3] });
   }
   const span = poleX * 2;
-  A.add('sign_red', BOX(A), LL(IDENT, 0, boardY + boardH / 2, SIGN.z, 0, span, boardH, boardT), {
+  A.add('gb_accent', BOX(A), LL(IDENT, 0, boardY + boardH / 2, SIGN.z, 0, span, boardH, boardT), {
     masks: [0.7, 0.4, 0.2],
   });
   A.box('metal', 0, boardY + boardH / 2, SIGN.z, span, boardH, boardT);
   // A band top and bottom: two boxes are the cheapest thing that reads as
   // lettering from 20 m, and lettering is what makes it a sign and not a wall.
   for (const sy of [-1, 1])
-    A.add('paint_yellow', BOX_THIN(A),
+    A.add('gb_white', BOX_THIN(A),
       LL(IDENT, 0, boardY + boardH / 2 + sy * (boardH / 2 - 0.16), SIGN.z, 0, span * 0.9, 0.16, boardT + 0.06),
       { masks: [0.9, 0.2, 0.1] });
   // The cross-brace under the board, so the span does not read as floating.
-  A.add('steel_frame', BOX_THIN(A), LL(IDENT, 0, boardY - 0.12, SIGN.z, 0, span, 0.14, 0.14), {
+  A.add('gb_grey', BOX_THIN(A), LL(IDENT, 0, boardY - 0.12, SIGN.z, 0, span, 0.14, 0.14), {
     masks: [0.8, 0.5, 0.2],
   });
 }
 
 /** Everything that is a low wall: yard walls and street barricades. */
 function buildWalls(A, rng) {
-  for (const [x, z, ry, len] of YARD_WALLS) lowWall(A, 'concrete', x, z, ry, len, 1.2, 0.35);
-  for (const [x, z, ry, len] of STREET_BLOCKS) lowWall(A, 'concrete', x, z, ry, len, 1.1, 0.8, [0.65, 0.55, 0.35]);
+  for (const [x, z, ry, len] of YARD_WALLS) lowWall(A, 'gb_grid', x, z, ry, len, 1.2, 0.35);
+  for (const [x, z, ry, len] of STREET_BLOCKS) lowWall(A, 'gb_grid', x, z, ry, len, 1.1, 0.8, [0.65, 0.55, 0.35]);
 }
 
 /**
@@ -664,15 +673,15 @@ function buildWalls(A, rng) {
  */
 function buildSheds(A, rng) {
   for (const [x, z, w, d, h] of SHEDS) {
-    A.add('plaster_white', BOX(A), LL(IDENT, x, h / 2, z, 0, w, h, d), { masks: [0.5, 0.5, 0.35] });
+    A.add('gb_white', BOX(A), LL(IDENT, x, h / 2, z, 0, w, h, d), { masks: [0.5, 0.5, 0.35] });
     A.box('concrete', x, h / 2, z, w, h, d);
     // The roof oversails the box by 15 cm and leans 6°, so the shed reads as
     // built rather than extruded, for one extra part.
-    A.add('roof_screed', BOX(A), LL(IDENT, x, h + 0.14, z, 0, w + 0.3, 0.18, d + 0.3, 0, 0.1), {
+    A.add('gb_grey', BOX(A), LL(IDENT, x, h + 0.14, z, 0, w + 0.3, 0.18, d + 0.3, 0, 0.1), {
       masks: [0.65, 0.45, 0.25],
     });
     // A door on the face that looks back at the street.
-    A.add('wood_dark', BOX_THIN(A),
+    A.add('gb_dark', BOX_THIN(A),
       LL(IDENT, x - Math.sign(x) * (w / 2 + 0.02), 1.05, z, 0, 0.06, 2.1, 1.0), { masks: [0.6, 0.5, 0.4] });
   }
 }
@@ -690,77 +699,100 @@ function dress(A, rng, stairFeet) {
     return true;
   };
 
-  A.jitter = { rng, yaw: 0.5, scale: 0.06 };
+  /**
+   * QUARTER TURNS ONLY, AND NO SCALE JITTER.
+   *
+   * Every other map in the game arms `A.jitter` here so no two instances sit
+   * alike — identical clones are the loudest tell in an instanced cloud. This
+   * map wants exactly the opposite. A blockout reads as a blockout because its
+   * objects are repetitions of one object, on a grid, all plumb; a crate rolled
+   * three degrees off true would be the only thing on screen not aligned to the
+   * 1 m ruling under it. So `A.jitter` is never armed, scale is always 1, and
+   * rotation is snapped to the compass.
+   */
+  // `Rng.int` takes (min, max). Called with one argument it returns NaN, which
+  // does not throw and does not fail any headless check — it propagates into
+  // the instance matrix, then into the InstancedMesh's bounding sphere, and
+  // three culls the whole cloud every frame. 82 of this map's 122 props were
+  // invisible exactly that way, and only a scaled-up prop that STILL did not
+  // appear on screen gave it away.
+  const turn = () => Math.floor(rng.float() * 4) * H;
 
-  // Jersey barriers along the sidewalks and at the mouths: the map's most
-  // characteristic piece of street furniture and its cheapest cover.
-  const jerseys = [
+  /** A crate is two instances at one transform: the box, then its bracing. */
+  const crate = (x, y, z, ry) => {
+    A.put('gb_crate', x, y, z, ry, 1);
+    A.put('gb_crate_brace', x, y, z, ry, 1);
+  };
+
+  // ---- blocks: the sidewalk line and the alley cover ---------------------
+  // These were jersey barriers; the positions are unchanged because the spawn
+  // probe's line-of-sight result is measured against them.
+  const blocks = [
     [-7.9, -12.0, 0], [-7.9, -3.0, 0], [-7.9, 6.0, 0], [-7.9, 14.0, 0],
     [7.9, 12.0, 0], [7.9, 3.0, 0], [7.9, -6.0, 0], [7.9, -14.0, 0],
     [-4.2, -17.6, H], [4.2, -17.6, H], [-4.2, 17.6, H], [4.2, 17.6, H],
     [-20.0, -18.4, H], [20.0, 18.4, H], [-23.6, 13.5, 0], [23.6, -13.5, 0],
+    [-19.0, -15.5, 0], [19.0, 15.5, 0], [-24.0, 11.0, H], [24.0, -11.0, H],
+    [-6.0, 19.0, 0], [6.0, -19.0, 0],
   ];
-  for (const [x, z, ry] of jerseys) if (free(x, z, 0.9)) A.put('jersey', x, 0.03, z, ry, 1);
+  for (const [x, z, ry] of blocks) if (free(x, z, 0.9)) A.put('gb_block', x, 0.46, z, ry, 1);
 
-  // Crates and pallets in the yards and alleys.
+  // ---- crates, on the ground and stacked ---------------------------------
   const crates = [
-    [-23.5, -4.5], [-23.5, -3.4], [-24.2, 4.0], [-22.9, 6.5],
-    [23.5, 4.5], [23.5, 3.4], [24.2, -4.0], [22.9, -6.5],
+    // In the OPEN ends of each alley: the west house spans z -10..5 and the
+    // east house z -5..10, so anything inside those bands is culled by `free()`
+    // and places nothing at all.
+    [-23.5, -13.0], [-23.5, -14.2], [-24.2, 7.0], [-22.9, 8.4],
+    [23.5, 13.0], [23.5, 14.2], [24.2, -7.0], [22.9, -8.4],
     [-9.8, -13.5], [-13.0, -14.5], [-16.5, -13.0], [-20.5, -12.5],
     [9.8, 13.5], [13.0, 14.5], [16.5, 13.0], [20.5, 12.5],
     [-11.5, 10.5], [-15.0, 11.5], [11.5, -10.5], [15.0, -11.5],
     [-2.0, -19.2], [2.4, -19.6], [-2.4, 19.6], [2.0, 19.2],
   ];
-  for (const [x, z] of crates)
-    if (free(x, z, 0.6))
-      A.put(rng.pick(['crate_a', 'crate_b', 'crate_c', 'crate_flat']), x, 0.03, z, rng.float() * 6.283, rng.range(0.92, 1.08));
+  const S = 0.92;
+  for (let i = 0; i < crates.length; i++) {
+    const [x, z] = crates[i];
+    if (!free(x, z, 0.6)) continue;
+    crate(x, S / 2 + 0.02, z, turn());
+    // Every third one carries a second tier. A stack is what gives a blockout
+    // its only vertical rhythm, and it is free: the same prototype again.
+    if (i % 3 === 0) crate(x, S * 1.5 + 0.03, z, turn());
+  }
 
-  for (const [x, z] of [[-19.0, -15.5], [19.0, 15.5], [-24.0, 11.0], [24.0, -11.0], [-6.0, 19.0], [6.0, -19.0]])
-    if (free(x, z, 0.7)) A.put('pallet', x, 0.03, z, rng.float() * 6.283, 1);
-
-  // Barrels: the vertical accent in an otherwise very horizontal blockout.
+  // ---- barrels: the map's only saturated colour --------------------------
   const barrels = [
     [-9.0, -10.0], [-9.6, -9.2], [-10.4, 5.5], [9.0, 10.0], [9.6, 9.2], [10.4, -5.5],
     [-22.0, -13.5], [22.0, 13.5], [-13.5, 16.5], [13.5, -16.5],
     [-4.8, -10.5], [4.8, 10.5], [-5.4, 11.2], [5.4, -11.2],
     [-23.8, 0.0], [23.8, 0.0], [-18.0, 18.5], [18.0, -18.5],
+    [-21.5, 8.0], [21.5, -8.0], [-7.5, -19.5], [7.5, 19.5],
+    [-4.6, -18.6], [4.6, 18.6],
   ];
-  for (const [x, z] of barrels)
-    if (free(x, z, 0.5)) A.put(rng.pick(['barrel_rust', 'barrel_blue']), x, 0.03, z, rng.float() * 6.283, rng.range(0.94, 1.06));
+  for (const [x, z] of barrels) if (free(x, z, 0.5)) A.put('gb_barrel', x, 0.46, z, turn(), 1);
 
-  // Tyres and small stuff, all distance-LOD'd by their prototypes.
-  for (const [x, z] of [[-21.5, 8.0], [-21.0, 8.6], [21.5, -8.0], [21.0, -8.6], [-7.5, -19.5], [7.5, 19.5]])
-    if (free(x, z, 0.4)) A.put(rng.pick(['tyre', 'tyre_small']), x, 0.03, z, rng.float() * 6.283, 1);
-
-  // Sandbag positions at the two mouths — someone held this road once.
-  for (const [gx, gz, ry] of [[-4.6, -18.6, 0], [4.6, 18.6, 0]]) {
-    for (let i = 0; i < 9; i++) {
-      const row = (i / 3) | 0;
-      const col = i % 3;
-      A.put(rng.pick(['sandbag_a', 'sandbag_b', 'sandbag_c']),
-        gx + Math.cos(ry) * (col - 1) * 0.56, 0.03 + row * 0.17, gz - Math.sin(ry) * (col - 1) * 0.56,
-        ry + rng.range(-0.06, 0.06), 1);
+  /**
+   * Crate piles: a 3-2-1 pyramid in each yard and each far lot.
+   *
+   * The reference blockouts all have one — it is the shape that tells you a
+   * blockout is a place rather than a diagram, and it is the only object here
+   * taller than a crate that is not a building. Kept 2 m clear of every spawn
+   * point: `buildSpawnPoints` culls a spawn against real collision, so a pile
+   * dropped on one does not fail anything, it just quietly ships a point short.
+   */
+  for (const [cx, cz] of [[-10.3, -2.5], [10.3, 2.5], [-20.0, 18.0], [20.0, -18.0]]) {
+    const ry = turn();
+    const cos = Math.cos(ry);
+    const sin = Math.sin(ry);
+    for (let row = 0; row < 3; row++) {
+      const n = 3 - row;
+      for (let i = 0; i < n; i++) {
+        const u = (i - (n - 1) / 2) * (S + 0.03);
+        const x = cx + cos * u;
+        const z = cz - sin * u;
+        if (!free(x, z, 0.55)) continue;
+        crate(x, S / 2 + 0.02 + row * S, z, ry);
+      }
     }
-  }
-
-  // Litter and cans scattered on the apron. Cheap, and the only thing keeping
-  // the concrete from reading as a bare plane at ankle height.
-  A.jitter.yaw = 3.14;
-  for (let i = 0; i < 46; i++) {
-    const x = rng.range(-NUKE.halfX + 1.5, NUKE.halfX - 1.5);
-    const z = rng.range(-NUKE.halfZ + 1.5, NUKE.halfZ - 1.5);
-    if (!free(x, z, 0.35)) continue;
-    A.put(rng.pick(['litter', 'can', 'bottle', 'brick_a', 'brick_b']), x, 0.03, z, rng.float() * 6.283, rng.range(0.8, 1.2));
-  }
-
-  A.jitter = null;
-
-  // Street lamps down the sidewalks. Daylight map, so these are silhouette and
-  // lamp anchors rather than a lighting budget.
-  for (const [x, z, ry] of [[-7.6, -8.5, 0], [7.6, 8.5, Math.PI], [-7.6, 12.0, 0], [7.6, -12.0, Math.PI]]) {
-    A.put('lamp_post', x, 0.03, z, ry, 1);
-    A.box('metal', x, 1.6, z, 0.24, 3.2, 0.24);
-    A.lampAnchors.push({ x: x + Math.sin(ry) * 0.9, y: 4.4, z });
   }
 }
 
@@ -770,6 +802,7 @@ function dress(A, rng, stairFeet) {
  */
 export function buildNuketown(A, rng) {
   registerProps(A, rng);
+  registerNuketownProps(A, rng);
 
   buildGround(A, rng);
   buildPerimeter(A, rng);
@@ -794,12 +827,22 @@ export const NUKETOWN_MAP = {
   blurb: 'Two houses, one street, thirty seconds between spawns. Upstairs windows watch everything, and everything watches back.',
   size: '51 × 42 m',
   /**
-   * LEVEL -> WORLD. A few tenths off the axes so the street, the wall and both
-   * houses do not sit parallel to the sun's shadow direction — every mass on
-   * this map is a rectangle, and rectangles lit square-on lose one of their two
-   * lit faces.
+   * LEVEL -> WORLD, SQUARE ON PURPOSE — and this map is the exception to the
+   * rule the others follow.
+   *
+   * Rust and the rest carry a few tenths of yaw so their rectangles are never
+   * lit square-on, because a rectangle facing the sun loses one of its two lit
+   * faces. Nuketown cannot: the `gb_grid` deck projects in WORLD space and
+   * `Assembler.setTransform` bakes this yaw into every vertex, so any non-zero
+   * value runs the 1 m ruling diagonally across every wall, kerb and block. A
+   * grid at 20 degrees to the architecture it is drawn on does not read as a
+   * style, it reads as a bug.
+   *
+   * The lighting the yaw used to buy is bought instead with `environment.hour`
+   * below: the sun's azimuth does the same job, and unlike the yaw it does not
+   * drag the floor around with it.
    */
-  transform: { yaw: -0.36, tx: 0, tz: 0 },
+  transform: { yaw: 0, tx: 0, tz: 0 },
   /**
    * Tight to the wall plus a skirt. `ai` builds its nav grid over this, and
    * there is no reason to sample cells out on the ridge: the perimeter is
@@ -811,4 +854,33 @@ export const NUKETOWN_MAP = {
   groundY: groundYNuketown,
   isOpen: isOpenNuketown,
   build: buildNuketown,
+  /**
+   * A high, thin overcast — the light a blockout is always presented under.
+   *
+   * `cloudCoverage` is the load-bearing number and it must stay above ~0.34:
+   * below that the sheet breaks into discrete cumulus and the map gets moving
+   * pools of shadow, which is the one thing that would stop the flat surfaces
+   * reading as flat. Paired with a LOW `cloudDensity`, that is a bright white
+   * lid rather than deep cloud.
+   *
+   * `hour` is doing two jobs. It sets the light, and it is what replaces the
+   * map yaw (see `transform`): 15:00 puts the sun off the compound's axes so
+   * the white masses still show a lit face and a shaded one. `exposureBias` is
+   * EV and positive is DARKER, so the small negative here is what makes the
+   * whites bright without blowing them.
+   */
+  environment: {
+    hour: 13.5,
+    exposureBias: -0.5,
+    weather: {
+      cloudCoverage: 0.05,
+      cloudDensity: 1.0,
+      turbidity: 3.0,
+      cirrusCoverage: 0.0,
+      cirrusOpacity: 0.0,
+      horizonMurk: 0.35,
+      fogDensity: 0.9,
+      fogHeight: 20,
+    },
+  },
 };

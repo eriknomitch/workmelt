@@ -23,6 +23,8 @@
 import * as THREE from 'three';
 import { Rng } from '../core/rng.js';
 import { Assembler } from './builder.js';
+import { PALETTE } from './palette.js';
+import { LIBRARY } from '../materials/library.js';
 import {
   MAPS,
   ALL_MAPS,
@@ -320,6 +322,28 @@ for (const map of ALL_MAPS) {
         vmin = Math.min(vmin, c);
         vmax = Math.max(vmax, c);
       }
+
+    /**
+     * AND EVERY INSTANCE MATRIX, which the check above cannot see.
+     *
+     * An instanced prop's geometry is one prototype at the origin and is always
+     * finite; the placement lives in `instanceMatrix`. Put a NaN in there — a
+     * rotation from `Rng.int(4)` when the signature is `int(min, max)`, say —
+     * and nothing throws, the prop count is right, `A.stats` is right, and the
+     * geometry bounding box is right. What happens is that the InstancedMesh's
+     * bounding SPHERE goes NaN, the frustum test fails, and three silently
+     * culls the entire cloud on every frame of every map that uses it.
+     *
+     * That cost this map 82 of its 122 props, invisibly, past a green suite.
+     */
+    if (o.isInstancedMesh) {
+      const el = o.instanceMatrix.array;
+      for (let i = 0; i < el.length; i++) {
+        if (Number.isFinite(el[i]) && Math.abs(el[i]) <= SANE) continue;
+        stray = `${o.name ?? 'instances'} instance ${(i / 16) | 0} matrix[${i % 16}] = ${el[i]}`;
+        break;
+      }
+    }
   });
   ok(!stray, 'every vertex the build emits lands somewhere real',
     stray ?? `${vmin.toFixed(0)}..${vmax.toFixed(0)} m`);
@@ -780,6 +804,79 @@ for (const m of MOUTHS) {
 console.log(B('\nnuketown — the block'));
 
 const nuketown = mapById('nuketown');
+
+/**
+ * THE GREYBOX CONTRACT.
+ *
+ * Nuketown's look is not geometry, it is five palette entries that agree to do
+ * nothing: no weathering, no edge wear, no grime, no macro drift, no normal
+ * relief. Every one of those is a parameter, so every one of them is a single
+ * character away from coming back — and a reviewer reading a diff that adds
+ * `weather: [0.4, 0.5, 1.4, 0.55]` to one key has no way to know it just
+ * un-styled a map.
+ *
+ * These four guards are the look written down. They are also the texture
+ * budget: `TEXTURE-PERF.md` counts every `bake:` override, and the whole point
+ * of this family is that four of the five keys share one 256 set.
+ */
+{
+  const gb = Object.entries(PALETTE).filter(([k]) => k.startsWith('gb_'));
+  ok(gb.length >= 5, 'the greybox palette family exists', gb.map(([k]) => k).join(' '));
+
+  const notFlat = gb.filter(([, v]) => {
+    const o = v.opts ?? {};
+    const w = o.weather ?? [1, 1, 1, 1];
+    return o.vertexMasks !== false || w.some((n) => n !== 0) || o.normalStrength !== 0;
+  });
+  ok(notFlat.length === 0, 'every greybox key is flat — no weather, no masks, no relief',
+    notFlat.map(([k]) => k).join(' '));
+
+  // `tint` is a linear multiply on a baked albedo, and palette.js opens by
+  // saying values stay inside 0.02-0.9 reflectance. A pure-white tint is not a
+  // material, it is a blown highlight with a mesh behind it.
+  const outOfBand = gb.filter(([, v]) => {
+    const t = v.opts?.tint;
+    if (t === undefined) return false;
+    return [16, 8, 0].some((sh) => {
+      const lin = Math.pow(((t >> sh) & 255) / 255, 2.2);
+      return lin < 0.02 || lin > 0.9;
+    });
+  });
+  ok(outOfBand.length === 0, 'and every tint sits inside the 0.02-0.9 reflectance band',
+    outOfBand.map(([k]) => k).join(' '));
+
+  // Only the ruled deck may carry its own bake. The flat colours are one shared
+  // 256 set differing by tint, which is what makes four of them free.
+  const extraBakes = gb.filter(([, v]) => v.opts?.bake !== undefined);
+  ok(extraBakes.length === 0, 'no greybox key overrides its bake — they share resident sets',
+    extraBakes.map(([k]) => k).join(' '));
+}
+
+/**
+ * The deck's squares are METRES, and that fact lives in three numbers across
+ * two files: the cell count baked into the texture, the metres one tile spans,
+ * and the projection scale the shader tiles it at. If they drift the floor
+ * still looks like a grid — just a grid of 1.3 m squares, silently lying about
+ * every distance a player reads off it.
+ */
+{
+  const g = LIBRARY.grid;
+  const cells = g.bake.param[0];
+  ok(g.bake.worldSize / cells === 1, 'the deck grid is exactly 1 m',
+    `${g.bake.worldSize} m / ${cells} cells`);
+  ok(g.mat.scale === g.bake.worldSize, 'and the projection tiles it at its bake size',
+    `scale ${g.mat.scale} vs worldSize ${g.bake.worldSize}`);
+}
+
+/**
+ * The grid projects in WORLD space and `setTransform` bakes this yaw into every
+ * vertex, so a non-zero yaw runs the ruling diagonally across every wall and
+ * kerb on the map. Every other map wants a few tenths here — this is the one
+ * that cannot have it, and the reason is invisible from inside `nuketown.js`.
+ */
+ok(nuketown.transform.yaw === 0,
+  'nuketown is square to the world — the deck grid is world-projected and would skew',
+  `yaw ${nuketown.transform.yaw}`);
 const nRects = [];
 for (const h of NUKE_HOUSES) nRects.push([h.id, h.x - h.w / 2, h.z - h.d / 2, h.x + h.w / 2, h.z + h.d / 2]);
 const nWallRect = (label, x, z, ry, len, t) => {
