@@ -1,0 +1,7 @@
+#!/usr/bin/env zsh
+pnpm run dev:mp &
+until curl -sf http://localhost:5273 >/dev/null; do
+  sleep 0.2
+done
+open http://localhost:5273
+wait
