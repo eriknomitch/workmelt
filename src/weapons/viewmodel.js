@@ -110,23 +110,22 @@ export class Viewmodel {
     this.anchor.add(this.rig);
     ctx.viewScene.add(this.anchor);
 
-    // ---- arms -------------------------------------------------------------
-    // Two flat-shaded untextured dark greys — the arms are deliberately
-    // low-poly (see hands.js) and cost no texture fetches at all.
+    // ---- hands ------------------------------------------------------------
+    // Two flat-shaded untextured dark greys — the hands are deliberately
+    // low-poly (see hands.js) and cost no texture fetches at all. There are no
+    // arm sleeves any more: each glove ends in a short wrist stub, and the IK
+    // solve exists to weld the hands to the weapon and aim the stubs.
     const handMats = {
       glove: mats.armGlove(),
       sleeve: mats.armSleeve(),
     };
     // Shoulder joints in CAMERA space: ~200 mm lateral, ~210 mm below the eye
-    // and only just behind it.
-    //
-    // Two constraints fight here. Too far BACK and a 570 mm arm cannot reach the
-    // handguard, so the two-bone solve clamps and the elbow locks dead straight
-    // — the "broomstick arm". Too far FORWARD (a properly bladed stance) and the
-    // upper arm itself lands inside the near frustum, so a 100 mm-wide sleeve
-    // fills half the screen. The support hand is therefore placed on the REAR of
-    // the handguard instead, which buys the reach without moving the joint into
-    // shot.
+    // and only just behind it. Nothing renders at the shoulder, but its place
+    // still matters twice over: it is the far end of the reach budget (too far
+    // back and the two-bone solve clamps, dragging the HAND off the grip), and
+    // it decides where the solved elbow lands, which is what aims each wrist
+    // stub. The reach margin is bought by cheating the bones 10% long — see
+    // hands.js L_UPPER — not by moving the shoulders forward.
     this.armR = new Arm(1, handMats, {
       scale: 1,
       shoulderX: 0.205,
@@ -134,11 +133,6 @@ export class Viewmodel {
       shoulderZ: 0.06,
       pose: 'grip',
     });
-    // The shoulders stay BEHIND the eye. Blading the support shoulder forward to
-    // reach the handguard was tried and measured: at z=-0.075 the 89 mm forearm
-    // sleeve crosses the frame diagonally and hides the barrel and the muzzle,
-    // which is precisely the failure the note above warns about. The reach is
-    // bought by cheating the bones 10% long instead — see hands.js L_UPPER.
     this.armL = new Arm(-1, handMats, {
       scale: 0.97,
       shoulderX: 0.2,
