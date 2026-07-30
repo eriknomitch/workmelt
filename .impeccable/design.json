@@ -1,0 +1,372 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-30T13:51:03Z",
+  "title": "Design System: WORKMELT",
+  "extensions": {
+    "colorMeta": {
+      "dark-slate": {
+        "role": "neutral",
+        "displayName": "Dark Slate",
+        "canonical": "#28303d",
+        "tonalRamp": ["#0d1016", "#151a22", "#1e242e", "#28303d", "#3d4859", "#5a6879", "#8b96a5", "#c5ccd5"]
+      },
+      "gunmetal": {
+        "role": "neutral",
+        "displayName": "Gunmetal",
+        "canonical": "#343a49",
+        "tonalRamp": ["#111319", "#1a1d25", "#252932", "#343a49", "#4a5265", "#697285", "#98a0af", "#ccd1d9"]
+      },
+      "well": {
+        "role": "neutral",
+        "displayName": "Well",
+        "canonical": "#2f3644",
+        "note": "color-mix(in srgb, Gunmetal 60%, Dark Slate) — inset wells, chips, tabs, inputs, slider tracks."
+      },
+      "hover": {
+        "role": "neutral",
+        "displayName": "Hover",
+        "canonical": "#474d5a",
+        "note": "color-mix(in srgb, Gunmetal 70%, Ice White 8%) — row hover and the selected map card only."
+      },
+      "ice-white": {
+        "role": "neutral",
+        "displayName": "Ice White",
+        "canonical": "#f0f0f0",
+        "tonalRamp": ["#262626", "#3d3d3d", "#575757", "#737373", "#919191", "#b0b0b0", "#d0d0d0", "#f0f0f0"]
+      },
+      "ice-white-dim": {
+        "role": "neutral",
+        "displayName": "Ice White Dim",
+        "canonical": "#b8babe",
+        "note": "color-mix(in srgb, Ice White 72%, Dark Slate) — body copy at 7.1:1 on the canvas."
+      },
+      "ice-white-warm": {
+        "role": "neutral",
+        "displayName": "Ice White Warm",
+        "canonical": "#dbe9e0",
+        "note": "color-mix(in srgb, Ice White 88%, Melt Green) — the primary button's hover fill. Exists so a green-tinted CTA hover never puts text on green."
+      },
+      "steel": {
+        "role": "neutral",
+        "displayName": "Steel",
+        "canonical": "#888a92",
+        "tonalRamp": ["#1c1d20", "#2e2f33", "#434449", "#5a5c62", "#72747b", "#888a92", "#adaeb4", "#d4d5d8"]
+      },
+      "steel-lift": {
+        "role": "neutral",
+        "displayName": "Steel Lift",
+        "canonical": "#b4b5ba",
+        "note": "color-mix(in srgb, Steel 58%, Ice White) — Steel is 3.86:1 and large-text-only, so every secondary string under 16px uses this."
+      },
+      "hairline": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "#3c434f",
+        "note": "Ice White at 10% resolved over Dark Slate. Every 1px rule, divider and resting border."
+      },
+      "melt-green": {
+        "role": "primary",
+        "displayName": "Melt Green",
+        "canonical": "#42b66b",
+        "tonalRamp": ["#0b2716", "#123f23", "#1a5a33", "#237845", "#2d9757", "#42b66b", "#7ed19c", "#c2ebd2"]
+      },
+      "melt-green-deep": {
+        "role": "primary",
+        "displayName": "Melt Green Deep",
+        "canonical": "#007f37",
+        "note": "The light-inversion substitute: same hue and chroma, lightness lowered to the lightest value clearing 4.50:1 on Ice White."
+      },
+      "success": {
+        "role": "secondary",
+        "displayName": "Success",
+        "canonical": "#49c873",
+        "tonalRamp": ["#0c2a18", "#134426", "#1b6136", "#248048", "#2fa05b", "#49c873", "#87dda5", "#c8f0d8"]
+      },
+      "warning": {
+        "role": "secondary",
+        "displayName": "Warning",
+        "canonical": "#f2b643",
+        "tonalRamp": ["#33240a", "#4f3a11", "#6d521a", "#8d6c23", "#af882d", "#d2a437", "#f2b643", "#f9dda2"]
+      },
+      "danger": {
+        "role": "secondary",
+        "displayName": "Danger",
+        "canonical": "#d95c5c",
+        "tonalRamp": ["#2f1010", "#4a1a1a", "#672626", "#863333", "#a64242", "#c24f4f", "#d95c5c", "#eeaaaa"]
+      },
+      "info": {
+        "role": "secondary",
+        "displayName": "Information",
+        "canonical": "#4d8ef7",
+        "tonalRamp": ["#0a1c3c", "#0f2c5e", "#153e82", "#1c51a8", "#2566cf", "#3a7ae8", "#4d8ef7", "#a6c6fb"]
+      },
+      "graphite": {
+        "role": "tertiary",
+        "displayName": "Graphite",
+        "canonical": "#181c28",
+        "note": "World palette. Deep shadows and the void behind panels; every menu scrim and soft shadow is this colour at partial alpha."
+      },
+      "cloud": {
+        "role": "tertiary",
+        "displayName": "Cloud",
+        "canonical": "#d0d2d7",
+        "note": "World palette. Paper, whiteboards and lit surfaces — 8.78:1 on Dark Slate."
+      },
+      "concrete": {
+        "role": "tertiary",
+        "displayName": "Concrete",
+        "canonical": "#656f72",
+        "note": "World palette. Floors and exterior walls."
+      },
+      "storage-orange": {
+        "role": "tertiary",
+        "displayName": "Storage Orange",
+        "canonical": "#c46d2e",
+        "note": "World palette. The one-per-map logistics accent."
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "The lobby wordmark and large environmental decals. Bebas Neue, uppercase, one per screen."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "The pause-menu title — the top of a modal surface."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Section heads, panel headers, button labels. Room codes take .14em instead of .08em because they are read character by character."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Lede copy, row names, descriptions. Inter only; constrained to 56ch in the lobby lede."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Eyebrows, field labels, status strings, table headers, tags. Weight and tracking carry the emphasis, not size."
+      }
+    },
+    "shadows": [
+      {
+        "name": "ambient",
+        "value": "0 0 48px rgb(24 28 40 / .7)",
+        "purpose": "Panels resting in the layout — the lobby roster, toasts, the invite bar. Zero offset by rule."
+      },
+      {
+        "name": "ambient-lift",
+        "value": "0 0 64px rgb(24 28 40 / .82)",
+        "purpose": "Modal surfaces floating above everything — the pause menu, the scoreboard."
+      },
+      {
+        "name": "scrim",
+        "value": "background: rgb(24 28 40 / .82); backdrop-filter: blur(10px) saturate(.85)",
+        "purpose": "Behind a modal. The slight desaturation is what keeps the live scene from bleeding colour through the panel."
+      },
+      {
+        "name": "hud-outline",
+        "value": "eight equal-radius hard shadows at 1.5px/1.1px in a ring, plus one 4px soft seat",
+        "purpose": "In-world HUD only. Direction-free by construction, so text survives a blown-out sky and a black interior without a scrim."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-standard",
+        "value": "150ms cubic-bezier(.2,.85,.3,1)",
+        "purpose": "Default for every UI state transition — colour, border, background. Swift out, linear in."
+      },
+      {
+        "name": "ease-slow",
+        "value": "180ms cubic-bezier(.2,.85,.3,1)",
+        "purpose": "Surface-level transitions: the lobby fading in, a panel opening. The top of the 120-180ms band."
+      },
+      {
+        "name": "press",
+        "value": "90ms linear",
+        "purpose": "Button active state only — translateY(2px). Fast and unweighted so a click feels mechanical."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "1ms linear",
+        "purpose": "Under prefers-reduced-motion: reduce, both duration tokens collapse to this. Nothing else changes."
+      }
+    ],
+    "breakpoints": [
+      { "name": "lobby-stack", "value": "1080px", "purpose": "Lobby collapses to one column; the roster panel drops its height cap." },
+      { "name": "compact", "value": "720px", "purpose": "Top bar wraps, wordmark drops to 24px, CTA row becomes one column." },
+      { "name": "menu-wrap", "value": "560px", "purpose": "Settings rows wrap so the control moves under its label." },
+      { "name": "short-lobby", "value": "max-height: 680px", "purpose": "Height query. Wordmark shrinks, map-card blurbs hide, button padding tightens." },
+      { "name": "short-menu", "value": "max-height: 620px", "purpose": "Height query for the pause menu on a laptop." }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The lobby's single dominant action — Play, Ready up, Deploy now. Ice White fill so text never sits on green.",
+      "html": "<button class=\"ds-btn-primary\">READY UP <span class=\"ds-key\">ENTER</span></button>",
+      "css": ".ds-btn-primary { font-family: var(--wm-display, 'Bebas Neue', Impact, sans-serif); text-transform: uppercase; letter-spacing: .08em; font-size: 26px; line-height: 1; background: var(--wm-fg, #f0f0f0); color: var(--wm-bg, #28303d); border: 1px solid transparent; border-radius: var(--wm-r, 8px); padding: 16px 28px 13px; cursor: pointer; display: inline-flex; align-items: center; gap: 10px; transition: background 150ms cubic-bezier(.2,.85,.3,1), transform 90ms linear; } .ds-btn-primary:hover { background: var(--wm-fg-warm, #dbe9e0); } .ds-btn-primary:active { transform: translateY(2px); } .ds-btn-primary:focus-visible { outline: 2px solid var(--wm-accent, #42b66b); outline-offset: 2px; } .ds-btn-primary .ds-key { font-family: var(--wm-body, Inter, system-ui, sans-serif); font-size: 10px; font-weight: 600; letter-spacing: .08em; border: 1px solid currentColor; border-radius: 3px; padding: 1px 4px; opacity: .55; }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "The secondary action beside the primary CTA. Transparent with an Ice White outline that hovers green.",
+      "html": "<button class=\"ds-btn-ghost\">START NOW</button>",
+      "css": ".ds-btn-ghost { font-family: var(--wm-display, 'Bebas Neue', Impact, sans-serif); text-transform: uppercase; letter-spacing: .08em; font-size: 19px; line-height: 1; background: transparent; color: var(--wm-fg, #f0f0f0); border: 1px solid var(--wm-fg, #f0f0f0); border-radius: var(--wm-r, 8px); padding: 12px 22px 10px; cursor: pointer; transition: border-color 150ms cubic-bezier(.2,.85,.3,1), color 150ms cubic-bezier(.2,.85,.3,1), transform 90ms linear; } .ds-btn-ghost:hover { border-color: var(--wm-accent, #42b66b); } .ds-btn-ghost:active { transform: translateY(2px); } .ds-btn-ghost:focus-visible { outline: 2px solid var(--wm-accent, #42b66b); outline-offset: 2px; }"
+    },
+    {
+      "name": "Small Button",
+      "kind": "button",
+      "refersTo": "button-small",
+      "description": "In-bar secondary actions like Copy invite link. Inter rather than Bebas — this register is functional, not declarative.",
+      "html": "<button class=\"ds-btn-sm\">COPY INVITE LINK</button>",
+      "css": ".ds-btn-sm { font-family: var(--wm-body, Inter, system-ui, sans-serif); font-size: 12px; font-weight: 600; letter-spacing: .02em; background: transparent; color: var(--wm-fg-dim, #b8babe); border: 1px solid var(--wm-border, #3c434f); border-radius: var(--wm-r-sm, 4px); padding: 5px 10px; cursor: pointer; transition: color 150ms cubic-bezier(.2,.85,.3,1), border-color 150ms cubic-bezier(.2,.85,.3,1), background 150ms cubic-bezier(.2,.85,.3,1); } .ds-btn-sm:hover { color: var(--wm-fg, #f0f0f0); border-color: var(--wm-accent, #42b66b); background: var(--wm-panel-2, #2f3644); } .ds-btn-sm:focus-visible { outline: 2px solid var(--wm-accent, #42b66b); outline-offset: 2px; }"
+    },
+    {
+      "name": "Chip",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Small exclusive choices — bot garrison size. Selected inverts completely rather than adding a ring.",
+      "html": "<div style=\"display:flex;gap:8px\"><button class=\"ds-chip\">NO BOTS</button><button class=\"ds-chip\" aria-pressed=\"true\">6 BOTS</button><button class=\"ds-chip\">11 BOTS</button></div>",
+      "css": ".ds-chip { font-family: var(--wm-body, Inter, system-ui, sans-serif); font-size: 12px; font-weight: 500; letter-spacing: .015em; padding: 7px 13px; border-radius: var(--wm-r-sm, 4px); border: 1px solid var(--wm-border, #3c434f); background: var(--wm-panel-2, #2f3644); color: var(--wm-muted-fg, #b4b5ba); cursor: pointer; transition: color 150ms cubic-bezier(.2,.85,.3,1), border-color 150ms cubic-bezier(.2,.85,.3,1), background 150ms cubic-bezier(.2,.85,.3,1); } .ds-chip:hover { color: var(--wm-fg, #f0f0f0); border-color: var(--wm-accent, #42b66b); } .ds-chip[aria-pressed=\"true\"] { color: var(--wm-bg, #28303d); background: var(--wm-fg, #f0f0f0); border-color: var(--wm-fg, #f0f0f0); font-weight: 600; } .ds-chip:focus-visible { outline: 2px solid var(--wm-accent, #42b66b); outline-offset: 2px; }"
+    },
+    {
+      "name": "Callsign Input",
+      "kind": "input",
+      "refersTo": "input-text",
+      "description": "The one text field in the product. Focus replaces the outline with a green border — never suppress one without providing the other.",
+      "html": "<label class=\"ds-field\"><span class=\"ds-field-lbl\">CALLSIGN</span><input class=\"ds-input\" value=\"HOLLOWPOINT\" /></label>",
+      "css": ".ds-field { display: flex; flex-direction: column; gap: 6px; } .ds-field-lbl { font-family: var(--wm-body, Inter, system-ui, sans-serif); font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--wm-muted-fg, #b4b5ba); } .ds-input { width: 148px; background: var(--wm-panel-2, #2f3644); border: 1px solid var(--wm-border, #3c434f); border-radius: var(--wm-r-sm, 4px); padding: 7px 9px; font-family: var(--wm-body, Inter, system-ui, sans-serif); font-size: 13px; font-weight: 600; letter-spacing: .01em; color: var(--wm-fg, #f0f0f0); transition: border-color 150ms cubic-bezier(.2,.85,.3,1); } .ds-input:hover { border-color: var(--wm-muted-fg, #b4b5ba); } .ds-input:focus { outline: none; border-color: var(--wm-accent, #42b66b); }"
+    },
+    {
+      "name": "Map Card",
+      "kind": "card",
+      "refersTo": "map-card",
+      "description": "The lobby's map picker. Selection borders Ice White and fills Hover; hover only moves the border to green.",
+      "html": "<button class=\"ds-mapcard\" aria-pressed=\"true\"><span class=\"ds-mc-nm\">NUKETOWN</span><span class=\"ds-mc-sub\">FREE-FOR-ALL</span><span class=\"ds-mc-bl\">Two houses, one bus, no cover worth the name.</span><span class=\"ds-mc-sz\">SMALL · 12 SPAWNS</span></button>",
+      "css": ".ds-mapcard { display: flex; flex-direction: column; padding: 12px 14px; text-align: left; cursor: pointer; background: var(--wm-panel-2, #2f3644); border: 1px solid var(--wm-border, #3c434f); border-radius: var(--wm-r, 8px); max-width: 240px; transition: border-color 150ms cubic-bezier(.2,.85,.3,1), background 150ms cubic-bezier(.2,.85,.3,1); } .ds-mapcard:hover { border-color: var(--wm-accent, #42b66b); } .ds-mapcard[aria-pressed=\"true\"] { border-color: var(--wm-fg, #f0f0f0); background: var(--wm-hover, #474d5a); } .ds-mc-nm { font-family: var(--wm-display, 'Bebas Neue', Impact, sans-serif); font-size: 20px; letter-spacing: .07em; text-transform: uppercase; line-height: 1; color: var(--wm-fg-dim, #b8babe); } .ds-mapcard[aria-pressed=\"true\"] .ds-mc-nm { color: var(--wm-fg, #f0f0f0); } .ds-mc-sub { font-family: var(--wm-body, Inter, system-ui, sans-serif); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--wm-muted-fg, #b4b5ba); margin-top: 3px; } .ds-mc-bl { font-family: var(--wm-body, Inter, system-ui, sans-serif); margin-top: 4px; font-size: 12px; line-height: 1.45; color: var(--wm-muted-fg, #b4b5ba); } .ds-mc-sz { font-family: var(--wm-body, Inter, system-ui, sans-serif); margin-top: 3px; font-size: 11px; color: var(--wm-muted-fg, #b4b5ba); } .ds-mapcard:focus-visible { outline: 2px solid var(--wm-accent, #42b66b); outline-offset: 2px; }"
+    },
+    {
+      "name": "Roster Panel",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "Translucent Gunmetal over the live scene, with header / body / footer separated by hairline rules. Rows divide by rule, not by gap.",
+      "html": "<div class=\"ds-panel\"><div class=\"ds-panel-hd\"><span class=\"ds-h-sec\">LOBBY</span><span class=\"ds-code\">K7QX</span></div><div class=\"ds-panel-bd\"><div class=\"ds-row ds-row-me\"><i class=\"ds-dot ds-dot-ready\"></i><span class=\"ds-who\">HOLLOWPOINT</span><span class=\"ds-st ds-st-ready\">READY</span></div><div class=\"ds-row\"><i class=\"ds-dot\"></i><span class=\"ds-who\">DELGADO</span><span class=\"ds-st\">WAITING</span></div></div><div class=\"ds-panel-ft\"><span class=\"ds-status\">Waiting on <b>1</b> player.</span></div></div>",
+      "css": ".ds-panel { font-family: var(--wm-body, Inter, system-ui, sans-serif); width: 300px; background: rgb(52 58 73 / .88); border: 1px solid var(--wm-border, #3c434f); border-radius: var(--wm-r, 8px); box-shadow: 0 0 48px rgb(24 28 40 / .7); display: flex; flex-direction: column; overflow: hidden; } .ds-panel-hd { display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--wm-border, #3c434f); } .ds-h-sec { font-family: var(--wm-display, 'Bebas Neue', Impact, sans-serif); font-size: 22px; letter-spacing: .08em; text-transform: uppercase; line-height: 1; color: var(--wm-fg, #f0f0f0); flex: 1 1 auto; } .ds-code { font-family: var(--wm-display, 'Bebas Neue', Impact, sans-serif); font-size: 24px; letter-spacing: .14em; text-transform: uppercase; color: var(--wm-fg, #f0f0f0); line-height: 1; } .ds-panel-bd { padding: 8px 0; } .ds-row { display: flex; align-items: center; gap: 12px; padding: 10px 18px; transition: background 150ms cubic-bezier(.2,.85,.3,1); } .ds-row + .ds-row { border-top: 1px solid var(--wm-border, #3c434f); } .ds-row:hover { background: var(--wm-hover, #474d5a); } .ds-dot { width: 8px; height: 8px; border-radius: 2px; flex: none; background: var(--wm-muted, #888a92); } .ds-dot-ready { background: var(--wm-ok, #49c873); } .ds-who { flex: 1 1 auto; font-size: 13px; font-weight: 600; letter-spacing: .01em; color: var(--wm-fg-dim, #b8babe); } .ds-row-me .ds-who { color: var(--wm-fg, #f0f0f0); } .ds-st { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--wm-muted-fg, #b4b5ba); } .ds-st-ready { color: var(--wm-ok, #49c873); } .ds-panel-ft { padding: 12px 18px; border-top: 1px solid var(--wm-border, #3c434f); } .ds-status { font-size: 12px; line-height: 1.45; color: var(--wm-muted-fg, #b4b5ba); } .ds-status b { color: var(--wm-fg, #f0f0f0); font-weight: 600; }"
+    },
+    {
+      "name": "Menu Tabs",
+      "kind": "nav",
+      "refersTo": "tab",
+      "description": "The pause menu's wrapping tab row. Active inverts to Ice White; a modified setting is flagged by an inset green bar elsewhere.",
+      "html": "<div class=\"ds-tabs\"><button class=\"ds-tab ds-tab-on\">DISPLAY</button><button class=\"ds-tab\">TEXTURES &amp; DETAIL</button><button class=\"ds-tab\">SHADING</button><button class=\"ds-tab\">POST</button></div>",
+      "css": ".ds-tabs { display: flex; flex-wrap: wrap; gap: 6px; } .ds-tab { border: 1px solid var(--wm-border, #3c434f); border-radius: var(--wm-r-sm, 4px); background: var(--wm-panel-2, #2f3644); color: var(--wm-muted-fg, #b4b5ba); font-family: var(--wm-body, Inter, system-ui, sans-serif); font-weight: 600; text-transform: uppercase; font-size: 10px; letter-spacing: .08em; padding: 6px 10px; cursor: pointer; transition: color 150ms cubic-bezier(.2,.85,.3,1), background 150ms cubic-bezier(.2,.85,.3,1), border-color 150ms cubic-bezier(.2,.85,.3,1); } .ds-tab:hover { color: var(--wm-fg, #f0f0f0); background: var(--wm-hover, #474d5a); } .ds-tab-on { color: var(--wm-bg, #28303d); background: var(--wm-fg, #f0f0f0); border-color: var(--wm-fg, #f0f0f0); } .ds-tab:focus-visible { outline: 2px solid var(--wm-accent, #42b66b); outline-offset: 2px; }"
+    },
+    {
+      "name": "Wordmark",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "WORKMEL + a T carrying the Melt Green drip. The single accent element on most screens, and the entire 4% accent budget of the composition.",
+      "html": "<span class=\"ds-mark\">WORKMEL<span class=\"ds-t\">T</span></span>",
+      "css": ".ds-mark { font-family: var(--wm-display, 'Bebas Neue', Impact, sans-serif); font-weight: 400; text-transform: uppercase; letter-spacing: .06em; line-height: 1; font-size: 72px; color: var(--wm-fg, #f0f0f0); display: inline-block; position: relative; white-space: nowrap; } .ds-mark .ds-t { position: relative; } .ds-mark .ds-t::after { content: \"\"; position: absolute; left: 46%; transform: translateX(-50%); bottom: .06em; width: .085em; height: .28em; background: var(--wm-accent, #42b66b); border-radius: 0 0 .04em .04em; } .ds-mark .ds-t::before { content: \"\"; position: absolute; left: 46%; transform: translateX(-50%); bottom: -.02em; width: .055em; height: .055em; background: var(--wm-accent, #42b66b); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Impressive Sleek and Lightweight Shooter",
+    "overview": "Everything here serves one impression: that something this fast and this good-looking has no business running in a browser tab. Sleek is the surface — flat planes, hairline rules, one condensed display face, generous dark negative space, nothing textured or glossy anywhere. Lightweight is the substance — the UI is a thin, precise layer over a live scene, never a heavy chrome shell in front of it. Impressive is what the two produce together: a player who clicked a link thirty seconds ago is already looking at something that reads as premium software rather than a web toy.\n\nThe tone underneath is Corporate Tactical. WORKMELT's menus behave like enterprise software that happens to be running a firefight — precise, utilitarian, confident. The interface takes its cues from Linear and Notion, not from traditional military shooters: high contrast, immediately readable, free of grim overlays, camo, or grunge. The office premise is played completely straight. The joke is the setting; the interface never winks.\n\nRestraint is the mechanism, not an absence of ambition. The 65/20/10/4/1 ratio means Melt Green appears roughly once per screen, so when it does appear it reads as a decision rather than decoration. Panels are translucent Gunmetal so the live scene stays visible behind them instead of being boxed out. Motion runs 120-180ms and gets out of the way. The system earns its impact by spending almost nothing, almost everywhere.",
+    "keyCharacteristics": [
+      "Dark-first by definition: Dark Slate is the canvas and a white page is never the starting point.",
+      "Exactly one accent, used roughly once per screen.",
+      "Flat planes and hairline rules; zero gloss, gradient, glassmorphism, or skeuomorphic texture.",
+      "A fixed two-face type pairing: Bebas Neue uppercase for display, Inter for every string at 14px and below.",
+      "Translucent panels over a live scene, never opaque boxes in front of it.",
+      "Motion is functional and brief; only panels are allowed a subtle overshoot.",
+      "Every menu colour comes from one token file; no literal hex on a menu surface."
+    ],
+    "rules": [
+      {
+        "name": "The 65/20/10/4/1 Rule",
+        "body": "Every composition, UI or environmental, is 65% Dark Slate, 20% Gunmetal, 10% whites and light gray, 4% Melt Green, 1% environmental accent. In practice that means exactly one Melt Green element per screen — the wordmark drip — plus hover borders and ready dots. Melt Green is never a background wash. The restraint is what makes interactions read as intentional.",
+        "section": "colors"
+      },
+      {
+        "name": "The Never-Text-On-Green Rule",
+        "body": "Ice White on Melt Green measures 2.27:1 and fails AA outright. A primary CTA is therefore an Ice White fill with Dark Slate text (14.91:1), and its hover warms the fill toward green rather than becoming green. Where a green fill is genuinely required, its text is Graphite (6.58:1).",
+        "section": "colors"
+      },
+      {
+        "name": "The 16px Floor Rule",
+        "body": "Steel (3.86:1), Information (4.13:1), and Danger (3.57:1) are large-text and icon colours only. Any string under 16px that wants to read as secondary uses Steel Lift or Ice White Dim instead.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Token File Rule",
+        "body": "Every colour, font, radius, and duration on a menu surface comes from the custom properties in src/ui/brand.js. A literal hex in src/match/ui.js, src/ui/menu.js, src/ui/style.js, or src/net/ui.js is a defect. The in-world HUD is the one deliberate exemption.",
+        "section": "colors"
+      },
+      {
+        "name": "The Two-Register Rule",
+        "body": "Bebas is uppercase display only; Inter is every string at 14px and below. Body copy is never set in the display face, and the display face is never asked for lowercase — it has none to fall back on.",
+        "section": "typography"
+      },
+      {
+        "name": "The Progressive Wordmark Rule",
+        "body": "The webfont is a progressive enhancement, never a dependency. Bebas is requested with media=\"print\" so it can never render-block, and it is not requested at all on a deterministic capture run, because a pending webfont leaves document.fonts.ready unresolved and would hang every screenshot in tools/. The wordmark's detached drip is gated behind a real render test (.wm-display-ready) — measured, not document.fonts.check(), which returns true for families the machine has never seen. Without Bebas the mark falls back to a plain hanging bar, because a detached droplet on a wide fallback face reads as an exclamation mark.",
+        "section": "typography"
+      },
+      {
+        "name": "The Tabular Figure Rule",
+        "body": "Any number that changes in place — ammo, scores, countdowns, slider values — is set with font-variant-numeric: tabular-nums so it does not jitter as it counts.",
+        "section": "typography"
+      },
+      {
+        "name": "The Height-Query Rule",
+        "body": "Menu surfaces sit over a live scene on laptops. Test max-height, not just max-width — a 1440x700 window is the common failure, and it is invisible to a width breakpoint.",
+        "section": "layout"
+      },
+      {
+        "name": "The No-Direction Rule",
+        "body": "Every UI shadow has zero offset. A directional drop shadow is a web-overlay tell and it fights whatever direction the scene's key light happens to come from. Depth is ambient or it is tonal; it is never lit.",
+        "section": "elevation"
+      },
+      {
+        "name": "The HUD Outline Rule",
+        "body": "The in-world HUD does not use shadows for depth at all. Text survives a blown-out sky and a black interior via a synthesized outline: eight equal-radius hard shadows in a ring, paired with one tight soft seat. Direction-free by construction, and it needs no scrim behind it.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Green Border Rule",
+        "body": "Hover reaches for border-color: var(--wm-accent) before it reaches for a background change. It is the cheapest possible affordance, it costs no layout, and it is why Melt Green stays under its 4% budget while still appearing everywhere the pointer goes.",
+        "section": "shapes"
+      }
+    ],
+    "dos": [
+      "Do take every colour, font, radius, and duration on a menu surface from the custom properties in src/ui/brand.js.",
+      "Do keep Melt Green to roughly one element per screen, plus hover borders and ready dots.",
+      "Do fill a primary CTA with Ice White and set its text in Dark Slate (14.91:1); warm the fill to #dbe9e0 on hover rather than turning it green.",
+      "Do use Ice White Dim (#b8babe) for body copy and Steel Lift (#b4b5ba) for secondary strings under 16px.",
+      "Do build every translucent surface as rgb(var(--wm-*-rgb) / a).",
+      "Do give panels a soft, large-spread, zero-offset ambient shadow.",
+      "Do keep UI transitions in the 120-180ms band with swift-out easing, and honour prefers-reduced-motion by collapsing both duration tokens to 1ms.",
+      "Do test menu surfaces against a short viewport (max-height: 680px), not only a narrow one.",
+      "Do set changing numbers with tabular figures.",
+      "Do hard-code the resolved sRGB hex of any derived colour and keep the color-mix() expression it came from in the comment — color-mix() and relative oklch() are recent-Chromium-only, and this UI has to render identically in the capture harness, in Firefox, and on whatever the person at work has open."
+    ],
+    "donts": [
+      "Don't introduce a literal hex into src/match/ui.js, src/ui/menu.js, the menu block of src/ui/style.js, or src/net/ui.js.",
+      "Don't put Ice White text on a Melt Green fill (2.27:1 — fails AA), or use Melt Green as text or a link on a light surface (2.27:1 — use Melt Green Deep #007f37).",
+      "Don't set Steel, Information, or Danger below 16px.",
+      "Don't use Melt Green as a background wash.",
+      "Don't default any WORKMELT surface to a white page. The light theme is a derived inversion, not the source of truth.",
+      "Don't add a glossy gradient, glassmorphism, or a skeuomorphic texture anywhere.",
+      "Don't give a UI shadow a directional offset.",
+      "Don't make anything fully pill-shaped or completely sharp; 8px and 4px are the working radii.",
+      "Don't set body copy in Bebas Neue, or ask the display face for lowercase.",
+      "Don't let a webfont block a render or a capture, and don't gate the drip's precise geometry on document.fonts.check() — it returns true for families the machine has never seen.",
+      "Don't use skulls, crosshairs, blood spatter, or bullet vectors as icons. Icons read as enterprise-software logic — folders, boxes, network nodes, clipboards, terminal prompts — at a uniform 1.5px stroke.",
+      "Don't put a backtick inside a CSS comment in these stylesheets. They are template literals, and it is a syntax error."
+    ]
+  }
+}
