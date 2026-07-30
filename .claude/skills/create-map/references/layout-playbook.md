@@ -5,6 +5,21 @@ good Workmelt FFA map. The game is a fast room-based free-for-all for up to
 ~8 players plus bots, on maps 55–120 m across, fought at every range with
 mantling (~0.5 m) but no ladder climbing.
 
+## 0. If the reference is a 3D model, measure it
+
+`node tools/glb-plan.mjs <file.glb> --scale=0.01 --depth=3 --cell=1` prints a
+model's true extent, its named parts, and a top-down ASCII height field with
+slices — a floor plan you can read footprints straight off. Two things it
+exists to catch up front: downloaded models are routinely **not in metres**
+(Sketchfab exports are often centimetres — check the extent against something
+you know before copying a single coordinate) and routinely **not axis-aligned**
+(`--yaw=<deg>` spins the sampling grid until the layout squares up into the
+rectangles a map module is authored in).
+
+The model is a measuring tape and nothing else. Nothing from it is loaded,
+imported or sampled — see the hard rules in `SKILL.md`. Keep the file out of
+the repo; `assets-src/*` is already gitignored.
+
 ## 1. Calibrate scale first
 
 Everything downstream depends on metres being right. Anchor to objects of

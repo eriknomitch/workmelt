@@ -63,6 +63,12 @@ The browser client lives in `src/`. Features are divided into subsystem director
 - `node src/world/maps.selftest.mjs` builds every map headlessly and checks the map-descriptor contract, spawn tables and layout invariants.
 - `node src/world/spawns.selftest.mjs` checks the spawn director's scoring headlessly; `node src/world/spawns.probe.mjs` verifies spawn placement, the bot garrison and 30 respawns inside the real built level (needs a browser).
 - `node tools/capture.mjs` performs the required GPU-backed visual smoke test.
+  It frames the boot map from its spawn 0; `--query="map=<id>"` shoots another.
+- `node tools/glb-plan.mjs <file.glb> --scale=0.01 --depth=3` turns a downloaded
+  3D model into measurements: extent, named parts, and a top-down ASCII height
+  field with slices, plus `--yaw=<deg>` to square up a layout that sits at an
+  angle to its own axes. Reference material for authoring a map by hand —
+  nothing it reads is ever loaded at runtime, and `assets-src/*` is gitignored.
 - `npm run goal` scores the open goal in `goals/`; `npm run goal:quick` is the faster
   iteration pass. Both run headless on SwiftShader and need no GPU.
 
