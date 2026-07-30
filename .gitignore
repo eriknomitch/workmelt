@@ -43,3 +43,4 @@ scratch/
 .env.*
 !.env.example
 
+.claude/
