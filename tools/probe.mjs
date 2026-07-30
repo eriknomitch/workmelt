@@ -9,6 +9,7 @@ import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import net from 'node:net';
+import { launchOpts } from './lib/chromium.mjs';
 
 const args = Object.fromEntries(
   process.argv.slice(2).map((a) => {
@@ -70,10 +71,10 @@ if (!(await portOpen(PORT))) {
   for (let i = 0; i < 160; i++) { await new Promise((r) => setTimeout(r, 250)); if (await portOpen(PORT)) break; }
 }
 
-const browser = await chromium.launch({
+const browser = await chromium.launch(launchOpts({
   headless: true,
   args: ['--use-angle=metal', '--ignore-gpu-blocklist', '--force-color-profile=srgb', '--mute-audio'],
-});
+}));
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 });
 await page.goto(`http://127.0.0.1:${PORT}/?capture=1`, { waitUntil: 'domcontentloaded', timeout: 90000 });
 await page.waitForFunction('window.__READY__ === true', null, { timeout: 90000 });

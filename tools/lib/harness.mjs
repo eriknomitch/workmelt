@@ -14,11 +14,13 @@
  */
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
-import { existsSync, readdirSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import net from 'node:net';
+import { resolveChromium } from './chromium.mjs';
 
 export const ROOT = resolve(import.meta.dirname, '..', '..');
+export { resolveChromium };
 
 /** `--foo=bar --baz` -> `{ foo: 'bar', baz: true }`. */
 export function parseArgs(argv = process.argv.slice(2)) {
@@ -36,35 +38,6 @@ const portOpen = (port) =>
     s.on('error', () => res(false));
     s.setTimeout(400, () => (s.destroy(), res(false)));
   });
-
-/**
- * Playwright refuses to launch when its pinned browser build is missing, which
- * is the normal state of a sandbox that pre-installs one build and pins another.
- * Fall back to any chromium under the browsers path before giving up.
- */
-export function resolveChromium() {
-  const pinned = (() => {
-    try {
-      return chromium.executablePath();
-    } catch {
-      return null;
-    }
-  })();
-  if (pinned && existsSync(pinned)) return pinned;
-
-  const base = process.env.PLAYWRIGHT_BROWSERS_PATH || null;
-  if (!base || !existsSync(base)) return null;
-  const candidates = readdirSync(base)
-    .filter((d) => d.startsWith('chromium-'))
-    .sort()
-    .reverse()
-    .flatMap((d) => [
-      join(base, d, 'chrome-linux', 'chrome'),
-      join(base, d, 'chrome-mac', 'Chromium.app', 'Contents', 'MacOS', 'Chromium'),
-      join(base, d, 'chrome-win', 'chrome.exe'),
-    ]);
-  return candidates.find((p) => existsSync(p)) ?? null;
-}
 
 const COMMON_ARGS = [
   '--ignore-gpu-blocklist',
@@ -94,12 +67,27 @@ export function resolveGpuMode(requested = 'auto') {
   return 'hw';
 }
 
-/** Boot vite on `port` unless something is already listening there. */
+/**
+ * Boot vite on `port` unless something is already listening there — which is
+ * exactly what happens when another harness (or `npm run dev`) already booted
+ * one on the same port: a shared OW_PORT lets an entire suite of these tools
+ * reuse the same boot instead of each re-paying vite/shader-compile startup.
+ *
+ * `OW_USE_BUILD=1` serves the production bundle (`vite preview`, after `npm
+ * run build`) instead of raw dev mode: fewer, bundled module requests instead
+ * of one round trip per source file. Opt-in and scoped to this harness only —
+ * `vite preview` serves just the entries built in vite.config.js (`main`,
+ * `debugAudio`), not the dev-only subsystem preview pages under src/**.
+ */
 export async function ensureServer(port) {
   if (await portOpen(port)) return null;
+  const useBuild = process.env.OW_USE_BUILD === '1';
   const bin = resolve(ROOT, 'node_modules/.bin/vite');
   if (!existsSync(bin)) throw new Error('vite is not installed — run `npm install` first');
-  const p = spawn(bin, ['--port', String(port), '--strictPort'], {
+  if (useBuild && !existsSync(resolve(ROOT, 'dist'))) {
+    throw new Error('OW_USE_BUILD=1 needs a build first — run `npm run build`');
+  }
+  const p = spawn(bin, [useBuild ? 'preview' : undefined, '--port', String(port), '--strictPort'].filter(Boolean), {
     cwd: ROOT,
     stdio: 'ignore',
     // A file saved mid-run would otherwise reload the page under playwright.

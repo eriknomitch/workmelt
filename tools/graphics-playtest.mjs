@@ -18,34 +18,23 @@
  */
 
 import { chromium } from 'playwright';
-import { spawn } from 'node:child_process';
-import net from 'node:net';
+import { ensureServer } from './lib/harness.mjs';
+import { launchOpts } from './lib/chromium.mjs';
 
-const PORT = Number(process.env.GFX_PLAYTEST_PORT ?? 5183);
+// Falls back to OW_PORT (5273) so this can share an already-running dev server
+// with the rest of the playtest/capture suite instead of always booting its
+// own — GFX_PLAYTEST_PORT still wins when set explicitly.
+const PORT = Number(process.env.GFX_PLAYTEST_PORT ?? process.env.OW_PORT ?? 5183);
 const URL = `http://127.0.0.1:${PORT}/?match=0&mp=0&prewarm=0`;
 const SHOT = process.argv[2] ?? null;
 const READY_MS = 900000;
 
-const portOpen = (port) =>
-  new Promise((res) => {
-    const s = net.connect(port, '127.0.0.1');
-    s.on('connect', () => (s.end(), res(true)));
-    s.on('error', () => res(false));
-  });
+const vite = await ensureServer(PORT);
 
-const vite = spawn('node', ['node_modules/.bin/vite', '--port', String(PORT), '--strictPort'], {
-  stdio: 'ignore',
-  env: { ...process.env, OW_NO_HMR: '1' },
-});
-for (let i = 0; i < 80; i++) {
-  await new Promise((r) => setTimeout(r, 250));
-  if (await portOpen(PORT)) break;
-}
-
-const browser = await chromium.launch({
+const browser = await chromium.launch(launchOpts({
   headless: true,
   args: ['--ignore-gpu-blocklist', '--use-gl=angle', '--hide-scrollbars'],
-});
+}));
 const page = await browser.newPage({ viewport: { width: 800, height: 450 } });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
 
@@ -318,6 +307,6 @@ try {
     failed ? `\n${failed} of ${results.length} checks FAILED` : `\n${results.length} checks passed`
   );
   await browser.close();
-  vite.kill();
+  vite?.kill();
   process.exit(failed ? 1 : 0);
 }

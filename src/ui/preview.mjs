@@ -15,6 +15,7 @@ import { spawn } from 'node:child_process';
 import { resolve, dirname } from 'node:path';
 import { mkdirSync } from 'node:fs';
 import net from 'node:net';
+import { launchOpts } from '../../tools/lib/chromium.mjs';
 
 const args = Object.fromEntries(
   process.argv.slice(2).map((a) => {
@@ -50,10 +51,10 @@ if (!(await portOpen(PORT))) {
   }
 }
 
-const browser = await chromium.launch({
+const browser = await chromium.launch(launchOpts({
   headless: true,
   args: ['--use-angle=metal', '--ignore-gpu-blocklist', '--force-color-profile=srgb', '--hide-scrollbars', '--mute-audio'],
-});
+}));
 const page = await browser.newPage({ viewport: { width: W, height: H }, deviceScaleFactor: 1 });
 const logs = [];
 page.on('console', (m) => logs.push(`[${m.type()}] ${m.text()}`));

@@ -1,6 +1,7 @@
 import { chromium } from 'playwright';
+import { launchOpts } from './lib/chromium.mjs';
 const PORT=5402;
-const browser = await chromium.launch({headless:true,args:['--use-angle=metal','--ignore-gpu-blocklist','--force-color-profile=srgb','--mute-audio']});
+const browser = await chromium.launch(launchOpts({headless:true,args:['--use-angle=metal','--ignore-gpu-blocklist','--force-color-profile=srgb','--mute-audio']}));
 const page = await browser.newPage({viewport:{width:1920,height:1080},deviceScaleFactor:1});
 await page.goto(`http://127.0.0.1:${PORT}/?capture=1`,{waitUntil:'domcontentloaded',timeout:90000});
 await page.waitForFunction('window.__READY__ === true',null,{timeout:90000});
