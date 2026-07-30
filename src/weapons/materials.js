@@ -686,13 +686,13 @@ export class WeaponMaterials {
   }
 
   /**
-   * The viewmodel arms: minimal low-poly, flat-shaded, untextured dark greys.
+   * The viewmodel hands: minimal low-poly, flat-shaded, untextured dark greys.
    *
-   * Two materials, not four — a sleeve and a glove — and neither touches the
-   * texture units at all, which matters more here than anywhere else on the
-   * rig: the support forearm's closest approach to the eye is ~0.38 m and it
-   * crosses the lower third of every hipfire frame, so it used to be the
-   * single largest consumer of the library shader's per-pixel fetches.
+   * Two materials, not four — a glove and the wrist stub that replaced the
+   * sleeves — and neither touches the texture units at all. The full forearm
+   * sleeve this untextured pass was built for is gone (see hands.js), but the
+   * gloves are still the closest surfaces to the eye in the frame, so the
+   * zero-fetch rule keeps earning its place.
    *
    * Exposure: the viewmodel light rig delivers roughly 20x the irradiance per
    * unit albedo that the world does (see the recalibration note on `alu`), so

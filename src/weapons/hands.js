@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { latheZ } from './geometry.js';
 
 /**
- * First-person arms — deliberately minimal low-poly.
+ * First-person hands — floating gloves, no arms.
  *
  * The rig is the same as it always was: two bones per arm, solved analytically
  * from the hand (which is the thing the animation drives — the hands are welded
@@ -10,13 +10,15 @@ import { latheZ } from './geometry.js';
  * contact solve that wraps the support hand onto the real handguard. That is
  * what makes a hand look like it is HOLDING something, and none of it changed.
  *
- * The skin over that rig did. The previous pass chased realism — stitched
- * seams, knuckle caps, sleeve fold rings, four textured fabric/leather
- * materials — and the sum read as an uncanny half-real limb while costing ~45
- * meshes per arm and four extra texture-set bakes. This version goes the other
- * way on purpose: faceted prisms, flat shading, two untextured dark-grey
- * materials. A stylised limb the eye accepts at a glance, at a fraction of the
- * cost (~17 meshes per arm, zero texture fetches per pixel).
+ * What no longer exists is the arm over that rig. The full upper-arm/forearm
+ * sleeves were the single largest occluder in the frame — the support forearm
+ * crossed the lower third of every hipfire shot as a 90 mm-wide faceted tube —
+ * and every attempt to frame them (shoulder placement, bone lengths, sleeve
+ * radii) traded reach against screen coverage. So the sleeves are gone. Each
+ * glove keeps a short wrist stub aimed along the solved forearm line, which is
+ * the whole "connected to a body" read: hands-plus-stub is the convention every
+ * VR shooter ships, and the eye accepts it without a second look. The two-bone
+ * solve still runs — the elbow it produces is what aims the stub.
  *
  * Hand-local space: -Z along the fingers, +Y out of the back of the hand,
  * +X toward the thumb (a right hand; the left is mirrored).
@@ -26,10 +28,10 @@ import { latheZ } from './geometry.js';
  * Humerus and forearm+wrist lengths, in metres.
  *
  * Cheated 10% long over anatomy (330/300 vs 300/272). MEASURED in an earlier
- * pass: at true length the support hand's reach needs 99.5% extension, the
- * two-bone solve clamps, the elbow locks straight and the arm reads as a
- * broomstick. The longer chain bends visibly and pushes the elbow further OUT
- * of frame, not into it.
+ * pass: at true length the support hand's reach needs 99.5% extension and the
+ * two-bone solve clamps — which drags the HAND off the grip, sleeves or no
+ * sleeves. The margin is still load-bearing even though the bones no longer
+ * render.
  */
 const L_UPPER = 0.33;
 const L_FORE = 0.3;
@@ -78,9 +80,13 @@ function buildFinger(materials, spec) {
     j.rotation.x = -curl[i];
     parent.add(j);
     // The tip narrows and the base overlaps backwards into the parent segment
-    // so the chain stays closed through the full curl range.
+    // so the chain stays closed through the full curl range. Six flats, not
+    // four: a curled square prism presents its 45-degree corner to the camera
+    // and the whole hand reads as a claw of boxes; hexagonal segments keep the
+    // faceted flat-shaded read without the square silhouette.
     const geo = prism(lengths[i], radii[i], radii[i + 1] * (i === 2 ? 0.66 : 0.9), {
       rear: radii[i] * 0.9,
+      sides: 6,
     });
     const mesh = new THREE.Mesh(geo, materials.glove);
     j.add(mesh);
@@ -122,7 +128,10 @@ function buildThumb(materials, scale = 1, spec = THUMB) {
   root.add(j1);
   j1.add(
     new THREE.Mesh(
-      prism(spec.l0 * scale, spec.r0 * scale, spec.r1 * scale * 0.95, { rear: spec.r0 * scale }),
+      prism(spec.l0 * scale, spec.r0 * scale, spec.r1 * scale * 0.95, {
+        rear: spec.r0 * scale,
+        sides: 6,
+      }),
       materials.glove
     )
   );
@@ -131,7 +140,10 @@ function buildThumb(materials, scale = 1, spec = THUMB) {
   j1.add(j2);
   j2.add(
     new THREE.Mesh(
-      prism(spec.l1 * scale, spec.r1 * scale, spec.r2 * scale * 0.7, { rear: spec.r1 * scale * 0.9 }),
+      prism(spec.l1 * scale, spec.r1 * scale, spec.r2 * scale * 0.7, {
+        rear: spec.r1 * scale * 0.9,
+        sides: 6,
+      }),
       materials.glove
     )
   );
@@ -142,31 +154,26 @@ function buildThumb(materials, scale = 1, spec = THUMB) {
 const THUMB = { l0: 0.05, l1: 0.032, r0: 0.0115, r1: 0.0102, r2: 0.0078 };
 
 /**
- * Sleeve: a closed 8-sided tapered tube. Eight flats are the point — the
- * facets ARE the read, and they carry the silhouette that fold rings and
- * wrinkle ridges used to. The fore sleeve gets a hard cuff step at the wrist
- * so the arm terminates instead of melting into the glove.
+ * Wrist stub: the only arm geometry left — a closed 8-sided tapered tube that
+ * starts as a cuff over the glove's heel and ends bluntly ~130 mm up the
+ * forearm line. Eight flats keep the faceted read of the sleeves it replaces.
+ * Long enough that the glove reads as connected to something off-screen, short
+ * enough that it can never cross the sight picture the way a full sleeve did.
+ * Extends along -Z from the wrist; `Arm.solve` aims that at the elbow.
  */
-function buildSleeve(material, len, r0, r1, opts = {}) {
+function buildStub(material, len, r0, r1) {
   const profile = [
-    [-r0 * 0.5, 0],
-    [-r0 * 0.4, r0 * 0.9],
-    [len * 0.14, r0],
-    [len * 0.55, (r0 + r1) * 0.52],
+    [-r0 * 0.55, 0],
+    [-r0 * 0.45, r0 * 0.92],
+    [r0 * 0.35, r0 * 1.05], // cuff bulge over the glove heel hides the seam
+    [r0 * 0.95, r0 * 0.96],
+    [len * 0.6, (r0 + r1) * 0.52],
+    [len * 0.93, r1],
+    // Blunt, rounded, CLOSED end: this cap is on screen every time the wrist
+    // pulls toward the camera, so it has to terminate, not gape.
+    [len + r1 * 0.55, r1 * 0.78],
+    [len + r1 * 0.75, 0],
   ];
-  if (opts.cuff) {
-    profile.push(
-      [len - 0.034, r1 * 1.02],
-      [len - 0.03, r1 * 1.16],
-      [len - 0.006, r1 * 1.12],
-      [len, r1 * 0.85],
-      [len, 0]
-    );
-  } else {
-    // Blunt, slightly overshot tip: joint mass that keeps the elbow covered
-    // through the solve's bend range.
-    profile.push([len * 0.94, r1], [len + r1 * 0.7, r1 * 0.8], [len + r1 * 0.9, 0]);
-  }
   const g = latheZ(profile, 8);
   g.scale(1, 0.9, 1);
   g.rotateY(Math.PI); // extend along -Z, like the bones
@@ -188,6 +195,7 @@ const _bx = new THREE.Vector3();
 const _by = new THREE.Vector3();
 const _bz = new THREE.Vector3();
 const _bm = new THREE.Matrix4();
+const _sq = new THREE.Quaternion();
 // contact-fit scratch (build time only, but the no-allocation rule holds anyway)
 const _fitInv = new THREE.Matrix4();
 const _fitP = new THREE.Vector3();
@@ -245,25 +253,14 @@ export class Arm {
      *
      * Expressing the pole in hand space is the intuitive choice and it is wrong:
      * the support hand is rolled palm-up on the handguard, so its local "down"
-     * points at the sky and the elbow swings UP — straight through the near
-     * plane, filling half the screen with forearm. Elbows go down and outboard,
-     * always, exactly as they do on a real shooter.
+     * points at the sky and the elbow swings UP — which would aim the wrist
+     * stub straight back at the camera. Elbows go down and outboard, always,
+     * exactly as they do on a real shooter.
      */
     this.pole = new THREE.Vector3(side * 0.46, -0.86, 0.22).normalize();
 
-    // Bones. Geometry extends along -Z from each joint. Radii are the measured
-    // combat-shirt values from the previous pass (68 mm elbow / 48 mm wrist on
-    // the support arm) — the silhouette that survived the tube-width critique.
-    this.upper = buildSleeve(materials.sleeve, this.l1, 0.044 * this.scale, 0.036 * this.scale);
-    this.fore = buildSleeve(materials.sleeve, this.l2, 0.034 * this.scale, 0.024 * this.scale, {
-      cuff: true,
-    });
-    this.upperPivot = new THREE.Object3D();
-    this.forePivot = new THREE.Object3D();
-    this.upperPivot.add(this.upper);
-    this.forePivot.add(this.fore);
-    this.root.add(this.upperPivot);
-    this.root.add(this.forePivot);
+    // No bone meshes. The two-bone solve still runs — its elbow aims the wrist
+    // stub built below — but nothing renders between shoulder and wrist.
 
     // Hand.
     this.hand = new THREE.Object3D();
@@ -286,6 +283,16 @@ export class Arm {
     this.hand.add(this.handInner);
     this.glove = buildGlove(materials, { scale: this.scale });
     this.handInner.add(this.glove);
+    // The stub rides the UN-mirrored hand node: the lathe is rotationally
+    // symmetric, so it needs none of the chirality machinery above, and staying
+    // off `handInner` spares it the negative-scale winding flip.
+    this.stub = buildStub(
+      materials.sleeve,
+      0.1 * this.scale,
+      0.026 * this.scale,
+      0.029 * this.scale
+    );
+    this.hand.add(this.stub);
     this.root.add(this.hand);
 
     // Fingers: index is separate so it can work the trigger.
@@ -589,18 +596,16 @@ export class Arm {
     _perp.normalize();
     _elbow.copy(this.shoulder).addScaledVector(_dir, a).addScaledVector(_perp, h);
 
-    // Upper arm: shoulder -> elbow, rolled so the flat of the prism follows the
-    // outside of the bend — that is the pole side.
-    this.upperPivot.position.copy(this.shoulder);
-    _hp.copy(_elbow).sub(this.shoulder);
-    if (_hp.lengthSq() > 1e-12) aimBone(this.upperPivot.quaternion, _hp, _perp);
-
-    // Forearm: elbow -> wrist, rolled with the back of the hand so the cuff and
-    // the wrist line up with the glove.
-    this.forePivot.position.copy(_elbow);
-    _up.set(0, 1, 0).applyQuaternion(targetQuat);
-    _hp.copy(targetPos).sub(_elbow);
-    if (_hp.lengthSq() > 1e-12) aimBone(this.forePivot.quaternion, _hp, _up);
+    // The only geometry this solve still places: aim the wrist stub's -Z from
+    // the wrist toward the elbow, in hand-local space (the stub is a child of
+    // the hand). The elbow renders nothing, but its position is what keeps the
+    // stub leaving the frame along a believable forearm line in every pose the
+    // clips put the hand in.
+    _hp.copy(_elbow).sub(targetPos);
+    _sq.copy(targetQuat).invert();
+    _hp.applyQuaternion(_sq);
+    _up.set(0, 1, 0);
+    if (_hp.lengthSq() > 1e-12) aimBone(this.stub.quaternion, _hp, _up);
     return this;
   }
 
