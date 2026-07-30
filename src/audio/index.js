@@ -43,6 +43,7 @@ import { NoiseBank, SPEED_OF_SOUND, clamp, gain as mkGain } from './dsp.js';
 import { Mixer } from './mixer.js';
 import { SpatialField } from './spatial.js';
 import { Ambience, ambientOneShot, ONE_SHOTS } from './ambience.js';
+import { DEFAULT_GAME_CONFIG, loadGameConfig } from '../core/gameConfig.js';
 import { WEAPON_PROFILES, resolveProfile, weaponShot, bulletWhizz, dryFire } from './weapons.js';
 import {
   surfaceImpact, footstep, shellCasing, reloadPhase, explosion, bodyFall, uiSound,
@@ -73,6 +74,9 @@ const GESTURES = ['pointerdown', 'mousedown', 'keydown', 'touchstart', 'wheel'];
 
 /** Where tools/encode-sfx.mjs puts its output, honouring a deployed subpath. */
 const SAMPLE_BASE = `${import.meta.env?.BASE_URL ?? '/'}sfx/`.replace(/\/{2,}/g, '/');
+
+/** Base the public-root `game.json` is fetched from, honouring a deployed subpath. */
+const CONFIG_BASE = `${import.meta.env?.BASE_URL ?? '/'}`.replace(/\/{2,}/g, '/');
 
 /**
  * Your own boots, played dry. Was an effective 0.72 through a 3D emitter parked
@@ -142,6 +146,8 @@ export class AudioSystem {
     this.bank = null;
     this.samples = null;
     this.deafness = 0;
+    /** `game.json`'s audio.ambience section; DEFAULT_GAME_CONFIG until init() resolves the fetch. */
+    this.ambienceCfg = DEFAULT_GAME_CONFIG.audio.ambience;
 
     /* preallocated scratch — update() allocates nothing */
     this._probeDirs = [];
@@ -199,6 +205,10 @@ export class AudioSystem {
     this.rng = ctx.rng.fork();
     this._wireEvents(ctx);
 
+    // Not awaited: the graph must still come up on the first user gesture
+    // even if game.json is slow or missing, falling back to DEFAULT_GAME_CONFIG.
+    loadGameConfig(CONFIG_BASE).then((cfg) => { this.ambienceCfg = cfg.audio.ambience; });
+
     // Web Audio needs a user gesture. Arm every plausible one; the first to
     // land builds the graph. Capture mode never gestures, so shots render in
     // silence and stay byte-identical.
@@ -236,7 +246,7 @@ export class AudioSystem {
       this.mixer = new Mixer(actx, this.rng.fork(), {});
       this.mixer.buildReverbs();
       this.field = new SpatialField(actx, this.mixer, this.ctx);
-      this.ambience = new Ambience(actx, this.bank, this.mixer, this.field, this.rng.fork());
+      this.ambience = new Ambience(actx, this.bank, this.mixer, this.field, this.rng.fork(), this.ambienceCfg);
       this.ambience.start();
       this.mixer.setSpace(this._space, 0.001);
 
@@ -922,20 +932,21 @@ export class AudioSystem {
   /** A burst of gunfire a long way off, with correct propagation delay. */
   _distantVolley() {
     if (!this.running) return;
+    const c = this.ambienceCfg.distantVolley;
     const rng = this.rng;
     const lp = this.field.listenerPos;
     const a = rng.range(0, Math.PI * 2);
-    const d = rng.range(70, 240);
+    const d = rng.range(...c.distance);
     const x = lp.x + Math.cos(a) * d;
     const z = lp.z + Math.sin(a) * d;
-    const y = lp.y + rng.range(-2, 6);
+    const y = lp.y + rng.range(...c.heightJitter);
     const profile = rng.pick([WEAPON_PROFILES.ak, WEAPON_PROFILES.rifle, WEAPON_PROFILES.lmg, WEAPON_PROFILES.sniper]);
-    const rounds = 1 + ((rng.u32() % 6) | 0);
-    const rate = rng.range(0.075, 0.13);
+    const rounds = 1 + ((rng.u32() % c.maxRounds) | 0);
+    const rate = rng.range(...c.rateRange);
     for (let i = 0; i < rounds; i++) {
       this._playAt('shot', x, y, z, {
-        profile, extraDelay: i * rate * rng.range(0.9, 1.1), maxDist: 400,
-        gain: 4.5,
+        profile, extraDelay: i * rate * rng.range(0.9, 1.1), maxDist: c.maxDist,
+        gain: c.gain,
         occlusion: 0, // it is over the rooftops, not through them
       }, 'weapons', 0.2);
     }
@@ -943,43 +954,46 @@ export class AudioSystem {
 
   _distantBoom() {
     if (!this.running) return;
+    const c = this.ambienceCfg.distantBoom;
     const rng = this.rng;
     const lp = this.field.listenerPos;
     const a = rng.range(0, Math.PI * 2);
-    const d = rng.range(120, 330);
-    this._playAt('explosion', lp.x + Math.cos(a) * d, lp.y + rng.range(0, 8), lp.z + Math.sin(a) * d, {
-      radius: rng.range(6, 16), level: 1, maxDist: 400, occlusion: 0, gain: 6,
+    const d = rng.range(...c.distance);
+    this._playAt('explosion', lp.x + Math.cos(a) * d, lp.y + rng.range(...c.heightJitter), lp.z + Math.sin(a) * d, {
+      radius: rng.range(...c.radius), level: 1, maxDist: c.maxDist, occlusion: 0, gain: c.gain,
     }, 'weapons', 0.25);
   }
 
   _ambientOneShot() {
     if (!this.running) return;
+    const c = this.ambienceCfg.oneShot;
     const rng = this.rng;
     const lp = this.field.listenerPos;
     const which = rng.pick(ONE_SHOTS);
     const far = which === 'heli' || which === 'siren';
-    const d = far ? rng.range(90, 260) : rng.range(14, 90);
+    const d = far ? rng.range(...c.farDistance) : rng.range(...c.nearDistance);
     const a = rng.range(0, Math.PI * 2);
     this._playAt('ambient',
       lp.x + Math.cos(a) * d,
       lp.y + rng.range(-1, which === 'heli' ? 28 : 5),
       lp.z + Math.sin(a) * d,
       {
-        which, level: rng.range(0.55, 1), maxDist: 400,
+        which, level: rng.range(...c.levelRange), maxDist: c.maxDist,
         occlusion: far ? 0 : undefined,
-        gain: far ? 14 : 2.5,
+        gain: far ? c.farGain : c.nearGain,
       }, 'ambience', 0.15);
   }
 
   _distantChatter() {
     if (!this.running) return;
+    const c = this.ambienceCfg.distantChatter;
     const rng = this.rng;
     const lp = this.field.listenerPos;
     const a = rng.range(0, Math.PI * 2);
-    const d = rng.range(25, 75);
+    const d = rng.range(...c.distance);
     this.bark(rng.pick(['advance', 'flank', 'copy', 'spot']), {
       x: lp.x + Math.cos(a) * d, y: lp.y, z: lp.z + Math.sin(a) * d,
-    }, { level: 0.85, voice: rng.int(0, 9) });
+    }, { level: c.level, voice: rng.int(0, 9) });
   }
 
   /* ================================================================ */

@@ -12,40 +12,40 @@
  * closes a lowpass over the outdoor content, which is a huge part of why a
  * doorway feels like a doorway.
  *
- * The wind bed ships SILENT (WIND_LEVEL below) — it is built and wired, but at
- * zero gain until someone turns it up.
+ * The wind bed ships SILENT (`game.json`'s audio.ambience.wind.level) — it is
+ * built and wired, but at zero gain until someone turns it up.
  */
 
 import { ad, biquad, clamp, gain, lerp, osc, series, struckResonator, sweep } from './dsp.js';
+import { DEFAULT_GAME_CONFIG } from '../core/gameConfig.js';
 
 /**
  * Wind bed level, 0..1, scaling the whole wind layer (both brown-noise beds,
  * the whistle, the gusts and the enclosure duck).
  *
- * SET TO 0 ON PURPOSE. Continuous wind is the one bed with nothing to say: it
- * masks the low end of gunfire, it never changes what a player does, and over
- * a session it reads as hiss rather than as weather. The city hum and the
- * distant-war rumble carry the outdoor space on their own. The layer is still
- * built and still tracks enclosure, so `audio.setAmbienceWind(1)` from the
- * console brings it back at full strength without a reload.
+ * SET TO 0 ON PURPOSE (see `game.json`'s audio.ambience.wind.level). Continuous
+ * wind is the one bed with nothing to say: it masks the low end of gunfire, it
+ * never changes what a player does, and over a session it reads as hiss rather
+ * than as weather. The city hum and the distant-war rumble carry the outdoor
+ * space on their own. The layer is still built and still tracks enclosure, so
+ * `audio.setAmbienceWind(1)` from the console brings it back at full strength
+ * without a reload.
  */
-const WIND_LEVEL = 0;
-
-/** Bed gain the wind sits at outdoors, before WIND_LEVEL scales it. */
-const WIND_BED = 0.5;
+const DEFAULTS = DEFAULT_GAME_CONFIG.audio.ambience;
 
 export class Ambience {
-  constructor(actx, bank, mixer, field, rng) {
+  constructor(actx, bank, mixer, field, rng, cfg = DEFAULTS) {
     this.actx = actx;
     this.bank = bank;
     this.mixer = mixer;
     this.field = field;
     this.rng = rng;
+    this.cfg = cfg;
     this.nodes = [];
     this.started = false;
     this.enclosure = 0;
     this.intensity = 1;    // scales the distant-battle scheduler
-    this.windLevel = WIND_LEVEL;
+    this.windLevel = cfg.wind.level;
     this._timers = { gust: 2, volley: 4, boom: 18, oneshot: 6, chatter: 25 };
   }
 
@@ -71,7 +71,7 @@ export class Ambience {
     this.nodes.push(sendTap);
 
     /* ---- wind: two decorrelated brown-noise layers ---------------- */
-    this._windGain = gain(actx, WIND_BED * this.windLevel);
+    this._windGain = gain(actx, this.cfg.wind.bedGain * this.windLevel);
     this._windGain.connect(outdoorLP);
     this.nodes.push(this._windGain);
     for (let i = 0; i < 2; i++) {
@@ -147,11 +147,12 @@ export class Ambience {
 
   _reseedTimers() {
     const r = this.rng;
-    this._timers.gust = r.range(4, 14);
-    this._timers.volley = r.range(3, 11);
-    this._timers.boom = r.range(14, 44);
-    this._timers.oneshot = r.range(5, 17);
-    this._timers.chatter = r.range(18, 50);
+    const T = this.cfg.timers;
+    this._timers.gust = r.range(...T.gust);
+    this._timers.volley = r.range(...T.volley);
+    this._timers.boom = r.range(...T.boom);
+    this._timers.oneshot = r.range(...T.oneshot);
+    this._timers.chatter = r.range(...T.chatter);
   }
 
   /** Outdoor content is filtered and dropped when the listener is enclosed. */
@@ -176,7 +177,7 @@ export class Ambience {
   /** Push windLevel × the enclosure duck into the bed gain. */
   _applyWind(timeConstant) {
     if (!this._windGain) return;
-    const target = lerp(WIND_BED, 0.12, this.enclosure) * this.windLevel;
+    const target = lerp(this.cfg.wind.bedGain, 0.12, this.enclosure) * this.windLevel;
     this._windGain.gain.setTargetAtTime(target, this.actx.currentTime, timeConstant);
   }
 
@@ -184,34 +185,35 @@ export class Ambience {
     if (!this.started) return;
     const r = this.rng;
     const T = this._timers;
+    const RT = this.cfg.repeatTimers;
 
     T.gust -= dt;
     if (T.gust <= 0) {
-      T.gust = r.range(5, 16);
+      T.gust = r.range(...RT.gust);
       this._gust();
     }
 
     T.volley -= dt;
     if (T.volley <= 0) {
-      T.volley = r.range(2.5, 12) / clamp(this.intensity, 0.25, 2);
+      T.volley = r.range(...RT.volley) / clamp(this.intensity, 0.25, 2);
       api?.distantVolley?.();
     }
 
     T.boom -= dt;
     if (T.boom <= 0) {
-      T.boom = r.range(16, 50) / clamp(this.intensity, 0.25, 2);
+      T.boom = r.range(...RT.boom) / clamp(this.intensity, 0.25, 2);
       api?.distantBoom?.();
     }
 
     T.oneshot -= dt;
     if (T.oneshot <= 0) {
-      T.oneshot = r.range(6, 20);
+      T.oneshot = r.range(...RT.oneshot);
       api?.oneShot?.();
     }
 
     T.chatter -= dt;
     if (T.chatter <= 0) {
-      T.chatter = r.range(20, 60);
+      T.chatter = r.range(...RT.chatter);
       api?.distantChatter?.();
     }
   }

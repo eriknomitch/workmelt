@@ -1,0 +1,51 @@
+{
+  "audio": {
+    "ambience": {
+      "wind": {
+        "level": 0,
+        "bedGain": 0.5
+      },
+      "timers": {
+        "gust": [4, 14],
+        "volley": [3, 11],
+        "boom": [14, 44],
+        "oneshot": [5, 17],
+        "chatter": [18, 50]
+      },
+      "repeatTimers": {
+        "gust": [5, 16],
+        "volley": [2.5, 12],
+        "boom": [16, 50],
+        "oneshot": [6, 20],
+        "chatter": [20, 60]
+      },
+      "distantVolley": {
+        "distance": [70, 240],
+        "heightJitter": [-2, 6],
+        "maxRounds": 6,
+        "rateRange": [0.075, 0.13],
+        "gain": 4.5,
+        "maxDist": 400
+      },
+      "distantBoom": {
+        "distance": [120, 330],
+        "heightJitter": [0, 8],
+        "radius": [6, 16],
+        "gain": 6,
+        "maxDist": 400
+      },
+      "oneShot": {
+        "nearDistance": [14, 90],
+        "farDistance": [90, 260],
+        "levelRange": [0.55, 1],
+        "nearGain": 2.5,
+        "farGain": 14,
+        "maxDist": 400
+      },
+      "distantChatter": {
+        "distance": [25, 75],
+        "level": 0.85
+      }
+    }
+  }
+}
