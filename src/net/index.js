@@ -14,7 +14,9 @@
  *   • Spawn the local player through the world's spawn director, feeding it the
  *     room's live transforms so a respawn is scored against real opponents, and
  *     announcing each pick (`spawn`) so two clients cannot claim one point.
- *   • Drive the overlay: invite bar, scoreboard, kill/join toasts, status.
+ *   • Drive the overlay: invite bar, scoreboard, kill toasts, status, and the
+ *     join/leave presence card (src/ui/presence.js — deliberately louder than a
+ *     toast, and shown in the lobby too while the overlay is hidden).
  *   • Carry the match-start lobby — who is here, who has readied up, whether the
  *     match is already live — and hand it to `match` as `net:lobby` /
  *     `net:countdown` / `net:join` / `net:leave` events. `net` renders none of
@@ -278,18 +280,30 @@ export class NetSystem {
         this.ui.toast(`Joined room <b>${this.room.toUpperCase()}</b> — share the link to invite friends`);
         break;
       }
+      // A peer arriving or leaving is the one piece of room news nobody asked
+      // for, and it changes who is in the level — so it is not a toast. Both
+      // paths carry the same three facts to the card and to the event: who, in
+      // which livery, and how many are in the room now.
       case 'peer_join': {
-        this._ensurePeer(msg.id, msg.name, msg);
-        this.ui.toast(`<b>${esc(msg.name)}</b> joined`);
+        const p = this._ensurePeer(msg.id, msg.name, msg);
         this._updateStatus();
-        this.ctx.events.emit('net:join', { id: msg.id, name: msg.name });
+        const colour = this._liveryCss({ skin: p.livery });
+        const count = this._roomCount();
+        this.ui.presence('join', msg.name, { colour, count });
+        this.ctx.events.emit('net:join', { id: msg.id, name: msg.name, colour, count });
         break;
       }
       case 'peer_leave': {
-        const name = this.peers.get(msg.id)?.name ?? '';
+        // Read the peer before removing it: the livery and the callsign are the
+        // only things left to announce them by once the puppet is gone.
+        const p = this.peers.get(msg.id);
+        const name = p?.name ?? '';
+        const colour = p ? this._liveryCss({ skin: p.livery }) : null;
         this._removePeer(msg.id);
         this._updateStatus();
-        this.ctx.events.emit('net:leave', { id: msg.id, name });
+        const count = this._roomCount();
+        this.ui.presence('leave', name, { colour, count });
+        this.ctx.events.emit('net:leave', { id: msg.id, name, colour, count });
         break;
       }
       case 'lobby': {
@@ -912,9 +926,13 @@ export class NetSystem {
     }
   }
 
+  /** Bodies in the room, us included — the number every surface quotes. */
+  _roomCount() {
+    return this.peers.size + (this.connected ? 1 : 0);
+  }
+
   _updateStatus() {
-    const count = this.peers.size + (this.connected ? 1 : 0);
-    this.ui.setStatus(this.connected ? 'on' : 'wait', count);
+    this.ui.setStatus(this.connected ? 'on' : 'wait', this._roomCount());
   }
 
   _copyInvite() {

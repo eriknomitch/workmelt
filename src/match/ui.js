@@ -51,6 +51,10 @@
  */
 
 import { installBrand, WORDMARK_HTML } from '../ui/brand.js';
+import { pushPresence } from '../ui/presence.js';
+
+/** How long a newly-arrived roster row stays highlighted. */
+const ROW_FLASH_MS = 1600;
 
 const CSS = `
 .wm-lobby {
@@ -273,6 +277,17 @@ const CSS = `
 .wm-lobby .row.ready .st { color: var(--wm-ok); }
 .wm-lobby .row.deployed .st { color: var(--wm-fg-dim); }
 .wm-lobby .row.warm .st { color: var(--wm-warn); }
+/* A row that just appeared. The presence card says who arrived; this is what
+   points at WHERE they landed, so the two are one gesture rather than a card
+   the player has to reconcile with a list that silently grew. Rebuilt on every
+   lobby frame, so render() carries the elapsed time in as a negative delay and
+   the flash keeps running instead of restarting. */
+.wm-lobby .row.fresh { animation: wm-row-in ${ROW_FLASH_MS}ms cubic-bezier(.2,.85,.3,1) both; }
+/* Colour only, no transform — nothing here for prefers-reduced-motion to undo. */
+@keyframes wm-row-in {
+  0% { background: var(--wm-hover); box-shadow: inset 3px 0 0 var(--wm-ok); }
+  100% { background: transparent; box-shadow: inset 3px 0 0 transparent; }
+}
 .wm-lobby .empty {
   padding: 18px; font-size: 13px; line-height: 1.55; color: var(--wm-muted-fg);
 }
@@ -373,6 +388,23 @@ export class MatchStartUI {
     this.root = document.createElement('div');
     this.root.className = 'wm-lobby wm-scroll hidden';
     host.appendChild(this.root);
+
+    /**
+     * Room presence cards — under the bar and centred, i.e. exactly where the
+     * in-match overlay puts them, because the player crosses between the two
+     * screens and the news must not move.
+     *
+     * A sibling of the lobby rather than a child of it: `.wm-lobby *` resets
+     * every margin and padding at the same specificity the card's own rules
+     * carry, so nesting it would make the card's padding depend on which
+     * stylesheet happened to be injected last.
+     */
+    this.presenceEl = document.createElement('div');
+    this.presenceEl.className = 'wm-presence-stack hidden';
+    host.appendChild(this.presenceEl);
+
+    /** Player ids that arrived recently, id -> timestamp, for the row flash. */
+    this._fresh = new Map();
 
     this.multiplayer = multiplayer;
     this.invited = invited;
@@ -712,6 +744,7 @@ export class MatchStartUI {
         : 'Waiting on the relay. You can play the garrison right now — co-workers can still join later.';
       this.rosterEl.appendChild(d);
     }
+    const now = this._now();
     for (const p of players) {
       // Four states, and "warming up" is the one that carries the news: that
       // player is out of the lobby but NOT in a match, so readying up still
@@ -719,6 +752,20 @@ export class MatchStartUI {
       const state = p.warm ? 'warm' : p.deployed ? 'deployed' : p.ready ? 'ready' : 'waiting';
       const row = document.createElement('div');
       row.className = `row ${state}${p.id === m.myId ? ' me' : ''}`;
+      // Somebody who just arrived. The roster is rebuilt from scratch on every
+      // lobby frame, and those arrive for reasons of their own (a ready flag, a
+      // map change) — so the flash is resumed at the point it had reached
+      // rather than restarted, or an unrelated frame would loop it forever.
+      const since = this._fresh.get(p.id);
+      if (since != null) {
+        const elapsed = now - since;
+        if (elapsed < ROW_FLASH_MS) {
+          row.classList.add('fresh');
+          row.style.animationDelay = `-${Math.max(0, Math.round(elapsed))}ms`;
+        } else {
+          this._fresh.delete(p.id);
+        }
+      }
       const dot = document.createElement('span');
       dot.className = 'dot';
       const who = document.createElement('span');
@@ -842,6 +889,35 @@ export class MatchStartUI {
     // Let the display change land before the opacity transition starts.
     if (on) requestAnimationFrame(() => this.root.classList.add('show'));
     else this.root.classList.remove('show');
+    // The cards go with the screen they belong to: deploying hands the room
+    // news back to the in-match overlay, and a card still dwelling from the
+    // lobby would otherwise hang over the HUD for the rest of its five seconds.
+    this.presenceEl.classList.toggle('hidden', !on);
+    if (!on) this.presenceEl.textContent = '';
+  }
+
+  /**
+   * Somebody else entered or left the room, announced on the same card the
+   * in-match overlay uses. `src/net/ui.js` owns the equivalent while a match is
+   * running — this one exists because that overlay is deliberately hidden
+   * behind the lobby, so without it a player sitting on this screen watches the
+   * roster grow with no idea that it did.
+   *
+   * The arrival also flashes the roster row, so the card and the list are one
+   * gesture. `render` reads `_fresh`; nothing else has to be told.
+   *
+   * @param {'join'|'leave'} kind
+   * @param {object} [o] { id, name, colour, count }
+   */
+  presence(kind, { id = null, name = '', colour = null, count = 0 } = {}) {
+    pushPresence(this.presenceEl, kind, name, { colour, count });
+    if (kind === 'join' && id != null) this._fresh.set(id, this._now());
+    else if (id != null) this._fresh.delete(id);
+  }
+
+  /** Wall clock for the row flash. Nothing deterministic depends on it. */
+  _now() {
+    return typeof performance !== 'undefined' ? performance.now() : 0;
   }
 
   /** Swap the lobby body for the countdown. */
@@ -874,6 +950,7 @@ export class MatchStartUI {
 
   dispose() {
     clearTimeout(this._copyT);
+    this.presenceEl.remove();
     this.root.remove();
   }
 }

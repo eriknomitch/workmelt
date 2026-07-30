@@ -38,6 +38,9 @@
  *     the chosen size at the moment the match starts, so a players-only match
  *     really has no bots in it.
  *   • The lobby sounds: join, ready, countdown ticks, deployment horn.
+ *   • Breaking room news while the lobby is up. `net`'s overlay — and with it
+ *     its join/leave card — is hidden behind this screen, so `_onPresence`
+ *     re-raises the same card here and flashes the roster row that changed.
  *
  * WHAT IT DOES NOT OWN
  *   The wire. `net` carries the lobby and reports it as `net:lobby`,
@@ -129,8 +132,8 @@ export class MatchSystem {
     on('net:lobby', (e) => this._onLobby(e));
     on('net:name', (e) => this.ui.setName(e?.name ?? ''));
     on('net:countdown', (e) => this._onCountdown(e));
-    on('net:join', () => this._sfx('join'));
-    on('net:leave', () => this._sfx('leave', 0.7));
+    on('net:join', (e) => this._onPresence('join', e));
+    on('net:leave', (e) => this._onPresence('leave', e));
 
     this._enterSetup();
     if (typeof window !== 'undefined') window.__MATCH__ = this;
@@ -536,6 +539,25 @@ export class MatchSystem {
       // menu: he simply deploys where he already stands.
       console.warn('[match] deploy spawn failed', err);
     }
+  }
+
+  /**
+   * Somebody else entered or left the room.
+   *
+   * The cue is the same wherever we are, but the card is not: in a match the
+   * overlay in `src/net/ui.js` has already shown one, and this screen is not on
+   * top of anything. Everywhere else the overlay is hidden behind this screen
+   * (`_enterSetup`), so the lobby is the only surface left that can say it.
+   */
+  _onPresence(kind, e) {
+    this._sfx(kind, kind === 'leave' ? 0.7 : 1);
+    if (this.state === 'live') return;
+    this.ui.presence(kind, {
+      id: e?.id ?? null,
+      name: e?.name ?? '',
+      colour: e?.colour ?? null,
+      count: e?.count ?? 0,
+    });
   }
 
   _sfx(kind, level = 1) {
