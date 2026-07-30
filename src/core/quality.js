@@ -330,6 +330,7 @@ export class AdaptiveQualitySystem {
     this.isActive = isActive ?? ((ctx) => !globalThis.document?.hidden && ctx.time.scale > 0);
     this.policy = null;
     this.ctx = null;
+    this._unsubs = [];
     this._reloadPending = false;
     this._adaptiveStartFrame = 0;
     this._nextSampleMs = 0;
@@ -350,6 +351,14 @@ export class AdaptiveQualitySystem {
     this.ctx = ctx;
     this._calibrationStartFrame = ctx.perf.count;
     this._adaptiveStartFrame = ctx.perf.count;
+    // Context-loss recovery lives here rather than in `render` because this is
+    // where persistence and reloads already live, and a recovery that is not
+    // persisted is a recovery the next boot repeats the crash through. Wired up
+    // even when adaptive quality is off: a lost context is not a preference.
+    // Optional chaining because the headless tests drive this system with a
+    // hand-built ctx that has no event bus.
+    const offLost = ctx.events?.on?.('render:contextlost', (e) => this._onContextLost(e));
+    if (offLost) this._unsubs.push(offLost);
     if (!this.enabled || this.settings.mode !== 'auto') {
       this._status.state = this.enabled ? 'manual' : 'override';
       this._status.mode = ctx.config.quality;
@@ -445,6 +454,30 @@ export class AdaptiveQualitySystem {
       return;
     }
     this._activatePolicy();
+  }
+
+  /**
+   * The GPU dropped the context. Persist a smaller pixel budget than the one we
+   * died at, then reload into it — a fresh context is the only reliable way back
+   * (the same reason the "limited" walk-down below reloads), and persisting is
+   * what stops the next boot walking into the same wall.
+   *
+   * Snapped DOWN to an offered menu value so the player sees a setting they can
+   * recognise and raise again, not an arbitrary number.
+   */
+  _onContextLost({ suggestedMaxPixels } = {}) {
+    if (this._reloadPending) return;
+    this._reloadPending = true;
+    const offered = (GRAPHICS_OPTIONS_BY_ID.maxPixels?.values ?? [])
+      .map((v) => Number(v.value))
+      .filter((n) => Number.isFinite(n) && n > 0)
+      .sort((a, b) => a - b);
+    const target = Number(suggestedMaxPixels) || 0;
+    const picked = offered.filter((n) => n <= target).pop() ?? offered[0] ?? target;
+    this._status.state = 'reloading';
+    console.error(`[quality] context lost — reloading at a ${(picked / 1e6).toFixed(1)} MP budget`);
+    this._persist({ overrides: { ...this.settings.overrides, maxPixels: picked } });
+    this.location?.reload?.();
   }
 
   _activatePolicy() {
@@ -596,5 +629,10 @@ export class AdaptiveQualitySystem {
     this._status.pendingRestart = this.pendingRestart;
     this._status.scaleLocked = this.scaleLocked;
     return this._status;
+  }
+
+  dispose() {
+    for (const off of this._unsubs) off();
+    this._unsubs.length = 0;
   }
 }

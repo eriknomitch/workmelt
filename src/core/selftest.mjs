@@ -523,4 +523,72 @@ check('resetting defaults clears the advanced overrides too', () => {
   assert.deepEqual(loadGraphicsSettings(h.storage).overrides, {});
 });
 
+await checkAsync('a lost GL context persists a smaller pixel budget and reloads', async () => {
+  const values = new Map();
+  const storage = {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, value),
+  };
+  let reloads = 0;
+  const handlers = new Map();
+  const ctx = {
+    perf: { count: 0, stats: () => ({ fps: { p95: 60 }, frameMs: { p95: 16 }, bound: 'mixed' }) },
+    time: { scale: 1 },
+    config: { quality: 'high', q: { renderScale: 1 } },
+    events: {
+      on: (type, fn) => {
+        handlers.set(type, fn);
+        return () => handlers.delete(type);
+      },
+    },
+    get: () => ({ setRenderScale() {} }),
+  };
+  const system = new AdaptiveQualitySystem({
+    settings: { mode: 'auto', targetFps: 120, refreshHz: 120, tier: 'high', calibrated: true },
+    storage,
+    location: { reload: () => reloads++ },
+    now: () => 0,
+  });
+  await system.init(ctx);
+
+  // Died at 14.7 MP, so the recovery wants ~7.4 MP and must snap DOWN to an
+  // offered menu value rather than inventing one the player cannot recognise.
+  handlers.get('render:contextlost')({ pixels: 14745600, suggestedMaxPixels: 7372800 });
+
+  const saved = loadGraphicsSettings(storage);
+  assert.equal(saved.overrides.maxPixels, 3686400, 'snaps down to the 1440p budget');
+  assert.equal(reloads, 1, 'a fresh context is the only reliable way back');
+  assert.equal(system.getStatus().state, 'reloading');
+
+  // A second loss mid-reload must not stack another reload on top.
+  handlers.get('render:contextlost')({ pixels: 3686400, suggestedMaxPixels: 1843200 });
+  assert.equal(reloads, 1);
+
+  system.dispose();
+  assert.equal(handlers.size, 0, 'dispose releases the subscription');
+});
+
+check('a lost context is handled even with adaptive quality switched off', () => {
+  // Boot with `?q=high` disables this system's scaling entirely. A lost context
+  // is not a preference, so the recovery must still be wired.
+  const values = new Map();
+  const storage = {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, value),
+  };
+  const handlers = new Map();
+  const system = new AdaptiveQualitySystem({
+    settings: { mode: 'auto' },
+    enabled: false,
+    storage,
+    location: { reload: () => {} },
+  });
+  system.init({
+    perf: { count: 0 },
+    config: { quality: 'high', q: { renderScale: 1 } },
+    events: { on: (t, fn) => (handlers.set(t, fn), () => handlers.delete(t)) },
+  });
+  assert.ok(handlers.has('render:contextlost'));
+});
+
 console.log(`\n${checks} adaptive-quality checks passed`);

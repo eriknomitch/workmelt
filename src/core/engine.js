@@ -74,7 +74,63 @@ export class Engine {
     this._accum = 0;
     this._last = 0;
     this._running = false;
-    this._onResize = () => this.resize();
+
+    /**
+     * Resize is COALESCED, never handled inline.
+     *
+     * A window drag delivers one `resize` event per frame, and each one would
+     * otherwise tear down and rebuild the entire post chain — measured at ~160
+     * MB of render targets per megapixel, so ~590 MB per event at 1440p and
+     * ~1.3 GB at 4K, synchronously on the main thread, sixty times a second.
+     *
+     * Nothing about the frame is wrong while we wait. The canvas backbuffer
+     * keeps its old size and the browser scales it into the new CSS box, and
+     * because the camera aspect moves at the same moment the targets do, that
+     * is a uniform stretch rather than a geometry error. It snaps to exact when
+     * the drag stops.
+     *
+     * `resize()` itself stays synchronous and public: `init()` and any harness
+     * that needs the new size on the very next frame calls it directly.
+     */
+    this._resizeQuietMs = 120;
+    this._resizePending = false;
+    /** Set by the event, consumed by the frame: the handler reads no clock. */
+    this._resizeDirty = false;
+    this._resizeSeenMs = 0;
+    this._lastW = 0;
+    this._lastH = 0;
+    this._lastDpr = 0;
+    this._onResize = () => {
+      this._resizeDirty = true;
+    };
+    /**
+     * A devicePixelRatio change does not reliably arrive as a `resize` event —
+     * dragging a window from a Retina panel to a non-Retina one can leave the
+     * CSS box identical, and then the backbuffer keeps the old pixel ratio for
+     * the rest of the session. A `resolution` media query is the only thing that
+     * actually reports it, and it has to be re-armed against the new value each
+     * time because it only fires on leaving the one it was built with.
+     */
+    this._dprQuery = null;
+    this._onDprChange = () => {
+      this._onResize();
+      this._watchPixelRatio();
+    };
+  }
+
+  _watchPixelRatio() {
+    const mm = globalThis.matchMedia;
+    if (typeof mm !== 'function') return;
+    this._dprQuery?.removeEventListener?.('change', this._onDprChange);
+    this._dprQuery = null;
+    try {
+      const q = mm.call(globalThis, `(resolution: ${globalThis.devicePixelRatio || 1}dppx)`);
+      q?.addEventListener?.('change', this._onDprChange);
+      this._dprQuery = q ?? null;
+    } catch {
+      // Media-query support for `resolution` is not universal; the window
+      // `resize` path still covers zoom, which is the common case.
+    }
   }
 
   add(SystemClass, opts) {
@@ -92,13 +148,27 @@ export class Engine {
     }
     this.input.attach();
     addEventListener('resize', this._onResize);
+    this._watchPixelRatio();
     this.resize();
     return this;
   }
 
+  /**
+   * Apply the current canvas size immediately. Safe to call redundantly: an
+   * unchanged size (and unchanged pixel ratio — a DPR move at a fixed CSS size
+   * is a real change) returns without touching a subsystem, so the coalescing
+   * path never pays for a spurious event.
+   */
   resize() {
     const w = Math.max(1, this.canvas.clientWidth || innerWidth);
     const h = Math.max(1, this.canvas.clientHeight || innerHeight);
+    const dpr = globalThis.devicePixelRatio || 1;
+    this._resizePending = false;
+    this._resizeDirty = false;
+    if (w === this._lastW && h === this._lastH && dpr === this._lastDpr) return;
+    this._lastW = w;
+    this._lastH = h;
+    this._lastDpr = dpr;
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.viewCamera.aspect = w / h;
@@ -127,6 +197,18 @@ export class Engine {
 
   /** Advance one frame. Exposed so the capture harness can pump frames by hand. */
   step(now = performance.now()) {
+    // Settle the viewport before anything reads it. One reallocation per drag,
+    // not one per event — see the note on `_onResize`. The frame clock is the
+    // only clock involved, so a harness driving `step()` by hand gets exactly
+    // the same behaviour as a real animation frame.
+    if (this._resizeDirty) {
+      this._resizeDirty = false;
+      this._resizePending = true;
+      this._resizeSeenMs = now;
+    } else if (this._resizePending && now - this._resizeSeenMs >= this._resizeQuietMs) {
+      this.resize();
+    }
+
     const t = this.time;
     // Clamp so a tab-switch or a breakpoint doesn't teleport the simulation.
     const rawDt = Math.min(0.1, Math.max(0, (now - this._last) / 1000));
@@ -180,6 +262,8 @@ export class Engine {
   dispose() {
     this.stop();
     removeEventListener('resize', this._onResize);
+    this._dprQuery?.removeEventListener?.('change', this._onDprChange);
+    this._dprQuery = null;
     this.input.detach();
     for (const sys of [...this.registry.ordered].reverse()) sys.dispose?.();
     this.perf.dispose();

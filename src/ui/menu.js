@@ -611,8 +611,13 @@ export class PauseMenu {
     // percentage but the pixel count it lands on, after BOTH the render scale
     // and the device-pixel-ratio cap have taken their cut. Someone on a
     // 3024x1964 panel needs to read "1344x756" to know what to change.
-    const size = this.ctx.peek('render')?.screenSize;
-    const px = size ? `${size.width}x${size.height}` : '';
+    const render = this.ctx.peek('render');
+    const size = render?.screenSize;
+    // "CAPPED" is the difference between "my expensive monitor looks soft" and
+    // "the Resolution Limit is doing that, and it is one row up this menu".
+    const px = size
+      ? `${size.width}x${size.height}${render.budgetLimited ? ' CAPPED' : ''}`
+      : '';
     if (
       this._qualityState === rawState &&
       this._qualityMode === status.mode &&

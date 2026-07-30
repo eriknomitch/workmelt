@@ -88,6 +88,33 @@ export const GRAPHICS_OPTIONS = [
     },
   },
   {
+    id: 'maxPixels',
+    label: 'Resolution Limit',
+    group: 'display',
+    kind: 'enum',
+    restart: false,
+    hint: 'Hard ceiling on how many pixels get drawn, however large the window is. Every other setting here is a fraction of your window, and a window has no upper limit — this is what stops a very large display asking for an internal buffer no GPU budget survives. Counted as area, so an ultrawide is not penalised for being wide.',
+    values: vals([
+      [AUTO, 'Auto (4K budget)'],
+      [2073600, '1080p budget'],
+      [3686400, '1440p budget'],
+      [8294400, '4K budget'],
+      [14745600, '5K budget'],
+      [33177600, '8K budget'],
+      // Deliberately a large finite number rather than Infinity: this value
+      // round-trips through JSON.stringify into localStorage, and Infinity
+      // serialises as null, which would silently reset the setting.
+      [67108864, 'No limit (64 MP)'],
+    ]),
+    preset: (q) => q.maxPixels ?? 8294400,
+    apply(q, v) {
+      q.maxPixels = v;
+    },
+    live(render, v) {
+      render.setPixelBudget(v);
+    },
+  },
+  {
     id: 'pixelRatioCap',
     label: 'Display Sharpness',
     group: 'display',
