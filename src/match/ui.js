@@ -884,7 +884,7 @@ export class MatchStartUI {
       b.setAttribute('aria-pressed', 'false');
       for (const [cls, text] of [
         ['nm', m.name],
-        ['sub', m.subtitle],
+        ['sub', m.description],
         ['bl', m.blurb],
         ['sz', m.size],
       ]) {

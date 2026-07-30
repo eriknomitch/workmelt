@@ -1273,8 +1273,6 @@ export function buildFishers(A, rng) {
 
 export const FISHERS_MAP = {
   id: 'fishers',
-  name: "The Fisher's",
-  subtitle: 'North Shore estate, down the pool axis',
   blurb:
     'One long axis from the house to the loggia: a lap pool between raised stone terraces, a pool house roof looking down on it, and a walled kitchen garden and a screened court either side.',
   size: '56 × 70 m',

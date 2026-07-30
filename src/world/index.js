@@ -50,7 +50,8 @@ import { MAPS, DEFAULT_MAP_ID, getMap, isMapId, mapSummaries, resolveBootMap, sa
  *   world.map                 the active map descriptor
  *   world.mapId               its id — 'market' | 'rust' | 'wilmot' | 'loop' |
  *                             'fishers'
- *   world.maps                [{ id, name, subtitle, blurb, size }] for menus
+ *   world.maps                [{ id, name, description, blurb, size }] for
+ *                             menus — enabled maps only, in registry order
  *   world.setMap(id)          rebuild the level on another map. Awaitable, and
  *                             ONLY legal before a match goes live — see below.
  *   world.spawnPoints         [{ position:Vector3, yaw:number, tag:string }]
