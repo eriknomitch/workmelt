@@ -582,6 +582,125 @@ const CSS = `
 .wm-lobby.variant-linear .strip b { color: var(--linear-muted); }
 .wm-lobby.variant-linear .style-picker .label, .wm-lobby.variant-linear .style-picker button { color: var(--linear-subtle); border-color: var(--linear-hairline); }
 .wm-lobby.variant-linear .style-picker button[aria-pressed="true"] { color: var(--linear-primary); }
+.wm-lobby.variant-ledger .style-picker .label, .wm-lobby.variant-ledger .style-picker button { color: var(--ledger-muted); border-color: var(--ledger-line); }
+.wm-lobby.variant-ledger .style-picker button[aria-pressed="true"] { color: var(--ledger-purple); }
+
+/* ── ledger / editor dashboard -------------------------------------------
+   A monochrome operations surface inspired by dark code editors and terminal
+   dashboards. The existing lobby model stays intact; the hierarchy comes from
+   rules, compact monospace labels, and syntax-like colour used only for state.
+*/
+.wm-lobby.variant-ledger {
+  --ledger-bg: #121212; --ledger-surface: #161616; --ledger-raised: #1e1e1e;
+  --ledger-line: #383838; --ledger-muted: #777; --ledger-ink: #adadad;
+  --ledger-bright: #d8d8d8; --ledger-purple: #a875e8;
+  --ledger-cyan: #4cc9c2; --ledger-green: #00c55c; --ledger-yellow: #e6cf61;
+  --ledger-blue: #6499d8; --ledger-orange: #d98a62;
+  color: var(--ledger-ink); font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  /* Let the live arena show through the dashboard canvas without sacrificing
+     the near-black editor posture. Elevated controls remain opaque below. */
+  background: rgb(18 18 18 / .78);
+  background-image: linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px);
+  background-size: 100% 28px;
+}
+.wm-lobby.variant-ledger .shell { min-height: 100%; }
+.wm-lobby.variant-ledger .bar { min-height: 68px; padding: 0 44px; background: var(--ledger-bg); border-bottom: 1px solid var(--ledger-line); }
+.wm-lobby.variant-ledger .bar::after { content: '● ONLINE  //  BUILD 1.4.7'; margin-left: 10px; color: var(--ledger-green); font-size: 10px; letter-spacing: .08em; }
+.wm-lobby.variant-ledger .bar .wm-mark { color: var(--ledger-bright); font-family: inherit; font-size: 20px; letter-spacing: .12em; }
+.wm-lobby.variant-ledger .wm-mark .t::after, .wm-lobby.variant-ledger .wm-mark .t::before { background: var(--ledger-purple); }
+.wm-lobby.variant-ledger .callsign label, .wm-lobby.variant-ledger .eyebrow { color: var(--ledger-muted); font-family: inherit; }
+.wm-lobby.variant-ledger .callsign label::after { content: ':'; color: var(--ledger-purple); }
+.wm-lobby.variant-ledger .callsign input { width: 154px; color: var(--ledger-bright); background: var(--ledger-surface); border-color: var(--ledger-line); border-radius: 0; font-family: inherit; }
+.wm-lobby.variant-ledger .callsign input:focus { border-color: var(--ledger-purple); }
+.wm-lobby.variant-ledger .style-picker .label, .wm-lobby.variant-ledger .style-picker button { color: var(--ledger-muted); border-color: var(--ledger-line); border-radius: 0; font-family: inherit; }
+.wm-lobby.variant-ledger .style-picker button[aria-pressed="true"] { color: var(--ledger-purple); border-color: var(--ledger-purple); }
+.wm-lobby.variant-ledger .icon-btn { border-color: var(--ledger-line); border-radius: 0; color: var(--ledger-muted); }
+.wm-lobby.variant-ledger .icon-btn:hover { color: var(--ledger-bright); border-color: var(--ledger-cyan); }
+.wm-lobby.variant-ledger .body { grid-template-columns: minmax(0, 1fr) 390px; max-width: 1420px; padding: 52px 44px 42px; gap: 44px; align-items: start; }
+.wm-lobby.variant-ledger .hero { padding: 0; }
+.wm-lobby.variant-ledger .hero::before { content: 'PROTOCOL CONTROL DASHBOARD'; display: block; color: var(--ledger-muted); font-size: 11px; letter-spacing: .16em; border-bottom: 1px dashed var(--ledger-line); padding-bottom: 12px; }
+.wm-lobby.variant-ledger .hero .eyebrow { margin: 18px 0 12px; color: var(--ledger-purple); letter-spacing: .14em; }
+.wm-lobby.variant-ledger .hero .wm-mark { color: var(--ledger-bright); font-family: inherit; font-size: clamp(48px, 8vw, 116px); letter-spacing: -.08em; line-height: .8; margin: 0 0 24px; }
+.wm-lobby.variant-ledger .lede { color: var(--ledger-muted); max-width: 64ch; font-size: 13px; line-height: 1.65; }
+.wm-lobby.variant-ledger .lede b { color: var(--ledger-cyan); font-weight: 400; }
+.wm-lobby.variant-ledger .maps, .wm-lobby.variant-ledger .opts { margin-bottom: 26px; }
+.wm-lobby.variant-ledger .maps .hd { padding-bottom: 9px; border-bottom: 1px dashed var(--ledger-line); }
+.wm-lobby.variant-ledger .maps .hd .eyebrow { color: var(--ledger-purple); margin: 0; }
+.wm-lobby.variant-ledger .maps .hd .note, .wm-lobby.variant-ledger .note { color: var(--ledger-muted); }
+.wm-lobby.variant-ledger .mapcards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--ledger-line); border: 1px solid var(--ledger-line); }
+.wm-lobby.variant-ledger .mapcard { max-width: none; min-height: 104px; padding: 14px; border: 0; border-radius: 0; background: var(--ledger-surface); }
+.wm-lobby.variant-ledger .mapcard:hover:not(:disabled) { background: var(--ledger-raised); }
+.wm-lobby.variant-ledger .mapcard[aria-pressed="true"] { background: #242020; box-shadow: inset 3px 0 var(--ledger-purple); }
+.wm-lobby.variant-ledger .mapcard .nm { color: var(--ledger-bright); font-family: inherit; font-size: 14px; letter-spacing: .02em; }
+.wm-lobby.variant-ledger .mapcard .sub { color: var(--ledger-blue); font-family: inherit; font-size: 10px; }
+.wm-lobby.variant-ledger .mapcard .bl, .wm-lobby.variant-ledger .mapcard .sz { color: var(--ledger-muted); }
+.wm-lobby.variant-ledger .chip { border-color: var(--ledger-line); border-radius: 0; background: var(--ledger-surface); color: var(--ledger-muted); font-family: inherit; }
+.wm-lobby.variant-ledger .chip:hover { color: var(--ledger-bright); border-color: var(--ledger-purple); }
+.wm-lobby.variant-ledger .chip[aria-pressed="true"] { color: var(--ledger-bg); background: var(--ledger-green); border-color: var(--ledger-green); }
+.wm-lobby.variant-ledger .cta { max-width: none; gap: 1px; background: var(--ledger-line); }
+.wm-lobby.variant-ledger .btn { border-radius: 0; font-family: inherit; font-size: 13px; }
+.wm-lobby.variant-ledger .btn-primary { background: var(--ledger-purple); color: #17121e; padding: 15px 20px; }
+.wm-lobby.variant-ledger .btn-primary:hover:not(:disabled) { background: #ff7ab5; }
+.wm-lobby.variant-ledger .btn-ghost { background: var(--ledger-surface); border-color: transparent; color: var(--ledger-bright); padding: 15px 20px; }
+.wm-lobby.variant-ledger .btn-ghost:hover:not(:disabled) { border-color: var(--ledger-cyan); color: var(--ledger-cyan); }
+.wm-lobby.variant-ledger .alt { color: var(--ledger-muted); border-color: var(--ledger-line); font-family: inherit; }
+.wm-lobby.variant-ledger .alt:hover { color: var(--ledger-yellow); border-color: var(--ledger-yellow); }
+.wm-lobby.variant-ledger .panel { border-color: var(--ledger-line); border-radius: 0; background: var(--ledger-surface); box-shadow: none; }
+.wm-lobby.variant-ledger .panel-hd { padding: 15px 18px; border-color: var(--ledger-line); }
+.wm-lobby.variant-ledger .h-sec { color: var(--ledger-bright); font-family: inherit; font-size: 14px; letter-spacing: .06em; }
+.wm-lobby.variant-ledger .code { color: var(--ledger-purple); font-family: inherit; font-size: 15px; letter-spacing: .1em; }
+.wm-lobby.variant-ledger .btn-sm { border-color: var(--ledger-line); border-radius: 0; background: transparent; color: var(--ledger-muted); font-family: inherit; }
+.wm-lobby.variant-ledger .btn-sm:hover { color: var(--ledger-cyan); border-color: var(--ledger-cyan); }
+.wm-lobby.variant-ledger .row + .row, .wm-lobby.variant-ledger .panel-ft { border-color: var(--ledger-line); }
+.wm-lobby.variant-ledger .row:hover { background: var(--ledger-raised); }
+.wm-lobby.variant-ledger .row .who { color: var(--ledger-ink); font-family: inherit; font-size: 12px; }
+.wm-lobby.variant-ledger .row.me .who { color: var(--ledger-bright); }
+.wm-lobby.variant-ledger .row .st { color: var(--ledger-muted); font-family: inherit; }
+.wm-lobby.variant-ledger .row.ready .dot, .wm-lobby.variant-ledger .row.ready .st { color: var(--ledger-green); background-color: var(--ledger-green); }
+.wm-lobby.variant-ledger .row.ready .st { background: transparent; }
+.wm-lobby.variant-ledger .row.warm .dot, .wm-lobby.variant-ledger .row.warm .st { color: var(--ledger-yellow); background-color: var(--ledger-yellow); }
+.wm-lobby.variant-ledger .row.warm .st { background: transparent; }
+.wm-lobby.variant-ledger .status { color: var(--ledger-muted); font-family: inherit; }
+.wm-lobby.variant-ledger .status b { color: var(--ledger-cyan); }
+.wm-lobby.variant-ledger .strip { padding: 11px 44px; background: var(--ledger-bg); border-color: var(--ledger-line); color: var(--ledger-muted); font-family: inherit; }
+.wm-lobby.variant-ledger .strip b { color: var(--ledger-ink); }
+.wm-lobby.variant-ledger .strip .key { border-color: var(--ledger-line); border-radius: 0; color: var(--ledger-purple); }
+.wm-lobby.variant-ledger .count .n { color: var(--ledger-purple); font-family: inherit; }
+.wm-lobby.variant-ledger .count .lbl { color: var(--ledger-bright); font-family: inherit; }
+.wm-lobby.variant-ledger .count .sub { color: var(--ledger-muted); }
+
+/* ── map carousel --------------------------------------------------------- */
+.wm-lobby .map-carousel { display: grid; grid-template-columns: 34px minmax(0, 1fr) 34px; gap: 8px; align-items: stretch; }
+.wm-lobby .mapcards { position: relative; display: block; min-width: 0; height: 168px; overflow: hidden; }
+.wm-lobby .mapcards .mapcard {
+  display: flex; position: absolute; inset: 0; width: 100%; max-width: none; height: 100%;
+  opacity: 0; pointer-events: none; transform: translateX(112%) scale(.92); filter: blur(3px);
+  transition: transform 280ms cubic-bezier(.2,.85,.3,1), opacity 220ms ease, filter 280ms ease;
+  will-change: transform, opacity, filter;
+}
+.wm-lobby .mapcards .mapcard[data-carousel-state="active"] {
+  z-index: 2; opacity: 1; pointer-events: auto; transform: translateX(0) scale(1); filter: none;
+}
+.wm-lobby .mapcards .mapcard[data-carousel-state="prev"] {
+  z-index: 1; opacity: .48; transform: translateX(-87%) scale(.92); filter: blur(3px);
+}
+.wm-lobby .mapcards .mapcard[data-carousel-state="next"] {
+  z-index: 1; opacity: .48; transform: translateX(87%) scale(.92); filter: blur(3px);
+}
+.wm-lobby .mapcards .mapcard[data-carousel-state="prev"],
+.wm-lobby .mapcards .mapcard[data-carousel-state="next"] { pointer-events: auto; }
+.wm-lobby .mapcards .mapcard[data-carousel-state="prev"]:hover,
+.wm-lobby .mapcards .mapcard[data-carousel-state="next"]:hover { opacity: .7; }
+.wm-lobby .map-nav {
+  border: 1px solid var(--wm-border); background: var(--wm-panel-2); color: var(--wm-muted-fg);
+  cursor: pointer; font: 400 28px/1 var(--wm-body); transition: color var(--wm-t), border-color var(--wm-t), background var(--wm-t);
+}
+.wm-lobby .map-nav:hover:not(:disabled) { color: var(--wm-fg); border-color: var(--wm-accent); background: var(--wm-hover); }
+.wm-lobby .map-nav:disabled { opacity: .35; cursor: not-allowed; }
+.wm-lobby .map-position { min-height: 16px; margin-top: 7px; text-align: center; color: var(--wm-muted-fg); font: 600 10px/1 var(--wm-body); letter-spacing: .12em; }
+.wm-lobby.variant-ledger .map-nav { border-color: var(--ledger-line); background: var(--ledger-surface); color: var(--ledger-purple); font-family: inherit; }
+.wm-lobby.variant-ledger .map-nav:hover:not(:disabled) { color: var(--ledger-bright); border-color: var(--ledger-cyan); background: var(--ledger-raised); }
+.wm-lobby.variant-ledger .map-position { color: var(--ledger-muted); font-family: inherit; }
 
 /* style picker shared by all directions */
 .wm-lobby .style-picker { display: flex; align-items: center; gap: 5px; margin-right: 8px; }
@@ -597,13 +716,13 @@ const CSS = `
 .wm-lobby.variant-spreadsheet .style-picker .label, .wm-lobby.variant-spreadsheet .style-picker button { color: var(--sheet-muted); border-color: var(--sheet-line); }
 .wm-lobby.variant-spreadsheet .style-picker button[aria-pressed="true"] { color: var(--sheet-lime); }
 @media (max-width: 1080px) {
-  .wm-lobby.variant-signal .body, .wm-lobby.variant-terminal .body, .wm-lobby.variant-field .body, .wm-lobby.variant-spreadsheet .body, .wm-lobby.variant-linear .body { grid-template-columns: minmax(0, 1fr); }
+  .wm-lobby.variant-signal .body, .wm-lobby.variant-terminal .body, .wm-lobby.variant-field .body, .wm-lobby.variant-spreadsheet .body, .wm-lobby.variant-linear .body, .wm-lobby.variant-ledger .body { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 720px) {
   .wm-lobby .style-picker { order: 3; width: 100%; margin: 3px 0 0; }
   .wm-lobby.variant-signal .bar, .wm-lobby.variant-field .bar { padding: 12px 16px; }
-  .wm-lobby.variant-signal .body, .wm-lobby.variant-terminal .body, .wm-lobby.variant-field .body, .wm-lobby.variant-linear .body { padding: 38px 16px; }
-  .wm-lobby.variant-signal .mapcards, .wm-lobby.variant-terminal .mapcards, .wm-lobby.variant-field .mapcards, .wm-lobby.variant-spreadsheet .mapcards, .wm-lobby.variant-linear .mapcards { grid-template-columns: minmax(0, 1fr); }
+  .wm-lobby.variant-signal .body, .wm-lobby.variant-terminal .body, .wm-lobby.variant-field .body, .wm-lobby.variant-linear .body, .wm-lobby.variant-ledger .body { padding: 38px 16px; }
+  .wm-lobby.variant-signal .mapcards, .wm-lobby.variant-terminal .mapcards, .wm-lobby.variant-field .mapcards, .wm-lobby.variant-spreadsheet .mapcards, .wm-lobby.variant-linear .mapcards, .wm-lobby.variant-ledger .mapcards { grid-template-columns: minmax(0, 1fr); }
 }
 `;
 
@@ -674,6 +793,7 @@ export class MatchStartUI {
             <button type="button" data-style="field" aria-pressed="false">Field notes</button>
             <button type="button" data-style="spreadsheet" aria-pressed="false">Spreadsheet</button>
             <button type="button" data-style="linear" aria-pressed="false">Linear</button>
+            <button type="button" data-style="ledger" aria-pressed="false">Ledger</button>
           </div>
           <span class="callsign">
             <label for="wm-callsign">Callsign</label>
@@ -694,7 +814,12 @@ export class MatchStartUI {
                 <span class="eyebrow">Map</span>
                 <span class="note" data-map-note></span>
               </div>
-              <div class="mapcards" data-mapcards role="group" aria-label="Map"></div>
+              <div class="map-carousel">
+                <button type="button" class="map-nav" data-map-prev aria-label="Previous map">‹</button>
+                <div class="mapcards" data-mapcards role="group" aria-label="Map"></div>
+                <button type="button" class="map-nav" data-map-next aria-label="Next map">›</button>
+              </div>
+              <div class="map-position" data-map-position aria-live="polite"></div>
             </div>
             <div class="opts">
               <span class="eyebrow">Garrison</span>
@@ -743,6 +868,9 @@ export class MatchStartUI {
     this.bodyEl = q('[data-body]');
     this.mapsEl = q('[data-maps]');
     this.mapCardsEl = q('[data-mapcards]');
+    this.mapPrev = q('[data-map-prev]');
+    this.mapNext = q('[data-map-next]');
+    this.mapPosition = q('[data-map-position]');
     this.mapNoteEl = q('[data-map-note]');
     this.eyebrowEl = q('[data-eyebrow]');
     this.botChips = q('[data-bots]');
@@ -825,12 +953,16 @@ export class MatchStartUI {
 
     /** id -> card element, filled by setMaps(). */
     this.mapBtns = new Map();
+    this.mapOrder = [];
     this.mapId = null;
     /** A level rebuild is in flight — nothing may be started against half a map. */
     this.mapBusy = false;
     /** The room is already playing, so its level is no longer up for a vote. */
     this.mapLocked = false;
     this.mapNoteIdle = '';
+
+    this.mapPrev.addEventListener('click', () => this._stepMap(-1));
+    this.mapNext.addEventListener('click', () => this._stepMap(1));
 
     /** What the primary button currently does; render() keeps it honest. */
     this._mode = 'solo';
@@ -842,9 +974,9 @@ export class MatchStartUI {
 
   /** Switch the visual exploration without replacing the lobby model or callbacks. */
   setStyle(style = 'signal') {
-    const next = ['signal', 'terminal', 'field', 'spreadsheet', 'linear'].includes(style) ? style : 'signal';
+    const next = ['signal', 'terminal', 'field', 'spreadsheet', 'linear', 'ledger'].includes(style) ? style : 'signal';
     this.style = next;
-    this.root.classList.remove('variant-signal', 'variant-terminal', 'variant-field', 'variant-spreadsheet', 'variant-linear');
+    this.root.classList.remove('variant-signal', 'variant-terminal', 'variant-field', 'variant-spreadsheet', 'variant-linear', 'variant-ledger');
     this.root.classList.add(`variant-${next}`);
     for (const b of this.styleButtons) b.setAttribute('aria-pressed', String(b.dataset.style === next));
     try { localStorage.setItem('workmelt-lobby-style', next); } catch {}
@@ -877,6 +1009,7 @@ export class MatchStartUI {
   setMaps(list = []) {
     this.mapCardsEl.textContent = '';
     this.mapBtns.clear();
+    this.mapOrder = list.map((m) => m.id);
     for (const m of list) {
       const b = document.createElement('button');
       b.type = 'button';
@@ -906,7 +1039,29 @@ export class MatchStartUI {
 
   setMap(id) {
     this.mapId = id;
-    for (const [k, b] of this.mapBtns) b.setAttribute('aria-pressed', String(k === id));
+    const active = this.mapOrder.indexOf(id);
+    const visible = active >= 0 ? active : 0;
+    for (const [k, b] of this.mapBtns) {
+      const selected = k === id;
+      b.setAttribute('aria-pressed', String(selected));
+      const index = this.mapOrder.indexOf(k);
+      let state = 'hidden';
+      if (index === visible) state = 'active';
+      else if (this.mapOrder.length > 2 && index === (visible - 1 + this.mapOrder.length) % this.mapOrder.length) state = 'prev';
+      else if (this.mapOrder.length > 2 && index === (visible + 1) % this.mapOrder.length) state = 'next';
+      b.setAttribute('data-carousel-state', state);
+    }
+    this.mapPosition.textContent = this.mapOrder.length > 1
+      ? `${visible + 1} / ${this.mapOrder.length}`
+      : '';
+    this._syncMap();
+  }
+
+  _stepMap(delta) {
+    if (this.mapBusy || this.mapLocked || this.mapOrder.length < 2) return;
+    const current = Math.max(0, this.mapOrder.indexOf(this.mapId));
+    const next = (current + delta + this.mapOrder.length) % this.mapOrder.length;
+    this.onMap?.(this.mapOrder[next]);
   }
 
   /**
@@ -938,6 +1093,8 @@ export class MatchStartUI {
   _syncMap() {
     const off = this.mapBusy || this.mapLocked;
     for (const b of this.mapBtns.values()) b.disabled = off;
+    this.mapPrev.disabled = off || this.mapOrder.length < 2;
+    this.mapNext.disabled = off || this.mapOrder.length < 2;
     this.mapNoteEl.textContent = this.mapBusy
       ? 'Loading…'
       : this.mapLocked
