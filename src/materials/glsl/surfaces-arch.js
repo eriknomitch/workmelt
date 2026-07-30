@@ -596,3 +596,84 @@ void owSurface(vec2 uv, out vec3 alb, out float h, out float rough, out float me
   h = clamp(h, 0.0, 1.0);
 }
 `;
+
+/**
+ * GRID — the blockout deck.
+ *
+ * A flat coloured plane ruled with lines, and deliberately nothing else. It is
+ * TILE (above) with every realism pass removed: no per-cell colour jitter, no
+ * grout filth, no cracks, no broken units, no traffic wear. That absence IS the
+ * surface — a blockout reads as a blockout because every square is identical,
+ * so anything that makes two cells differ is a bug here rather than a feature.
+ *
+ * `uParam.x` is the number of cells across one bake tile. The library entry
+ * sets it beside `bake.worldSize`, and `worldSize / cells` is the size of one
+ * square in metres — the two numbers are checked against each other in
+ * `maps.selftest.mjs`, because a grid that is silently 1.3 m still looks like a
+ * grid.
+ */
+export const GRID = /* glsl */ `
+void owSurface(vec2 uv, out vec3 alb, out float h, out float rough, out float metal, out float ao){
+  float N = max(1.0, uParam.x);
+  vec2 f = fract(uv * N);
+
+  // Distance to the nearest ruling, in cell units, on each axis.
+  float d = min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y));
+
+  /**
+   * A WIDE smoothstep band, not a hard step.
+   *
+   * At 512 px over 4 cells one texel is ~0.008 of a cell, so a "1 texel" line
+   * survives exactly one mip level. Two mips down — which is most of a 42 m
+   * street — it is averaged into the base colour and the grid quietly stops
+   * existing at precisely the distances it was drawn to describe.
+   */
+  const float W = 0.020;
+  float line = 1.0 - smoothstep(W * 0.40, W, d);
+
+  vec3 base = owSRGB(vec3(0.470, 0.585, 0.755));
+  vec3 ink  = owSRGB(vec3(0.905, 0.920, 0.940));
+  vec3 c = mix(base, ink, line);
+
+  // The ruling is painted on, not cut in: a scratch of height so grazing light
+  // finds an edge, far too little for the normal map to read as a groove.
+  h = 0.5 + line * 0.02;
+  rough = 0.86 - line * 0.04;
+  metal = 0.0;
+  ao = 1.0;
+
+  alb = clamp(c, vec3(0.02), vec3(0.85));
+}
+`;
+
+/**
+ * FLAT — a constant colour, and nothing whatsoever else.
+ *
+ * This exists because zeroing the shader's `weather`/`macro`/`patch`/`detail`
+ * parameters is NOT enough to get a flat surface. Those control what the shader
+ * modulates at runtime; the mottling, tonal drift and cracks of PLASTER or
+ * CONCRETE are baked into the albedo texture before the shader ever sees it,
+ * and `tint` is a multiply — it can darken that variation but never remove it.
+ * A near-white tint over the plaster bake gives a tan mottled wall, not a white
+ * one.
+ *
+ * So the blockout's masses get a surface with no variation to begin with. All
+ * of `gb_white`, `gb_grey`, `gb_dark` and `gb_accent` name this one entry and
+ * differ only by `tint`, which is a shader uniform rather than a bake input —
+ * four flat colours out of a SINGLE texture set.
+ *
+ * Baked at 256 and with no relief. There is no detail here for resolution to
+ * carry: every texel is the same texel, and a normal map of a flat plane is a
+ * megabyte of the vector (0,0,1).
+ *
+ * `uParam.x` is roughness.
+ */
+export const FLAT = /* glsl */ `
+void owSurface(vec2 uv, out vec3 alb, out float h, out float rough, out float metal, out float ao){
+  alb = vec3(0.9);
+  h = 0.5;
+  rough = clamp(uParam.x, 0.04, 1.0);
+  metal = 0.0;
+  ao = 1.0;
+}
+`;

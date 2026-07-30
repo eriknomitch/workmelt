@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CONCRETE, BRICK, PLASTER, TILE } from './glsl/surfaces-arch.js';
+import { CONCRETE, BRICK, PLASTER, TILE, GRID, FLAT } from './glsl/surfaces-arch.js';
 import { ASPHALT, SAND, DIRT, GRAVEL } from './glsl/surfaces-ground.js';
 import { METAL_RUST, METAL_PAINTED, METAL_BRUSHED, CORRUGATED } from './glsl/surfaces-metal.js';
 import { WOOD, FABRIC, BURLAP, FOLIAGE, RUBBER, GLASS } from './glsl/surfaces-organic.js';
@@ -150,6 +150,61 @@ export const LIBRARY = {
       patch: [0.14, 1.7, 0.10, -0.05],
       weather: [0.3, 0.2, 0.3, 0.5],
       roughness: [0.9, -0.04, 0.16],
+    },
+  },
+
+  /**
+   * The blockout's flat colour. One 256 set, shared by every `gb_*` mass key —
+   * they differ only by `tint`, which is a shader uniform and not a bake input.
+   * `relief: 0` skips the height/Sobel pass: a normal map of a flat plane is a
+   * texture full of (0,0,1).
+   */
+  flat_matte: {
+    glsl: FLAT,
+    surface: 'concrete',
+    bake: { size: 256, worldSize: 4, relief: 0, seed: 5, param: [0.88, 0, 0, 0] },
+    mat: {
+      scale: 4,
+      parallax: 0,
+      detile: 0,
+      detail: [8, 0, 0, 0],
+      macro: [0.05, 0, 0, 0],
+      macroBig: [1, 0, 0, 0],
+      patch: [0, 0, 0, 0],
+      weather: [0, 0, 0, 0],
+      roughness: [0, 0.88, 0.88],
+    },
+  },
+
+  /**
+   * The blockout deck — a flat colour ruled into 1 m squares.
+   *
+   * `bake.param.x` is the cell count and `bake.worldSize` the metres one tile
+   * spans, so 4 cells across 4 m is a 1 m square. `mat.scale` MUST equal
+   * `worldSize` or the projection rescales the tile and the squares stop being
+   * metres; `maps.selftest.mjs` asserts all three agree.
+   *
+   * 512 rather than the usual 1024: this surface is four flat colours and a
+   * ruling, and there is no detail for the extra 3x memory to carry. That is
+   * also what keeps the whole restyle inside ~3 MB (TEXTURE-PERF.md).
+   */
+  grid: {
+    glsl: GRID,
+    surface: 'concrete',
+    bake: { size: 512, worldSize: 4, relief: 0.008, seed: 23, param: [4, 0, 0, 0] },
+    mat: {
+      scale: 4,
+      // Everything below is zeroed on purpose. A blockout surface is defined by
+      // what it does NOT do, and every one of these would reintroduce exactly
+      // the variation the look exists to remove.
+      parallax: 0,
+      detile: 0,
+      detail: [8, 0, 0, 0],
+      macro: [0.05, 0, 0, 0],
+      macroBig: [1, 0, 0, 0],
+      patch: [0, 0, 0, 0],
+      weather: [0, 0, 0, 0],
+      roughness: [0, 0.86, 0.86],
     },
   },
 
