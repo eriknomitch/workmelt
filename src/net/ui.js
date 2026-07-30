@@ -7,9 +7,15 @@
  * Styled from the brand tokens in `src/ui/brand.js` (DESIGN.md), so the bar the
  * player sees in a match is the same material as the lobby they came from —
  * Gunmetal panel, 1px Hairline, 8px radius, Melt Green kept to the online dot.
+ *
+ * Room presence — somebody joined, somebody left — is the one notification that
+ * does NOT go through `toast()`. It is news the player never asked for and it
+ * changes who they are fighting, so it gets the card in `src/ui/presence.js`,
+ * shared with the lobby. See `presence()` below.
  */
 
 import { installBrand } from '../ui/brand.js';
+import { pushPresence } from '../ui/presence.js';
 
 const CSS = `
 .cod-mp { position: fixed; inset: 0; pointer-events: none; z-index: 40;
@@ -173,6 +179,21 @@ export class NetUI {
     t.innerHTML = html;
     this.toasts.appendChild(t);
     setTimeout(() => t.remove(), 3300);
+  }
+
+  /**
+   * Somebody else entered or left the room.
+   *
+   * Pushed into the same column as the toasts — one stack, so a card can never
+   * land on top of the killfeed — but as the full presence card rather than a
+   * 12px line. `name` is set as text by the card, so no escaping here.
+   *
+   * @param {'join'|'leave'} kind
+   * @param {string} name
+   * @param {object} [o] { colour: their livery as CSS or null, count: in room }
+   */
+  presence(kind, name, o) {
+    pushPresence(this.toasts, kind, name, o);
   }
 
   showBoard(show) {

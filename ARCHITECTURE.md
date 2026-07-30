@@ -112,7 +112,7 @@ Emit and listen via `ctx.events`. Payloads are plain objects. The canonical set:
 | `equipment:flash` | `{ position, radius, duration, source }` — a stun grenade detonated. Every listener folds in its own range / line-of-sight / facing falloff rather than trusting a pre-scaled intensity, so the player's whiteout (`ui`) and the bots' blindness (`ai`) stay consistent with each other. | weapons |
 | `resize` | `{ width, height }` | engine |
 | `net:lobby` | `{ connected, everConnected, live, players, myId, ready }` | net |
-| `net:join` / `net:leave` | `{ id, name }` | net |
+| `net:join` / `net:leave` | `{ id, name, colour, count }` — somebody else entered or left the room. `colour` is their livery as a CSS colour (null until the relay has assigned a slot) and `count` is how many are in the room afterwards, so a listener can raise the presence card (`src/ui/presence.js`) without reaching into `net`'s peer table | net |
 | `net:countdown` | `{ ms }` — the relay fired the pre-match start signal | net |
 | `net:kill` | `{ by, victim, headshot, mine }` — a relay-confirmed PvP kill | net |
 | `match:start` | `{ bots, squads, perSquad, mode, map }` — the match is live | match |
