@@ -112,7 +112,7 @@ export class MatchSystem {
     this.ui.onBots = (key) => this._setBots(key);
     this.ui.onPrimary = () => this._primary();
     this.ui.onAlt = () => this._alt();
-    this.ui.onCopyInvite = () => this._share();
+    this.ui.onCopyInvite = () => this._copyInvite();
     this.ui.onName = (n) => this.net?.setName(n);
     // The settings menu is the same panel Escape opens in a match — one surface,
     // reachable from both places, so nothing has to be learned twice.
@@ -273,24 +273,9 @@ export class MatchSystem {
     this._onLobby(null);
   }
 
-  /**
-   * Share in one click. Native share where the platform has it (phones, and
-   * Safari on the desktop), clipboard everywhere else — either way the player
-   * pressed one button and the link is on its way.
-   */
-  _share() {
+  /** Copy the invite link to the clipboard, one click. */
+  _copyInvite() {
     if (!this.net) return;
-    const url = this.net.inviteUrl();
-    const nav = typeof navigator !== 'undefined' ? navigator : null;
-    if (nav?.share && nav.canShare?.({ url })) {
-      nav
-        .share({ title: 'WORKMELT', text: 'Match starting — jump in.', url })
-        .then(() => this.ui.flashCopied('Link sent'))
-        .catch(() => {
-          /* the sheet was dismissed; nothing to report */
-        });
-      return;
-    }
     this.net.copyInvite();
     this.ui.flashCopied();
   }
