@@ -91,12 +91,18 @@ fi
 # tools/capture.mjs needs a real WebGL2 context. There is no GPU in these
 # sandboxes, so Chromium must fall back to SwiftShader — assert that it does.
 verify_gl() {
+  # Go through launchOpts() rather than a bare chromium.launch(), for the same
+  # reason every harness does: when the preseeded cache is a revision behind the
+  # pinned playwright, the pinned executablePath does not exist and a bare
+  # launch dies with "Executable doesn't exist". Verifying with a different
+  # Chromium than tools/ actually uses would make this check a fiction.
   node --input-type=module -e '
     import { chromium } from "playwright";
-    const browser = await chromium.launch({
+    import { launchOpts } from "./tools/lib/chromium.mjs";
+    const browser = await chromium.launch(launchOpts({
       headless: true,
       args: ["--ignore-gpu-blocklist", "--enable-unsafe-swiftshader", "--mute-audio"],
-    });
+    }));
     try {
       const page = await browser.newPage();
       const renderer = await page.evaluate(() => {
