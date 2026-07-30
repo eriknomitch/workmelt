@@ -38,3 +38,8 @@ revcrops/
 .DS_Store
 
 scratch/
+
+.env
+.env.*
+!.env.example
+
