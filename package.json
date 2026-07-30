@@ -20,6 +20,7 @@
     "playtest:ads": "node tools/ads-playtest.mjs",
     "playtest:graphics": "node tools/graphics-playtest.mjs",
     "playtest:grenade": "node tools/grenade-playtest.mjs",
+    "playtest:lobby": "node tools/lobby-playtest.mjs",
     "test:audio": "node src/audio/probe.mjs",
     "sfx:fetch": "bash tools/fetch-sfx.sh",
     "sfx": "node tools/encode-sfx.mjs",

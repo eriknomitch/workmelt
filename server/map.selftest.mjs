@@ -46,6 +46,8 @@ function open(name, map) {
 }
 
 const last = (log, t) => [...log].reverse().find((m) => m.t === t);
+/** That player's row in the newest lobby frame. */
+const who = (log, name) => (last(log, 'lobby')?.players ?? []).find((p) => p.name === name);
 let fails = 0;
 const ok = (cond, name, detail = '') => {
   console.log(`  ${cond ? '\x1b[32mok\x1b[0m  ' : '\x1b[31mFAIL\x1b[0m'} ${name}${detail ? `  (${detail})` : ''}`);
@@ -67,20 +69,32 @@ try {
   b.send({ t: 'map', map: 'market' });
   await wait(300);
   ok(last(a.log, 'lobby')?.map === 'market', 'anybody can change it, and everybody hears about it');
+  // The chooser keeps their own flag. They are the one player in the room who has
+  // just said what they want to play, and making them press the button they only
+  // just pressed is the kind of round trip that turns a party into a negotiation.
+  ok(who(a.log, 'B')?.ready === true, 'the player who changed it keeps their own ready flag');
+
+  b.send({ t: 'ready', ready: false });
+  await wait(200);
+  a.send({ t: 'ready', ready: true });
+  await wait(200);
+  b.send({ t: 'map', map: 'rust' });
+  await wait(300);
   ok(
-    (last(a.log, 'lobby')?.players ?? []).every((p) => !p.ready),
-    'a change clears every ready flag — you readied up for a different level'
+    who(a.log, 'A')?.ready === false,
+    'a change clears everybody else’s — you readied up for a different level'
   );
+  ok(!last(a.log, 'match_start'), 'so a map change cannot sneak a match past them');
 
   b.send({ t: 'map', map: '../../etc/passwd' });
   await wait(250);
-  ok(last(a.log, 'lobby')?.map === 'market', 'a slug that is not a slug is ignored');
+  ok(last(a.log, 'lobby')?.map === 'rust', 'a slug that is not a slug is ignored');
 
   a.send({ t: 'deploy' });
   await wait(250);
-  b.send({ t: 'map', map: 'rust' });
+  b.send({ t: 'map', map: 'market' });
   await wait(300);
-  ok(last(a.log, 'lobby')?.map === 'market', 'and a change is refused once the match is live');
+  ok(last(a.log, 'lobby')?.map === 'rust', 'and a change is refused once the match is live');
 
   a.ws.close();
   b.ws.close();

@@ -17,6 +17,8 @@ export class Room {
     this.tickHz = Number(env.TICK_HZ ?? 20);
     this.maxRoom = Number(env.MAX_ROOM ?? 12);
     this.countdownMs = Number(env.COUNTDOWN_MS ?? 3000);
+    /** How far a start may be pushed back to sweep in late arrivals. */
+    this.maxStartMs = Number(env.MAX_START_MS ?? this.countdownMs * 3);
 
     /** ws -> peer */
     this.sessions = new Map();
@@ -28,6 +30,12 @@ export class Room {
      * is that there is one answer per room. Mirrors server/index.mjs.
      */
     this.map = null;
+    /** When the in-flight countdown ends (ms epoch); 0 when not starting. */
+    this.startAt = 0;
+    /** The latest `startAt` this start may be pushed back to. */
+    this.startCap = 0;
+    /** Peer ids this start deploys — everyone else stays in the lobby. */
+    this.starting = new Set();
     this.tickHandle = null;
   }
 
@@ -52,6 +60,8 @@ export class Room {
       alive: true,
       ready: false,
       deployed: false,
+      /** Deployed into a private bot game, not the room's match. See _isLive(). */
+      warm: false,
       lastSeen: Date.now(),
     };
     this.sessions.set(server, peer);
@@ -102,35 +112,48 @@ export class Room {
           tickHz: this.tickHz,
           live: this._isLive(),
           map: this.map,
+          startIn: this._startRemaining(),
           peers: this._roster().filter((p) => p.id !== peer.id),
         });
         this._broadcast({ t: 'peer_join', id: peer.id, name: peer.name, skin: peer.skin }, peer.id);
+        // A start already counting down takes the new arrival with it.
+        if (this._startRemaining() > 0) {
+          this.starting.add(peer.id);
+          this._broadcast({ t: 'match_start', in: this._extendStart(), ids: [...this.starting] });
+        }
         this._sendLobby();
         break;
       }
       case 'map': {
-        // Refused once anybody is deployed: swapping the map under a live match
-        // would teleport everyone into a level that no longer exists. Ready
-        // flags are cleared — you readied up for a level, and it is not that
-        // level any more.
+        // Refused once the room is live: swapping the map under a match would
+        // teleport everyone into a level that no longer exists. A warm-up does
+        // not block it — that client steps back to the lobby and rebuilds.
+        // Ready flags are cleared, except the chooser's: they have just said
+        // what they want to play. Mirrors server/index.mjs.
         if (this._isLive()) return;
         const next = sanitiseMap(msg.map);
         if (!next || next === this.map) return;
         this.map = next;
-        for (const p of this.sessions.values()) p.ready = false;
+        for (const p of this.sessions.values()) if (p.id !== peer.id) p.ready = false;
         this._sendLobby();
         break;
       }
       case 'ready': {
         peer.ready = !!msg.ready;
         this._sendLobby();
-        this._maybeStart();
+        this._maybeStart(!!msg.force && peer.ready);
         break;
       }
       case 'deploy': {
+        // `solo` = a private warm-up against bots rather than the room's match.
         peer.deployed = true;
+        peer.warm = !!msg.solo;
         peer.ready = false;
+        this.starting.delete(peer.id);
         this._sendLobby();
+        // Stepping out of the lobby can complete the ready set — see the note on
+        // the same call in server/index.mjs.
+        this._maybeStart();
         break;
       }
       case 'undeploy': {
@@ -138,8 +161,12 @@ export class Room {
         // the same case in server/index.mjs; without it a room stays LIVE
         // forever after the first person plays.
         peer.deployed = false;
+        peer.warm = false;
         peer.ready = false;
+        this.starting.delete(peer.id);
         this._sendLobby();
+        // The last player out of a match can complete a waiting ready set.
+        this._maybeStart();
         break;
       }
       case 'state': {
@@ -148,12 +175,15 @@ export class Room {
         break;
       }
       case 'fire': {
-        this._broadcast({ t: 'fire', id: peer.id, o: msg.o, d: msg.d, w: msg.w, seed: msg.seed }, peer.id);
+        if (peer.warm) return;
+        this._broadcastMatch({ t: 'fire', id: peer.id, o: msg.o, d: msg.d, w: msg.w, seed: msg.seed }, peer.id);
         break;
       }
       case 'hit': {
+        if (peer.warm) return;
         const victim = this._peerById(msg.target);
-        if (!victim) return;
+        // A warm-up is in nobody's match: it can neither shoot nor be shot.
+        if (!victim || victim.warm) return;
         this._send(victim, {
           t: 'hit',
           from: peer.id,
@@ -166,6 +196,8 @@ export class Room {
         break;
       }
       case 'kill': {
+        // A warm-up death is a bot's work in a game nobody else is in.
+        if (peer.warm) return;
         peer.deaths++;
         const killer = this._peerById(msg.by);
         if (killer && killer.id !== peer.id) killer.kills++;
@@ -187,10 +219,10 @@ export class Room {
         // Spawn claim — clients choose their own point (the relay has no map),
         // and this is what stops two simultaneous respawns landing on the same
         // ground. Advisory. Mirrors server/index.mjs.
-        if (!Array.isArray(msg.p) || msg.p.length < 3) return;
+        if (peer.warm || !Array.isArray(msg.p) || msg.p.length < 3) return;
         const p = msg.p.map(Number);
         if (!p.every(Number.isFinite)) return;
-        this._broadcast({ t: 'spawn', id: peer.id, p }, peer.id);
+        this._broadcastMatch({ t: 'spawn', id: peer.id, p }, peer.id);
         break;
       }
       case 'chat': {
@@ -212,6 +244,7 @@ export class Room {
   _leave(peer) {
     if (!this.sessions.has(peer.ws)) return;
     this.sessions.delete(peer.ws);
+    this.starting.delete(peer.id);
     try {
       peer.ws.close();
     } catch {}
@@ -232,20 +265,35 @@ export class Room {
 
   /* ---- match-start lobby ----
    * Ready flags and the start signal are the only match state the room owns:
-   * two clients cannot each decide when "everyone is ready" became true. A room
-   * is live while any player is deployed, and a live room skips the ready flow
-   * so a late joiner drops straight into the match. Mirrors server/index.mjs.
+   * two clients cannot each decide when "everyone is ready" became true.
+   *
+   * A room is live while any player is IN THE MATCH — which a warm-up against
+   * bots is not: that is a private game, invisible to the room, and it leaves
+   * the ready flow open for whoever follows the invite link. It is also live for
+   * the length of a start signal, so an arrival mid-countdown joins the
+   * countdown. Mirrors server/index.mjs — read the long note there.
    */
 
+  _startRemaining() {
+    return Math.max(0, this.startAt - Date.now());
+  }
+
   _isLive() {
-    for (const p of this.sessions.values()) if (p.deployed) return true;
+    if (this._startRemaining() > 0) return true;
+    for (const p of this.sessions.values()) if (p.deployed && !p.warm) return true;
     return false;
   }
 
   _lobby() {
     const players = [];
     for (const p of this.sessions.values()) {
-      players.push({ id: p.id, name: p.name, ready: !!p.ready, deployed: !!p.deployed });
+      players.push({
+        id: p.id,
+        name: p.name,
+        ready: !!p.ready,
+        deployed: !!p.deployed,
+        warm: !!p.warm,
+      });
     }
     return players;
   }
@@ -254,16 +302,36 @@ export class Room {
     this._broadcast({ t: 'lobby', live: this._isLive(), players: this._lobby(), map: this.map });
   }
 
-  _maybeStart() {
+  /**
+   * Start when everybody who can SEE the lobby has readied up. A warm-up player
+   * cannot, and pressing Play was never a request to be left out — so warm-ups
+   * do not gate the start, they are pulled into it. `force` starts with the ready
+   * set instead, so one player who wanders off cannot block the room.
+   */
+  _maybeStart(force = false) {
     if (this._isLive()) return;
     const peers = [...this.sessions.values()];
-    if (peers.length < 2 || !peers.every((p) => p.ready)) return;
-    for (const p of peers) {
-      p.deployed = true;
-      p.ready = false;
-    }
-    this._broadcast({ t: 'match_start', in: this.countdownMs });
+    if (peers.length < 2) return;
+    const inLobby = peers.filter((p) => !p.deployed);
+    const ready = peers.filter((p) => p.ready);
+    const consensus = inLobby.length > 0 && inLobby.every((p) => p.ready);
+    if (!consensus && !(force && ready.length >= 2)) return;
+    const cohort = peers.filter((p) => p.ready || p.warm);
+    if (cohort.length < 2) return;
+    const now = Date.now();
+    this.startAt = now + this.countdownMs;
+    this.startCap = now + this.maxStartMs;
+    this.starting = new Set(cohort.map((p) => p.id));
+    for (const p of cohort) p.ready = false;
+    this._broadcast({ t: 'match_start', in: this.countdownMs, ids: [...this.starting] });
     this._sendLobby();
+  }
+
+  /** Push a running countdown back to a full one for a late arrival, up to the cap. */
+  _extendStart() {
+    const now = Date.now();
+    this.startAt = Math.max(this.startAt, Math.min(now + this.countdownMs, this.startCap));
+    return this._startRemaining();
   }
 
   /* ---- snapshot tick ---- */
@@ -276,10 +344,11 @@ export class Room {
   _tick() {
     const states = [];
     for (const peer of this.sessions.values()) {
-      if (!peer.pstate) continue;
+      // Warm-ups are private in both directions — see _broadcastMatch().
+      if (!peer.pstate || peer.warm) continue;
       states.push({ id: peer.id, name: peer.name, s: peer.pstate });
     }
-    if (states.length) this._broadcast({ t: 'snapshot', states });
+    if (states.length) this._broadcastMatch({ t: 'snapshot', states });
   }
 
   /* ---- helpers ---- */
@@ -331,6 +400,23 @@ export class Room {
     const msg = JSON.stringify(obj);
     for (const peer of this.sessions.values()) {
       if (peer.id === exceptId) continue;
+      try {
+        peer.ws.send(msg);
+      } catch {}
+    }
+  }
+
+  /**
+   * Broadcast to the room's MATCH — everyone except the players warming up
+   * against bots. Every gameplay message goes out this way, which is what makes
+   * a warm-up private: not a target, not in anybody's world, and blind to the
+   * match running around it. Room traffic (lobby, chat, roster) still reaches
+   * everybody. Mirrors `broadcastMatch` in server/index.mjs.
+   */
+  _broadcastMatch(obj, exceptId = null) {
+    const msg = JSON.stringify(obj);
+    for (const peer of this.sessions.values()) {
+      if (peer.id === exceptId || peer.warm) continue;
       try {
         peer.ws.send(msg);
       } catch {}

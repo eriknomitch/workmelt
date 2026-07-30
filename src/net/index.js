@@ -58,13 +58,25 @@ export class NetSystem {
     /**
      * Match-start lobby, as last reported by the relay. `match` renders this and
      * decides when the local player deploys; `net` only carries it.
-     *   live      someone in this room is already playing
-     *   players   [{ id, name, ready, deployed }] including me
+     *   live      the room's match is running (a warm-up does not count)
+     *   players   [{ id, name, ready, deployed, warm }] including me
      */
     this.lobby = { live: false, players: [], map: null };
     this.ready = false;
     /** Have we ever been welcomed? Separates "connecting" from "dropped out". */
     this.everConnected = false;
+    /** `MAX_ROOM` when the relay turned us away for a full room, else 0. */
+    this.roomFull = 0;
+    /**
+     * Are we out of the lobby, and is it a warm-up? Held locally because the
+     * relay forgets it when the socket drops: on a reconnect we have to say so
+     * again, or the room reads as empty of players and everybody still shooting
+     * is invisible to the ready flow. See the `welcome` case.
+     */
+    this._deployed = false;
+    this._warm = false;
+    /** Who was ready last frame, so a rematch call is toasted once. */
+    this._readyIds = new Set();
 
     this._sendAccum = 0;
     this._ws = null;
@@ -201,6 +213,7 @@ export class NetSystem {
       this._clearPeers();
       this.lobby = { live: false, players: [], map: this.lobby?.map ?? null };
       this.ready = false;
+      this._readyIds.clear();
       this._emitLobby();
       if (this._wantReconnect) this._scheduleReconnect();
     };
@@ -233,6 +246,7 @@ export class NetSystem {
         this.myId = msg.id;
         this.connected = true;
         this.everConnected = true;
+        this.roomFull = 0;
         // The spawn director is RNG-free by design, so ties are broken by a
         // salt. The relay-assigned id is the only value in the room that is
         // *guaranteed* distinct — better than trusting two clients' engine
@@ -249,8 +263,18 @@ export class NetSystem {
         this.lobby.live = !!msg.live;
         if (msg.map) this.lobby.map = msg.map;
         for (const p of msg.peers ?? []) this._ensurePeer(p.id, p.name, p);
+        // A reconnect lands here too, and the relay has no memory of the socket
+        // it lost. Say where we are again, or a room whose players are all still
+        // shooting reads as an empty lobby and the next arrival waits on a ready
+        // flow nobody can see.
+        if (this._deployed) this._send({ t: 'deploy', solo: this._warm });
         this._updateStatus();
         this._emitLobby();
+        // Walked into a countdown that is already running. The relay adds a late
+        // arrival to the start rather than letting them miss it.
+        if (Number(msg.startIn) > 0) {
+          this.ctx.events.emit('net:countdown', { ms: Number(msg.startIn) });
+        }
         this.ui.toast(`Joined room <b>${this.room.toUpperCase()}</b> — share the link to invite friends`);
         break;
       }
@@ -273,10 +297,15 @@ export class NetSystem {
         // The relay clears ready flags when it fires the start signal; mirror
         // whatever it says about us rather than keeping a local opinion.
         this.ready = !!this.lobby.players.find((p) => p.id === this.myId)?.ready;
+        this._noteRematchCalls();
         this._emitLobby();
         break;
       }
       case 'match_start':
+        // `ids` is the set the relay is deploying. An unready player in a forced
+        // start is not one of them — the room simply goes live around them and
+        // the lobby offers "deploy now". An older relay omits it: everybody goes.
+        if (Array.isArray(msg.ids) && this.myId != null && !msg.ids.includes(this.myId)) break;
         this.ctx.events.emit('net:countdown', { ms: Math.max(0, Number(msg.in) || 0) });
         break;
       case 'snapshot':
@@ -307,7 +336,12 @@ export class NetSystem {
         this.ui.toast(`<b>${esc(msg.name)}:</b> ${esc(msg.text)}`);
         break;
       case 'full':
+        // The overlay this toasts to is hidden while the lobby owns the screen,
+        // which is exactly when this arrives — so the lobby has to carry it too,
+        // or following a link to a full room is an indefinite "connecting…".
+        this.roomFull = Number(msg.max) || 0;
         this.ui.toast(`Room is full (${msg.max}). Try a different link.`);
+        this._emitLobby();
         break;
     }
   }
@@ -750,28 +784,47 @@ export class NetSystem {
     this._send({ t: 'map', map: id });
   }
 
-  /** Toggle my ready flag. The relay starts the match once everyone is ready. */
-  setReady(on) {
+  /**
+   * Toggle my ready flag.
+   *
+   * `force` asks the relay to start with the players who ARE ready rather than
+   * waiting on the whole lobby — the way out of a room where somebody joined and
+   * then wandered off. It only means anything alongside `on`.
+   */
+  setReady(on, force = false) {
     this.ready = !!on;
-    this._send({ t: 'ready', ready: this.ready });
+    this._send({ t: 'ready', ready: this.ready, force: !!force });
   }
 
-  /** "I am in the match now": bots-only start, or a countdown that reached zero. */
-  deploy() {
+  /**
+   * "I am out of the lobby."
+   *
+   * `solo` marks a WARM-UP — the bots game you press Play for while waiting for
+   * people to turn up. The relay keeps that private and, crucially, does not let
+   * it make the room live: whoever follows your invite link still gets the ready
+   * flow, and the start signal pulls you out of the bots and in with them.
+   * Without the flag, one player pressing Play used to lock the whole room into
+   * "match in progress" until every single person left it again.
+   */
+  deploy(solo = false) {
     this.ready = false;
-    this._send({ t: 'deploy' });
+    this._deployed = true;
+    this._warm = !!solo;
+    this._send({ t: 'deploy', solo: this._warm });
   }
 
   /**
    * "I went back to the lobby" — the pause menu's Leave match.
    *
-   * The room is LIVE for as long as anybody in it is deployed, and a live room
-   * skips the ready flow entirely. Without telling the relay we stepped out,
-   * the first match anyone ever plays would leave the room live forever and
+   * The room is LIVE for as long as anybody in it is in the match, and a live
+   * room skips the ready flow entirely. Without telling the relay we stepped
+   * out, the first match anyone ever plays would leave the room live forever and
    * every return to the lobby would offer "deploy now" instead of a real setup.
    */
   undeploy() {
     this.ready = false;
+    this._deployed = false;
+    this._warm = false;
     this._send({ t: 'undeploy' });
   }
 
@@ -779,7 +832,7 @@ export class NetSystem {
   lobbyPlayers() {
     const list = this.lobby.players;
     if (list.length || this.myId == null) return list;
-    return [{ id: this.myId, name: this.name, ready: this.ready, deployed: false }];
+    return [{ id: this.myId, name: this.name, ready: this.ready, deployed: false, warm: false }];
   }
 
   /** Copy the invite link; resolves through the same clipboard fallbacks as the bar. */
@@ -807,10 +860,34 @@ export class NetSystem {
     this.ui?.setHidden(!on);
   }
 
+  /**
+   * Somebody in the lobby has readied up for the next match — tell the players
+   * who are still in this one.
+   *
+   * A ready flag on a live room cannot start anything: the relay only starts a
+   * match a room is not already in. So it is a call, and the players it is
+   * addressed to are the ones who cannot see the lobby it came from. Without
+   * this the first player to want a rematch waits in an empty room while
+   * everyone else wonders why nobody is talking.
+   */
+  _noteRematchCalls() {
+    const now = new Set();
+    for (const p of this.lobby.players) if (p.ready && p.id !== this.myId) now.add(p.id);
+    if (this._deployed && !this._warm) {
+      for (const id of now) {
+        if (this._readyIds.has(id)) continue;
+        const name = this.lobby.players.find((p) => p.id === id)?.name ?? '???';
+        this.ui.toast(`<b>${esc(name)}</b> is up for another match — <b>Esc</b> → Leave match to join them`);
+      }
+    }
+    this._readyIds = now;
+  }
+
   _emitLobby() {
     this.ctx.events.emit('net:lobby', {
       connected: this.connected,
       everConnected: this.everConnected,
+      full: this.roomFull,
       live: this.lobby.live,
       players: this.lobbyPlayers(),
       myId: this.myId,
