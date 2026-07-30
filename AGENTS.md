@@ -25,6 +25,12 @@ The browser client lives in `src/`. Features are divided into subsystem director
   distance law, so the routing decision is what keeps either from running away.
 - `node src/ai/footstep.selftest.mjs` checks the stride clock behind `actor:footstep`
   — rate, foot alternation, contact phase and the animation-rate LOD.
+- `node src/ai/lod.selftest.mjs` checks the view-distance LOD: the animation-rate
+  tiers and the actor sun-shadow cutoff, that both bands are hysteretic under a
+  crossing actor, that a tier's evaluations are phase-spread across frames rather
+  than landing on one, and that a re-tiering actor's pose can never starve. Every
+  guard in it is mutation-checked — none of these failures is visible in a still
+  frame, so a check that cannot fail would be worse than none.
 - `node src/audio/probe.mjs --port=5213` is the audio equivalent of the capture
   harness: offline render of every voice plus a live-graph event storm.
 - `npm run test:input` checks input aggregation and the persisted control binds.

@@ -230,7 +230,11 @@ mesh.userData.owNoShadow  = true  // do not cast into the CSM cascades
 
 `owNoShadow` is the ONLY shadow-caster switch: the cascades draw with
 `scene.overrideMaterial` and never consult `mesh.castShadow`. `src/ai` relies on
-this for its off-screen actor LOD.
+this for its actor LOD — both off-screen actors and, past a fraction of
+`q.shadowDistance`, distant visible ones (`src/ai/index.js` `_updateRelevance`,
+checked by `src/ai/lod.selftest.mjs`). Anything else driving it per frame must
+be hysteretic: `_collect` reads the flag every frame, so a caster toggling on a
+boundary flickers its shadow rather than merely losing it.
 
 ### The point-light count is a shader permutation key
 
