@@ -219,7 +219,12 @@ export class WeaponSystem {
     // Equipment needs physics resolved, so it initialises after the peeks above.
     // A fresh life restocks it — a cooked grenade must not carry over a respawn.
     this.throwables.init();
-    this._off.push(ctx.events.on('player:spawn', () => this.throwables.refill()));
+    this._off.push(
+      ctx.events.on('player:spawn', () => {
+        this.throwables.refill();
+        this.resetLoadout();
+      })
+    );
 
     this.stats = { tris, drawCalls: 0, live: 0, fired: 0 };
     console.info(
@@ -381,6 +386,42 @@ export class WeaponSystem {
     s.mode = s.def.modes[s.modeIndex];
     this._burstLeft = 0;
     return s.mode;
+  }
+
+  /**
+   * Restock the loadout — every magazine and every reserve, on every weapon.
+   *
+   * Fired from `player:spawn`, so it covers a respawn, a deploy and a new match
+   * alike. Until this existed, ammunition was the one resource in the game that
+   * never came back: health regenerates, equipment is refilled on spawn, but a
+   * magazine and a reserve were handed out once at boot and depleted from there.
+   * Two matches into a session the AX-7 was dry for good — 25 rounds is five
+   * magazines — and nothing in the game could refill it, because there are no
+   * ammo pickups by design (see src/player/health.js for the same contract on
+   * health). A death, and certainly a fresh match, hands you a fresh loadout.
+   *
+   * The transient firing state goes with it: a life that ended halfway through a
+   * reload animation must not begin with the tail of it, and the recoil walk has
+   * to start at the top of the pattern.
+   */
+  resetLoadout() {
+    for (const s of this.states.values()) {
+      s.mag = s.def.magSize;
+      s.chambered = true;
+      s.reserve = s.def.reserve;
+    }
+    this._fireTimer = 0;
+    this._burstLeft = 0;
+    this._burstCooldown = 0;
+    this._spread = 0;
+    this._shotIndex = 0;
+    this._sinceShot = 10;
+    this._reloadPhase = null;
+    this._pendingReloadEmpty = false;
+    // A reload clip in flight would land its ammo event on the new magazine.
+    // `_semiLatch` is deliberately left alone: it tracks whether the trigger is
+    // physically held, which a respawn does not change.
+    if (this.reloading) this.viewmodel?.stopClip();
   }
 
   reload() {

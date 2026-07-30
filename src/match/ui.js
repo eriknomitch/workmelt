@@ -25,6 +25,16 @@
  *
  *   COPY INVITE LINK / SHARE  one click, whatever else is on screen
  *
+ * Under the primary sits one optional link, which follows the same rule — it is
+ * always the *other* reasonable move, and never a required one (`_paintAlt`):
+ *
+ *   waiting on people        WARM UP AGAINST BOTS   private, and the room's
+ *                                                   countdown pulls you out of it
+ *   you are ready, they are  START NOW WITH THE N   somebody joined and wandered
+ *   not                      WHO ARE READY          off; do not wait on them
+ *   the match is running     READY FOR THE NEXT     arms a rematch and tells the
+ *                            MATCH                  players still in this one
+ *
  * Nothing else on the screen is a required step. The map cards and the garrison
  * chips both have working defaults, the callsign is an inline field, and
  * settings open over the top. `Enter` fires the primary button and `C` copies
@@ -248,6 +258,9 @@ const CSS = `
 .wm-lobby .dot { width: 8px; height: 8px; border-radius: 2px; flex: none; background: var(--wm-muted); }
 .wm-lobby .row.ready .dot { background: var(--wm-ok); }
 .wm-lobby .row.deployed .dot { background: var(--wm-fg); }
+/* Warming up: out of the lobby but not in a match — the same amber the relay
+   status uses for "not settled yet". */
+.wm-lobby .row.warm .dot { background: var(--wm-warn); }
 .wm-lobby .row .who {
   flex: 1 1 auto; min-width: 0; font-size: 13px; font-weight: 600; letter-spacing: .01em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -259,6 +272,7 @@ const CSS = `
 }
 .wm-lobby .row.ready .st { color: var(--wm-ok); }
 .wm-lobby .row.deployed .st { color: var(--wm-fg-dim); }
+.wm-lobby .row.warm .st { color: var(--wm-warn); }
 .wm-lobby .empty {
   padding: 18px; font-size: 13px; line-height: 1.55; color: var(--wm-muted-fg);
 }
@@ -366,7 +380,7 @@ export class MatchStartUI {
     /** Callbacks — every one of them is owned by src/match/index.js. */
     this.onMap = null; // a map card was clicked — a request, not a decision
     this.onPrimary = null; // the single dominant CTA, whatever it means now
-    this.onStartSolo = null; // the "start on your own" escape hatch
+    this.onAlt = null; // the link under it — resolve against `altMode`
     this.onCopyInvite = null;
     this.onBots = null;
     this.onName = null;
@@ -407,7 +421,7 @@ export class MatchStartUI {
               <button type="button" class="btn btn-primary" data-primary>Play</button>
               <button type="button" class="btn btn-ghost" data-copy>Copy invite link</button>
             </div>
-            <button type="button" class="alt hide" data-alt>Start on your own instead</button>
+            <button type="button" class="alt hide" data-alt>Warm up against bots while you wait</button>
           </section>
 
           <aside class="panel" data-room-panel>
@@ -479,7 +493,7 @@ export class MatchStartUI {
     }
 
     this.primaryBtn.addEventListener('click', () => this.onPrimary?.());
-    this.altBtn.addEventListener('click', () => this.onStartSolo?.());
+    this.altBtn.addEventListener('click', () => this.onAlt?.());
     this.copyBtn.addEventListener('click', () => this.onCopyInvite?.());
     this.copyBtn2.addEventListener('click', () => this.onCopyInvite?.());
     q('[data-settings]').addEventListener('click', () => this.onSettings?.());
@@ -530,11 +544,20 @@ export class MatchStartUI {
 
     /** What the primary button currently does; render() keeps it honest. */
     this._mode = 'solo';
+    /** What the link under it does. Null hides it. */
+    this._altMode = null;
+    /** How many are ready, for the "start now with the N who are" label. */
+    this._altForce = 0;
   }
 
   /** 'solo' | 'ready' | 'unready' | 'deploy' — what a primary click means now. */
   get mode() {
     return this._mode;
+  }
+
+  /** 'solo' | 'force' | 'next' | 'cancel' | null — what an alt click means now. */
+  get altMode() {
+    return this._altMode;
   }
 
   _setEyebrow(text) {
@@ -626,7 +649,9 @@ export class MatchStartUI {
     for (const [k, b] of this.chipEls) b.setAttribute('aria-pressed', String(k === key));
     this.botNote.textContent = BOT_PRESETS.find((p) => p.key === key)?.note ?? '';
     this._botKey = key;
-    if (this._mode === 'solo') this._paintPrimary();
+    // Both controls can carry the garrison size — the primary as "Play vs 6
+    // bots", the link as "Warm up against 6 bots while you wait".
+    if (this._mode === 'solo' || this._altMode === 'solo') this._paintPrimary();
   }
 
   setRoom(code) {
@@ -661,12 +686,13 @@ export class MatchStartUI {
   /**
    * Repaint from the lobby model.
    *
-   * @param {object} m { connected, everConnected, live, players:[{id,name,ready,
-   *                     deployed}], myId, ready }
+   * @param {object} m { connected, everConnected, full, live, players:[{id,name,
+   *                     ready,deployed,warm}], myId, ready }
    */
   render(m) {
     if (!this.multiplayer) {
       this._mode = 'solo';
+      this._altMode = null;
       this._paintPrimary();
       return;
     }
@@ -687,7 +713,10 @@ export class MatchStartUI {
       this.rosterEl.appendChild(d);
     }
     for (const p of players) {
-      const state = p.deployed ? 'deployed' : p.ready ? 'ready' : 'waiting';
+      // Four states, and "warming up" is the one that carries the news: that
+      // player is out of the lobby but NOT in a match, so readying up still
+      // starts one and it takes them with it.
+      const state = p.warm ? 'warm' : p.deployed ? 'deployed' : p.ready ? 'ready' : 'waiting';
       const row = document.createElement('div');
       row.className = `row ${state}${p.id === m.myId ? ' me' : ''}`;
       const dot = document.createElement('span');
@@ -697,7 +726,7 @@ export class MatchStartUI {
       who.textContent = p.name + (p.id === m.myId ? ' (you)' : '');
       const st = document.createElement('span');
       st.className = 'st';
-      st.textContent = state === 'deployed' ? 'In match' : state === 'ready' ? 'Ready' : 'Not ready';
+      st.textContent = { warm: 'Warming up', deployed: 'In match', ready: 'Ready' }[state] ?? 'Not ready';
       row.append(dot, who, st);
       this.rosterEl.appendChild(row);
     }
@@ -710,53 +739,102 @@ export class MatchStartUI {
     if (this.mapBusy) {
       // Nothing is the best next move until the level exists.
       this._mode = 'solo';
+      this._altMode = null;
       this.statusEl.textContent = 'Loading the map…';
       this._paintPrimary();
       return;
     }
+    // Everyone who is looking at this screen — the players whose ready flags the
+    // relay actually waits on. A warm-up is not one of them.
+    const inLobby = players.filter((p) => !p.deployed);
+    const warm = others.filter((p) => p.warm);
+    const readyCount = players.filter((p) => p.ready).length;
     if (m.live) {
       this._mode = 'deploy';
-      this.statusEl.innerHTML = 'Match already running — drop in whenever you like.';
+      // The rematch call. It cannot start anything while the match is running,
+      // which is exactly why it is worth arming now: the relay starts one the
+      // moment the last player leaves, and everybody still in there is told.
+      this._altMode = m.ready ? 'cancel' : 'next';
+      this.statusEl.innerHTML = m.ready
+        ? 'Ready for the next match — it starts when this one empties out.'
+        : 'Match already running — drop in, or ready up for the next one.';
     } else if (!m.connected) {
       // The relay is not a gate on playing. Falling back to the solo CTA is why
       // a cold start, a dropped connection and a first-ever load all still get
       // the player into a match with one click.
       this._mode = 'solo';
-      this.statusEl.textContent = m.everConnected
-        ? 'Offline — reconnecting to the relay.'
-        : 'Connecting to the relay…';
+      this._altMode = null;
+      // A full room is the one connection failure that will not fix itself, and
+      // it lands precisely when this screen is up — so it has to be said here.
+      // The primary still works: you can play, just not in that room.
+      this.statusEl.textContent = m.full
+        ? `That room is full (${m.full} players). Ask for a new link — you can still play right now.`
+        : m.everConnected
+          ? 'Offline — reconnecting to the relay.'
+          : 'Connecting to the relay…';
     } else if (!others.length) {
       this._mode = m.ready ? 'unready' : 'solo';
+      this._altMode = m.ready ? 'solo' : null;
       this.statusEl.innerHTML = m.ready
         ? 'Standing by — the match starts the moment someone joins and readies up.'
         : 'Alone in this room. Play now, or send the link and wait for company.';
     } else {
-      const readyCount = players.filter((p) => p.ready).length;
       this._mode = m.ready ? 'unready' : 'ready';
-      this.statusEl.innerHTML = m.ready
-        ? `You are ready — <b>${readyCount}/${players.length}</b> standing by.`
-        : `<b>${readyCount}/${players.length}</b> ready. Ready up to start the countdown.`;
+      // Two ready players are enough to start without a third who joined and
+      // wandered off. Below that there is nobody to start without.
+      const stalled = readyCount >= 2 && readyCount < inLobby.length;
+      this._altMode = m.ready && stalled ? 'force' : 'solo';
+      this._altForce = readyCount;
+      const warmNote = warm.length
+        ? ` <b>${warm.length}</b> warming up against bots — the countdown pulls them in.`
+        : '';
+      // Out of the LOBBY, not out of the room: a warm-up player has no ready flag
+      // to give, so counting them in the denominator would show a fraction that
+      // can never complete.
+      this.statusEl.innerHTML =
+        (m.ready
+          ? `You are ready — <b>${readyCount}/${inLobby.length}</b> standing by.`
+          : `<b>${readyCount}/${inLobby.length}</b> ready. Ready up to start the countdown.`) + warmNote;
     }
     this._paintPrimary();
   }
 
   /** One button, four labels. `_mode` is the only thing that decides. */
   _paintPrimary() {
-    const preset = BOT_PRESETS.find((p) => p.key === this._botKey);
-    const bots = preset && preset.squads ? preset.squads * preset.perSquad : 0;
     const label = {
       deploy: 'Deploy now',
       ready: 'Ready up',
       unready: 'Cancel ready',
-      solo: bots ? `Play vs ${bots} bots` : 'Play',
+      solo: this._botCount ? `Play vs ${this._botCount} bots` : 'Play',
     }[this._mode];
 
     this.primaryBtn.textContent = this.mapBusy ? 'Loading map' : label;
     this.primaryBtn.disabled = this.mapBusy;
     this.primaryBtn.className = this._mode === 'unready' ? 'btn btn-ghost' : 'btn btn-primary';
     this.stripPrimary.textContent = this.mapBusy ? 'Loading map' : label;
-    // The escape hatch only exists while the primary is waiting on other people.
-    this.altBtn.classList.toggle('hide', this._mode !== 'ready' && this._mode !== 'unready');
+    this._paintAlt();
+  }
+
+  /**
+   * The link under the primary. Same rule: whatever the other reasonable move
+   * is, and nothing when there isn't one.
+   */
+  _paintAlt() {
+    const bots = this._botCount;
+    const label = {
+      solo: bots ? `Warm up against ${bots} bots while you wait` : 'Deploy on your own while you wait',
+      force: `Start now with the ${this._altForce ?? 2} who are ready`,
+      next: 'Ready up for the next match',
+      cancel: 'Cancel ready',
+    }[this._altMode];
+    this.altBtn.classList.toggle('hide', !label || this.mapBusy);
+    if (label) this.altBtn.textContent = label;
+  }
+
+  /** Hostiles in the selected garrison — 0 when it is off. */
+  get _botCount() {
+    const preset = BOT_PRESETS.find((p) => p.key === this._botKey);
+    return preset && preset.squads ? preset.squads * preset.perSquad : 0;
   }
 
   setVisible(on) {

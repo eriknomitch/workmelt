@@ -24,6 +24,8 @@
  *   TICK_HZ       snapshot broadcast rate (default 20)
  *   MAX_ROOM      max players per room (default 12)
  *   COUNTDOWN_MS  pre-match countdown once everyone is ready (default 3000)
+ *   MAX_START_MS  how long a start signal may be pushed back to sweep in late
+ *                 arrivals (default 3× COUNTDOWN_MS)
  *
  * Run:  node server/index.mjs      (after `npm run build`)
  * Dev:  the vite client auto-connects to ws://<host>:8787 — just run this too.
@@ -38,6 +40,13 @@ const TICK_HZ = Number(process.env.TICK_HZ ?? 20);
 const MAX_ROOM = Number(process.env.MAX_ROOM ?? 12);
 /** Pre-match countdown, in ms. Broadcast once, counted down by every client. */
 const COUNTDOWN_MS = Number(process.env.COUNTDOWN_MS ?? 3000);
+/**
+ * The outer edge of a start. A player who arrives while the countdown is
+ * running is swept into it and the clock is pushed back to a full countdown so
+ * everybody lands together — but never past this much after the first signal,
+ * or a room where somebody keeps reloading the page never starts at all.
+ */
+const MAX_START_MS = Number(process.env.MAX_START_MS ?? COUNTDOWN_MS * 3);
 const ROOT = resolve(import.meta.dirname, '..');
 const DIST = join(ROOT, 'dist');
 
@@ -129,7 +138,17 @@ let nextId = 1;
 function getRoom(code) {
   let r = rooms.get(code);
   if (!r) {
-    r = { code, peers: new Map() /* id -> Peer */, map: null };
+    r = {
+      code,
+      peers: new Map() /* id -> Peer */,
+      map: null,
+      /** When the in-flight countdown ends (ms epoch). 0 when not starting. */
+      startAt: 0,
+      /** The latest `startAt` this start may be pushed back to. See MAX_START_MS. */
+      startCap: 0,
+      /** Peer ids this start deploys — everyone else stays in the lobby. */
+      starting: new Set(),
+    };
     rooms.set(code, r);
   }
   return r;
@@ -173,26 +192,59 @@ function takeSkin(room) {
 
 /* ── lobby / match start ──────────────────────────────────────────────────
  * The relay owns exactly one piece of match state: who has readied up, and
- * whether anyone is deployed. It stays a relay — it does not simulate — but the
- * start signal has to come from one place or two clients would each count down
- * from their own idea of "everyone is ready".
+ * whether anyone is in the match. It stays a relay — it does not simulate — but
+ * the start signal has to come from one place or two clients would each count
+ * down from their own idea of "everyone is ready".
  *
- * A room is LIVE as soon as one player is deployed (they pressed start against
- * bots, or a countdown finished). Live rooms skip the ready flow: a late joiner
- * drops straight into the match instead of waiting on players who are already
- * shooting.
+ * WARM-UP IS NOT A MATCH. There are two ways to be deployed, and telling them
+ * apart is what makes the invite flow work:
+ *
+ *   WARM  you pressed Play while waiting for people — a private bot game. It is
+ *         invisible to the room (no snapshots either way, no hits, no score) and
+ *         it does NOT make the room live. Whoever arrives on your link still
+ *         gets the ready flow, and when the countdown fires you are pulled out
+ *         of it and into the match with them.
+ *   MATCH you are in the room's match. THIS is what makes a room live.
+ *
+ * Before that distinction existed, the first player pressing the lobby's own
+ * primary button locked the room into "match in progress" for good: everybody
+ * who followed the link was offered "deploy now" against a garrison only the
+ * first player could see, the map was frozen, and the only way back to a real
+ * shared start was for every single player to leave the match first. That is
+ * the bug this split fixes.
+ *
+ * A room is LIVE while anybody is in the match, and also for the length of a
+ * start signal, so a player who arrives during the 3-2-1 is swept into the same
+ * countdown rather than dropped into a match that is one second old.
  */
 
 function lobby(room) {
   const players = [];
   for (const p of room.peers.values()) {
-    players.push({ id: p.id, name: p.name, ready: !!p.ready, deployed: !!p.deployed });
+    players.push({
+      id: p.id,
+      name: p.name,
+      ready: !!p.ready,
+      deployed: !!p.deployed,
+      warm: !!p.warm,
+    });
   }
   return players;
 }
 
+/** In the room's match — as opposed to a private warm-up against bots. */
+function inMatch(p) {
+  return !!p.deployed && !p.warm;
+}
+
+/** ms left on the in-flight start signal, 0 when there is none. */
+function startRemaining(room) {
+  return Math.max(0, room.startAt - Date.now());
+}
+
 function isLive(room) {
-  for (const p of room.peers.values()) if (p.deployed) return true;
+  if (startRemaining(room) > 0) return true;
+  for (const p of room.peers.values()) if (inMatch(p)) return true;
   return false;
 }
 
@@ -216,19 +268,63 @@ function sanitiseMap(v) {
   return /^[a-z0-9][a-z0-9_-]*$/.test(s) ? s : null;
 }
 
-/** Start the match when every player in a not-yet-live room has readied up. */
-function maybeStart(room) {
+/**
+ * Start the match if the room is ready for one.
+ *
+ * The condition is "everybody who is looking at the lobby has readied up",
+ * which is not the same as "everybody has readied up": a player warming up
+ * against bots cannot see the lobby to press the button, and pressing Play was
+ * never a request to be left out of the match. So warm-ups do not gate the
+ * start — they are pulled into it.
+ *
+ * `force` is the escape hatch for the other failure the old rule had: one player
+ * who joins and wanders off used to block a room full of ready players forever.
+ * Any ready player may then start with the ready set, and the rest keep the
+ * lobby's "deploy now".
+ */
+function maybeStart(room, force = false) {
   if (isLive(room)) return;
   const peers = [...room.peers.values()];
-  if (peers.length < 2 || !peers.every((p) => p.ready)) return;
-  // Deployed on the signal, not on each client's confirmation: a third player
-  // arriving during the countdown must see a live match, not an empty lobby.
-  for (const p of peers) {
-    p.deployed = true;
-    p.ready = false;
-  }
-  broadcast(room, { t: 'match_start', in: COUNTDOWN_MS });
+  if (peers.length < 2) return;
+  // Those who can actually see the lobby, and so can actually consent.
+  const inLobby = peers.filter((p) => !p.deployed);
+  const ready = peers.filter((p) => p.ready);
+  const consensus = inLobby.length > 0 && inLobby.every((p) => p.ready);
+  if (!consensus && !(force && ready.length >= 2)) return;
+  // Warm-ups come along; unready lobby players only when there is consensus,
+  // which by definition means there are none.
+  const cohort = peers.filter((p) => p.ready || p.warm);
+  if (cohort.length < 2) return;
+  startMatch(room, cohort);
+}
+
+/**
+ * Fire one start signal.
+ *
+ * The peers are NOT marked deployed here — `room.startAt` is what makes the room
+ * live for the length of the countdown, and each client confirms with `deploy`
+ * when its own 3-2-1 reaches zero. That is what lets `join` add a late arrival
+ * to a start that is already in flight.
+ */
+function startMatch(room, cohort) {
+  const now = Date.now();
+  room.startAt = now + COUNTDOWN_MS;
+  room.startCap = now + MAX_START_MS;
+  room.starting = new Set(cohort.map((p) => p.id));
+  for (const p of cohort) p.ready = false;
+  broadcast(room, { t: 'match_start', in: COUNTDOWN_MS, ids: [...room.starting] });
   sendLobby(room);
+}
+
+/**
+ * Somebody arrived mid-countdown. Sweep them in and give the room a full
+ * countdown again so the party lands together — bounded by `startCap`, so this
+ * cannot be pushed back forever.
+ */
+function extendStart(room) {
+  const now = Date.now();
+  room.startAt = Math.max(room.startAt, Math.min(now + COUNTDOWN_MS, room.startCap));
+  return startRemaining(room);
 }
 
 function send(peer, obj) {
@@ -241,6 +337,23 @@ function broadcast(room, obj, exceptId = null) {
   const msg = JSON.stringify(obj);
   for (const p of room.peers.values()) {
     if (p.id === exceptId) continue;
+    if (p.ws.readyState === p.ws.OPEN) p.ws.send(msg);
+  }
+}
+
+/**
+ * Broadcast to the room's MATCH — everyone except the players warming up.
+ *
+ * Every gameplay message goes out this way, which is what makes a warm-up
+ * private in both directions: a player shooting bots while waiting for friends
+ * is not a target, does not appear in anybody's world, and cannot see the match
+ * that is running around him. Room-level traffic (lobby, chat, roster, joins)
+ * still reaches everybody — he is in the room, just not in the fight.
+ */
+function broadcastMatch(room, obj, exceptId = null) {
+  const msg = JSON.stringify(obj);
+  for (const p of room.peers.values()) {
+    if (p.id === exceptId || p.warm) continue;
     if (p.ws.readyState === p.ws.OPEN) p.ws.send(msg);
   }
 }
@@ -261,8 +374,14 @@ wss.on('connection', (ws) => {
     alive: true,
     /** readied up in the match-start lobby */
     ready: false,
-    /** in the match (started against bots, or a countdown finished) */
+    /** out of the lobby: in the room's match, or warming up against bots */
     deployed: false,
+    /**
+     * Deployed into a PRIVATE bot game rather than the room's match. Invisible
+     * to the room in both directions, and does not make the room live — see the
+     * lobby section above.
+     */
+    warm: false,
     lastSeen: Date.now(),
   };
 
@@ -310,25 +429,38 @@ function handle(peer, msg) {
         tickHz: TICK_HZ,
         live: isLive(room),
         map: room.map,
+        // Non-zero when a countdown is already running: this player is joining
+        // it, not the match it is about to become.
+        startIn: startRemaining(room),
         peers: roster(room).filter((p) => p.id !== peer.id),
       });
       // Announce to everyone else.
       broadcast(room, { t: 'peer_join', id: peer.id, name: peer.name, skin: peer.skin }, peer.id);
+      // "Sure" — "yep" — "gimme a sec": arrivals in a party are seconds apart,
+      // so a start that is still counting down takes the new one with it.
+      if (startRemaining(room) > 0) {
+        room.starting.add(peer.id);
+        broadcast(room, { t: 'match_start', in: extendStart(room), ids: [...room.starting] });
+      }
       sendLobby(room);
       break;
     }
 
     case 'map': {
-      // Change the room's level. Refused once anybody is deployed — swapping the
-      // map under a live match would teleport everyone into a level that no
-      // longer exists. Ready flags are cleared: you readied up for a level, and
-      // it is not that level any more.
+      // Change the room's level. Refused once the room is live — swapping the
+      // map under a match would teleport everyone into a level that no longer
+      // exists. A warm-up does NOT block it: it is one player's private bot
+      // game, and that client steps back to the lobby and rebuilds.
+      //
+      // Ready flags are cleared, because you readied up for a level and it is
+      // not that level any more — but not the chooser's. They are the one player
+      // in the room who has just said what they want to play.
       const room = peer.room && rooms.get(peer.room);
       if (!room || isLive(room)) return;
       const next = sanitiseMap(msg.map);
       if (!next || next === room.map) return;
       room.map = next;
-      for (const p of room.peers.values()) p.ready = false;
+      for (const p of room.peers.values()) if (p.id !== peer.id) p.ready = false;
       sendLobby(room);
       break;
     }
@@ -338,18 +470,26 @@ function handle(peer, msg) {
       if (!room) return;
       peer.ready = !!msg.ready;
       sendLobby(room);
-      maybeStart(room);
+      maybeStart(room, !!msg.force && peer.ready);
       break;
     }
 
     case 'deploy': {
-      // "I am in the match now" — from the bots-only start button, or when a
-      // client's pre-match countdown reached zero.
+      // "I am in the match now" — a client's pre-match countdown reached zero,
+      // or it pressed deploy-now on a live room. `solo` marks the other case:
+      // a private warm-up against bots, which is not the room's match.
       const room = peer.room && rooms.get(peer.room);
       if (!room) return;
       peer.deployed = true;
+      peer.warm = !!msg.solo;
       peer.ready = false;
+      room.starting.delete(peer.id);
       sendLobby(room);
+      // Stepping out of the lobby can complete the ready set: the players left in
+      // it were waiting on everybody in the lobby, and there is now one fewer.
+      // Without this, somebody starting a warm-up next to a player who is already
+      // ready leaves that player standing by for a start that has to happen.
+      maybeStart(room);
       break;
     }
 
@@ -360,8 +500,13 @@ function handle(peer, msg) {
       const room = peer.room && rooms.get(peer.room);
       if (!room) return;
       peer.deployed = false;
+      peer.warm = false;
       peer.ready = false;
+      room.starting.delete(peer.id);
       sendLobby(room);
+      // The last player out of a match un-lives the room, which can complete a
+      // ready set that has been waiting for exactly that.
+      maybeStart(room);
       break;
     }
 
@@ -375,17 +520,20 @@ function handle(peer, msg) {
 
     case 'fire': {
       const room = peer.room && rooms.get(peer.room);
-      if (!room) return;
-      broadcast(room, { t: 'fire', id: peer.id, o: msg.o, d: msg.d, w: msg.w, seed: msg.seed }, peer.id);
+      if (!room || peer.warm) return;
+      broadcastMatch(room, { t: 'fire', id: peer.id, o: msg.o, d: msg.d, w: msg.w, seed: msg.seed }, peer.id);
       break;
     }
 
     case 'hit': {
       // Trust-the-shooter: forward the claim to the victim, who applies it.
       const room = peer.room && rooms.get(peer.room);
-      if (!room) return;
+      if (!room || peer.warm) return;
       const victim = room.peers.get(msg.target);
-      if (!victim) return;
+      // Nobody may shoot a warm-up and a warm-up may not shoot anybody: the two
+      // are not in the same match. Neither side can even see the other, so this
+      // only ever catches a claim that crossed a deploy.
+      if (!victim || victim.warm) return;
       send(victim, {
         t: 'hit',
         from: peer.id,
@@ -400,8 +548,10 @@ function handle(peer, msg) {
 
     case 'kill': {
       // Victim confirms its own death and names the killer -> authoritative score.
+      // A warm-up death is a bot's work in a game nobody else is in; it must not
+      // reach the room's killfeed or inflate the reporter's death count.
       const room = peer.room && rooms.get(peer.room);
-      if (!room) return;
+      if (!room || peer.warm) return;
       peer.deaths++;
       const killer = room.peers.get(msg.by);
       if (killer && killer.id !== peer.id) killer.kills++;
@@ -428,10 +578,10 @@ function handle(peer, msg) {
       // on the same tick choosing the same ground. Advisory, like every other
       // gameplay claim on this relay — see src/world/spawns.js.
       const room = peer.room && rooms.get(peer.room);
-      if (!room || !Array.isArray(msg.p) || msg.p.length < 3) return;
+      if (!room || peer.warm || !Array.isArray(msg.p) || msg.p.length < 3) return;
       const p = msg.p.map(Number);
       if (!p.every(Number.isFinite)) return;
-      broadcast(room, { t: 'spawn', id: peer.id, p }, peer.id);
+      broadcastMatch(room, { t: 'spawn', id: peer.id, p }, peer.id);
       break;
     }
 
@@ -462,6 +612,7 @@ function leave(peer) {
   peer.room = null;
   if (!room) return;
   room.peers.delete(peer.id);
+  room.starting.delete(peer.id);
   broadcast(room, { t: 'peer_leave', id: peer.id });
   broadcast(room, { t: 'score', roster: roster(room) });
   if (room.peers.size === 0) {
@@ -482,10 +633,12 @@ setInterval(() => {
   for (const room of rooms.values()) {
     const states = [];
     for (const p of room.peers.values()) {
-      if (!p.state) continue;
+      // A warm-up is private: its transform never enters the match, and the
+      // match's transforms never reach it. See broadcastMatch().
+      if (!p.state || p.warm) continue;
       states.push({ id: p.id, name: p.name, s: p.state });
     }
-    if (states.length) broadcast(room, { t: 'snapshot', states });
+    if (states.length) broadcastMatch(room, { t: 'snapshot', states });
   }
 }, 1000 / TICK_HZ);
 

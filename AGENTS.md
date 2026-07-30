@@ -34,6 +34,18 @@ The browser client lives in `src/`. Features are divided into subsystem director
 - `npm run playtest:graphics` drives the advanced graphics menu in a real browser, including a reload that carries the overrides back into `config.q`.
 - `npm run playtest:grenade` drives the G / H equipment binds in a real browser: cook, arc preview, throw, detonation, the HUD pips and the stun's screen flash.
 - `node server/map.selftest.mjs` walks the relay's room-map protocol against a real server on a real socket.
+- `node server/lobby.selftest.mjs` does the same for the match-start lobby: that a
+  warm-up against bots stays private and does not lock the room, that a warm-up
+  player is pulled into the countdown instead of having to leave first, the forced
+  start, and that a late arrival joins the countdown rather than the match. Set
+  `RELAY_URL=ws://127.0.0.1:8788/ws` to run the same checks against the Cloudflare
+  Durable Object under `npm run cf:dev`.
+- `node src/weapons/loadout.selftest.mjs` checks that a spawn restocks the whole
+  loadout — every magazine and reserve — so ammunition does not deplete across
+  lives and matches. There are no ammo pickups; this is the only refill.
+- `node tools/lobby-playtest.mjs` drives the whole join flow in two real browsers
+  against a real relay: A warms up against bots, B follows the invite link, B
+  readies up, and both land in one players-only match with fresh magazines.
 - `node server/skin.selftest.mjs` does the same for the player-colour slots the relay hands out — no two players in a room may share one.
 - `node src/world/maps.selftest.mjs` builds every map headlessly and checks the map-descriptor contract, spawn tables and layout invariants.
 - `node src/world/spawns.selftest.mjs` checks the spawn director's scoring headlessly; `node src/world/spawns.probe.mjs` verifies spawn placement, the bot garrison and 30 respawns inside the real built level (needs a browser).

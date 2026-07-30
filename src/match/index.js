@@ -12,6 +12,13 @@
  *                `maybeStart()` in server/index.mjs) and both clients run the
  *                same countdown. No bots in this mode — it is players only.
  *
+ * The two are not exclusive, and that is the point: a bots match started while
+ * you are alone in a room is a WARM-UP. The relay keeps it private and does not
+ * let it make the room live, so the friends arriving on your link still get the
+ * ready flow — and when the start signal fires this system pulls you out of the
+ * bots and into the match with them (`_onCountdown`). Nobody has to leave
+ * anything first.
+ *
  * The lobby collapses both into ONE primary button whose meaning follows the
  * room (see the header of ./ui.js); this system resolves a click on it against
  * the live lobby state in `_primary()`.
@@ -58,7 +65,15 @@ export class MatchSystem {
   constructor(opts = {}) {
     /** 'setup' | 'countdown' | 'live' */
     this.state = 'setup';
+    /**
+     * How we went live: 'bots' is a warm-up (private, interruptible, and the
+     * relay does not count it as the room's match), 'versus' came out of a
+     * countdown, 'join' dropped into a running match. Null in the lobby.
+     */
+    this.mode = null;
     this.bots = opts.bots ?? DEFAULT_BOTS;
+    /** Copy for the countdown screen — a pull-in from a warm-up says so. */
+    this._countCopy = { label: 'Match starting', sub: 'Deploying to the floor' };
     this._countdownEnd = 0;
     this._lastTick = -1;
     this._off = [];
@@ -93,7 +108,7 @@ export class MatchSystem {
     this.ui.onMap = (id) => this._chooseMap(id);
     this.ui.onBots = (key) => this._setBots(key);
     this.ui.onPrimary = () => this._primary();
-    this.ui.onStartSolo = () => this.start({ bots: this.bots, mode: 'bots' });
+    this.ui.onAlt = () => this._alt();
     this.ui.onCopyInvite = () => this._share();
     this.ui.onName = (n) => this.net?.setName(n);
     // The settings menu is the same panel Escape opens in a match — one surface,
@@ -127,6 +142,7 @@ export class MatchSystem {
 
   _enterSetup() {
     this.state = 'setup';
+    this.mode = null;
     // Gameplay input off: the mousedown handler in core/input.js grabs pointer
     // lock on any click, which would swallow the cursor the menu needs.
     this.ctx.input.enabled = false;
@@ -223,9 +239,32 @@ export class MatchSystem {
     }
   }
 
-  _setReady(on) {
+  /**
+   * The secondary link under the primary. Same idea as the primary — one
+   * control whose meaning is whatever the room makes it — but it is always the
+   * *other* reasonable move, never a required one. See `_paintAlt` in ./ui.js.
+   */
+  _alt() {
+    switch (this.ui.altMode) {
+      // Somebody joined and wandered off. Start with the players who are ready
+      // rather than waiting on them; they keep the lobby's "deploy now".
+      case 'force':
+        return this._setReady(true, true);
+      // The room's match is running and we are back in the lobby: arm a rematch.
+      // It cannot start until the current match empties, and the players still in
+      // it are told somebody is waiting (see `_noteRematchCalls` in src/net).
+      case 'next':
+        return this._setReady(true);
+      case 'cancel':
+        return this._setReady(false);
+      default:
+        return this.start({ bots: this.bots, mode: 'bots' });
+    }
+  }
+
+  _setReady(on, force = false) {
     if (!this.net) return;
-    this.net.setReady(on);
+    this.net.setReady(on, force);
     this._sfx(on ? 'ready' : 'unready');
     // Optimistic paint; the relay's `lobby` frame confirms it a moment later.
     this._onLobby(null);
@@ -255,16 +294,27 @@ export class MatchSystem {
 
   /** Repaint from whatever `net` currently holds (the event payload is a hint). */
   _onLobby(e) {
-    if (!this.net || this.state !== 'setup') return;
+    if (!this.net) return;
     // The room's map is authoritative over this client's: whoever was in the
     // room first set it, and a change anybody makes arrives here.
     const roomMap = e?.map ?? this.net.lobby.map;
+    if (this.state !== 'setup') {
+      // A warm-up holds nothing up, so the relay lets the room change level
+      // underneath it. Step back to the lobby and rebuild rather than keep
+      // shooting bots on a level the room has moved off — the alternative is a
+      // player who readies up and then deploys onto the wrong map.
+      if (this.mode === 'bots' && this._knownMap(roomMap) && roomMap !== this.world.mapId) {
+        this.returnToSetup();
+      }
+      return;
+    }
     if (this._knownMap(roomMap) && roomMap !== this.world.mapId) this._applyMap(roomMap);
     this.ui.setRoom(this.net.room);
     this.ui.render(
       e ?? {
         connected: this.net.connected,
         everConnected: this.net.everConnected,
+        full: this.net.roomFull,
         live: this.net.lobby.live,
         players: this.net.lobbyPlayers(),
         myId: this.net.myId,
@@ -279,15 +329,51 @@ export class MatchSystem {
   /* ==================================================================== */
 
   _onCountdown({ ms }) {
-    if (this.state === 'live') return; // already deployed; ignore a stale signal
+    let pulled = false;
+    if (this.state === 'live') {
+      // Already in the room's match — a stale signal, nothing to do.
+      if (this.mode !== 'bots') return;
+      // A warm-up, though, is exactly what this signal is for: you pressed Play
+      // to pass the time in a room you were inviting people to, and they have now
+      // turned up and readied. Drop the bots and come with them. This is what
+      // used to require every player to leave their match by hand first.
+      this._leaveWarmup();
+      pulled = true;
+    }
     this.state = 'countdown';
+    this._countCopy = pulled
+      ? { label: 'Match starting', sub: 'Your room is playing — leaving the bots behind' }
+      : { label: 'Match starting', sub: 'Deploying to the floor' };
     // Wall clock, not frame time: both clients were handed the same duration by
     // the relay, and a dropped frame must not stretch one player's countdown.
     this._countdownEnd = performance.now() + Math.max(400, ms || 0);
     this._lastTick = -1;
     this.ui.setVisible(true);
     this.ui.showCountdown(true);
-    this.ui.setCountdown(Math.ceil((this._countdownEnd - performance.now()) / 1000));
+    this._paintCountdown(Math.ceil((this._countdownEnd - performance.now()) / 1000));
+  }
+
+  /**
+   * Tear a warm-up down without telling the relay we left.
+   *
+   * `returnToSetup` would send `undeploy`, and the relay has already put us in
+   * the cohort it is starting — saying we stepped out would drop us from the very
+   * match we are counting down to. So this is the same teardown minus the wire.
+   */
+  _leaveWarmup() {
+    this._respawnAt = 0;
+    try {
+      this.ai.clearGarrison?.();
+    } catch (err) {
+      console.warn('[match] warm-up teardown failed', err);
+    }
+    this._enterSetup();
+    this.ctx.events.emit('match:end', { reason: 'pulled-in' });
+    console.info('[match] pulled out of the warm-up — the room is starting');
+  }
+
+  _paintCountdown(n) {
+    this.ui.setCountdown(n, this._countCopy.label, this._countCopy.sub);
   }
 
   update() {
@@ -297,7 +383,7 @@ export class MatchSystem {
     const n = Math.max(0, Math.ceil(left / 1000));
     if (n !== this._lastTick) {
       this._lastTick = n;
-      this.ui.setCountdown(n);
+      this._paintCountdown(n);
       if (n > 0) {
         this._sfx('countdown', 0.9);
         this.ctx.events.emit('match:countdown', { seconds: n });
@@ -320,6 +406,7 @@ export class MatchSystem {
     // so this is a guard rather than a UI concern.
     if (this._mapBusy) return;
     this.state = 'live';
+    this.mode = mode;
     const preset = BOT_PRESETS.find((p) => p.key === bots) ?? BOT_PRESETS[0];
 
     // Deploy the player FIRST, then the garrison: the bots' anchors are scored
@@ -347,7 +434,9 @@ export class MatchSystem {
     // Requested from the click that started the match (or ~3 s after it, at the
     // end of a countdown) — if the browser refuses, the next click still locks.
     this.ctx.input.requestPointerLock?.();
-    this.net?.deploy();
+    // 'bots' is a warm-up: private, and it must not put the room in "match in
+    // progress" — see `deploy()` in src/net/index.js.
+    this.net?.deploy(mode === 'bots');
     this._sfx('matchstart');
     this.ctx.events.emit('match:start', {
       bots: preset.key,
