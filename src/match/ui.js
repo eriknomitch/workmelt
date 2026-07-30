@@ -788,7 +788,8 @@ export class MatchStartUI {
           <span class="spacer"></span>
           <div class="style-picker" role="group" aria-label="Visual style">
             <span class="label">Style</span>
-            <button type="button" data-style="signal" aria-pressed="true">Signal</button>
+            <button type="button" data-style="base" aria-pressed="true">Brand</button>
+            <button type="button" data-style="signal" aria-pressed="false">Signal</button>
             <button type="button" data-style="terminal" aria-pressed="false">Terminal</button>
             <button type="button" data-style="field" aria-pressed="false">Field notes</button>
             <button type="button" data-style="spreadsheet" aria-pressed="false">Spreadsheet</button>
@@ -892,9 +893,12 @@ export class MatchStartUI {
     this.stripNet = q('[data-strip-net]');
     this.stripPrimary = q('[data-strip-primary]');
     this.styleButtons = [...this.root.querySelectorAll('[data-style]')];
-    let savedStyle = 'signal';
+    // 'base' is the shipped default: the WORKMELT brand system as documented in
+    // DESIGN.md, with no lab class applied. A stored preference still wins, so
+    // anyone who picked an exploration keeps it.
+    let savedStyle = 'base';
     try { savedStyle = localStorage.getItem('workmelt-lobby-style') || savedStyle; } catch {}
-    this.style = 'signal';
+    this.style = 'base';
     this.styleButtons.forEach((b) => b.addEventListener('click', () => this.setStyle(b.dataset.style)));
     this.setStyle(savedStyle);
 
@@ -972,12 +976,19 @@ export class MatchStartUI {
     this._altForce = 0;
   }
 
-  /** Switch the visual exploration without replacing the lobby model or callbacks. */
-  setStyle(style = 'signal') {
-    const next = ['signal', 'terminal', 'field', 'spreadsheet', 'linear', 'ledger'].includes(style) ? style : 'signal';
+  /**
+   * Switch the visual exploration without replacing the lobby model or callbacks.
+   *
+   * 'base' is not a variant: it is the absence of one, which leaves the lobby on
+   * the brand stylesheet this file already ships (DESIGN.md). Every other value
+   * layers a lab on top of it. An unrecognised style falls back to 'base' rather
+   * than to a lab, so the documented system is what a broken value lands on.
+   */
+  setStyle(style = 'base') {
+    const next = ['base', 'signal', 'terminal', 'field', 'spreadsheet', 'linear', 'ledger'].includes(style) ? style : 'base';
     this.style = next;
     this.root.classList.remove('variant-signal', 'variant-terminal', 'variant-field', 'variant-spreadsheet', 'variant-linear', 'variant-ledger');
-    this.root.classList.add(`variant-${next}`);
+    if (next !== 'base') this.root.classList.add(`variant-${next}`);
     for (const b of this.styleButtons) b.setAttribute('aria-pressed', String(b.dataset.style === next));
     try { localStorage.setItem('workmelt-lobby-style', next); } catch {}
   }

@@ -617,10 +617,16 @@ neutral ramp to the registered palette; `:root` is the dark canvas and
 six alternate lobby treatments (`variant-signal`, `variant-terminal`,
 `variant-field`, `variant-spreadsheet`, `variant-linear`, `variant-ledger`), each
 with its own `--lab-*` / `--sheet-*` token set, switchable at runtime and
-persisted to `localStorage` under `workmelt-lobby-style`. The lobby boots into
-`variant-signal`, which overrides this system on that surface: a `#ff6b35`
-accent, Inter 800 at `-.075em` for the wordmark, `border-radius: 0`, and a hard
-`16px 16px 0` offset shadow.
+persisted to `localStorage` under `workmelt-lobby-style`. Each departs from this
+system substantially — `variant-signal` alone swaps the accent to `#ff6b35`, the
+wordmark to Inter 800 at `-.075em`, the radius to `0`, and the ambient shadow to
+a hard `16px 16px 0` offset.
+
+The lobby therefore ships a seventh option, **`base`**, labelled *Brand* in the
+picker. It is not a variant but the absence of one: it applies no `variant-*`
+class and leaves the lobby on the system documented here. `base` is the default
+for a fresh browser and the fallback for an unrecognised style, so a lab is only
+ever seen because someone chose it.
 
 **These labs are an exploration, not the design system.** This document remains
 canon. Nothing outside the lobby's `variant-*` blocks may adopt a lab token, and
