@@ -77,6 +77,18 @@ import {
   groundYNuketown,
 } from './nuketown.js';
 import {
+  GULCH,
+  BASE,
+  BASES,
+  SOLIDS as GULCH_SOLIDS,
+  TOOTH,
+  RIDGES,
+  BOULDERS,
+  baseSolids,
+  inSolid as inSolidBloodGulch,
+  groundYBloodGulch,
+} from './bloodgulch.js';
+import {
   LOOP,
   EL,
   STATION,
@@ -1010,6 +1022,317 @@ for (const sz of [-1, 1]) {
   ok(leaks.length === 0, `the ${sz < 0 ? 'north' : 'south'} street mouth is sealed`,
     leaks.length ? `open at x=${leaks.join(',')}` : `${NUKE.streetHalf * 2} m of opening covered`);
 }
+
+/* ────────────────────────────────────────────────── bloodgulch — the canyon ── */
+console.log(B('\nbloodgulch — the canyon'));
+
+const gulch = mapById('bloodgulch');
+
+/**
+ * THE CANYON PALETTE CONTRACT — the same guard the greybox family gets, for the
+ * same reason and one more.
+ *
+ * This map's brief is performance, and the whole of that brief in the material
+ * layer is that every `bg_*` key is one shared `flat_matte` bake plus a tint:
+ * no relief, no weathering, no vertex masks, no second texture set. Every one
+ * of those is a parameter one character away from coming back, and a diff that
+ * adds `bake:` to a key here reads as a nicer-looking rock right up until it is
+ * seven more 1024 texture sets (TEXTURE-PERF.md).
+ */
+{
+  const bg = Object.entries(PALETTE).filter(([k]) => k.startsWith('bg_'));
+  ok(bg.length >= 7, 'the canyon palette family exists', bg.map(([k]) => k).join(' '));
+
+  const notFlat = bg.filter(([, v]) => {
+    const o = v.opts ?? {};
+    const w = o.weather ?? [1, 1, 1, 1];
+    return o.vertexMasks !== false || w.some((n) => n !== 0) || o.normalStrength !== 0;
+  });
+  ok(notFlat.length === 0, 'every canyon key is flat — no weather, no masks, no relief',
+    notFlat.map(([k]) => k).join(' '));
+
+  const extraBakes = bg.filter(([, v]) => v.opts?.bake !== undefined);
+  ok(extraBakes.length === 0, 'and none of them overrides its bake — one resident set for the map',
+    extraBakes.map(([k]) => k).join(' '));
+
+  const outOfBand = bg.filter(([, v]) => {
+    const t = v.opts?.tint;
+    if (t === undefined) return false;
+    return [16, 8, 0].some((sh) => {
+      const lin = Math.pow(((t >> sh) & 255) / 255, 2.2);
+      return lin < 0.02 || lin > 0.9;
+    });
+  });
+  ok(outOfBand.length === 0, 'every tint sits inside the 0.02-0.9 reflectance band',
+    outOfBand.map(([k]) => k).join(' '));
+}
+
+/**
+ * `SOLIDS` is derived once and read by the build, by `inSolid` and by this
+ * section, so these two checks are asking about the tables the map actually
+ * ships rather than about a second copy of the arithmetic.
+ */
+{
+  const overlaps = [];
+  for (let i = 0; i < GULCH_SOLIDS.length; i++)
+    for (let j = i + 1; j < GULCH_SOLIDS.length; j++) {
+      const a = GULCH_SOLIDS[i];
+      const b = GULCH_SOLIDS[j];
+      if (a.x0 < b.x1 && a.x1 > b.x0 && a.z0 < b.z1 && a.z1 > b.z0) overlaps.push(`${a.id} ∩ ${b.id}`);
+    }
+  ok(overlaps.length === 0, 'nothing solid is inside anything else solid', overlaps.slice(0, 3).join(', '));
+
+  const outside = GULCH_SOLIDS.filter(
+    (s) => s.x0 < -GULCH.halfX || s.z0 < -GULCH.halfZ || s.x1 > GULCH.halfX || s.z1 > GULCH.halfZ
+  );
+  ok(outside.length === 0, 'everything solid is inside the cliffs', outside.map((s) => s.id).join(' '));
+}
+
+// The two bases are one base placed twice, by a half-turn. If a later edit ever
+// makes them merely similar, the map stops being symmetric in a way that only
+// shows up as one end of the canyon quietly playing better than the other.
+{
+  const red = BASES.find((b) => b.id === 'red');
+  const blue = BASES.find((b) => b.id === 'blue');
+  ok(red.x === -blue.x && red.z === -blue.z && red.face === -blue.face, 'the bases mirror by a half-turn');
+  ok(red.w === blue.w && red.d === blue.d, 'and are the same building', `${red.w} × ${red.d} m`);
+  ok(Math.abs(red.x - blue.x) - red.w > 40, 'with a real field between them',
+    `${(Math.abs(red.x - blue.x) - red.w).toFixed(0)} m mouth to mouth`);
+}
+
+/**
+ * BOTH BASES ARE ENTERABLE, AND THE COURTYARD IS FLOOR.
+ *
+ * Every other structure in this game is a solid footprint the occupancy tests
+ * refuse; this map's bases are hollow, and the courtyard is where a third of
+ * its spawn points live. Model the base as one rect by accident and the map
+ * still builds, still looks right, and quietly loses ten spawns, both flag
+ * stands and every route through the middle of either end.
+ */
+// The probe below walks whatever width the table declares, so it cannot catch
+// an opening that SHRANK — this is the check that does. A doorway under about a
+// metre and a half is a choke two players cannot pass through at once, and the
+// mouth is the base's front, not a door.
+ok(
+  BASE.mouthHalf * 2 >= 8 && BASE.backHalf * 2 >= 4 && BASE.doorX1 - BASE.doorX0 >= 3,
+  'every opening in a base is wide enough to fight through',
+  `mouth ${BASE.mouthHalf * 2} m, back ${BASE.backHalf * 2} m, sides ${BASE.doorX1 - BASE.doorX0} m`
+);
+for (const b of BASES) {
+  const mx = b.x + b.face * (b.w / 2 - 0.9);
+  const shut = [];
+  for (let u = -BASE.mouthHalf + 0.4; u <= BASE.mouthHalf - 0.4; u += 0.4)
+    if (!gulch.isOpen(mx, b.z + u)) shut.push(u.toFixed(1));
+  ok(shut.length === 0, `the ${b.id} base mouth is open`, shut.length ? `blocked at u=${shut.join(',')}` : `${BASE.mouthHalf * 2} m of it`);
+  ok(gulch.isOpen(b.x, b.z + 3) && gulch.isOpen(b.x, b.z - 3), `the ${b.id} courtyard is walkable floor`);
+  // The back door and both side doors: three more ways out of the courtyard,
+  // which is what stops a base being a room with one watched entrance.
+  ok(gulch.isOpen(b.x - b.face * (b.w / 2 - 0.9), b.z), `the ${b.id} back door is open`);
+  const sideX = b.x + b.face * ((BASE.doorX0 + BASE.doorX1) / 2);
+  ok(
+    [-1, 1].every((sz) => gulch.isOpen(sideX, b.z + sz * (b.d / 2 - 0.9))),
+    `both ${b.id} side doors are open`
+  );
+}
+
+/**
+ * THE RAMPS REACH THE ROOF.
+ *
+ * Two numbers hold the only route to either roof: where the flight's top step
+ * lands, and where the gap in the roof parapet is. They live in different parts
+ * of `buildBase`, and if they ever stop bracketing each other the map keeps
+ * both roofs and loses every way onto them — a failure that is invisible in a
+ * still frame and total in play.
+ */
+{
+  const topX = BASES[0].w / 2 - BASE.stairLen;
+  ok(topX > 1.0 && topX + 0.5 < 4.4, 'the parapet gap brackets where the flight lands',
+    `top step at x=${topX.toFixed(2)}, gap 1.0..4.4`);
+  ok(Math.abs(BASE.stairSteps * BASE.stairRise - BASE.roofY) < 0.01, 'and the flight climbs exactly to the roof',
+    `${(BASE.stairSteps * BASE.stairRise).toFixed(2)} m of ${BASE.roofY} m`);
+  ok(BASE.lipH < 0.5, 'the kerb round the roof hole is steppable, so the drop-in works', `${BASE.lipH} m`);
+  ok(BASE.roofY - BASE.voidHalf > 0 && BASE.voidHalf * 2 >= 6, 'the roof hole is a real opening',
+    `${BASE.voidHalf * 2} m square`);
+  ok(BASES[0].d / 2 - BASE.voidHalf >= 3, 'and the roof ring is wide enough to fight on',
+    `${(BASES[0].d / 2 - BASE.voidHalf).toFixed(1)} m`);
+}
+// Each ramp foot starts from open field, or the roof is scenery. Probed at the
+// foot and 2.5 m out in front of it, the way the derrick's stair is.
+for (const b of BASES) {
+  for (const s of baseSolids(b).filter((x) => x.kind === 'stair')) {
+    const fx = b.x + b.face * (b.w / 2 + 1.6);
+    const cz = (s.z0 + s.z1) / 2;
+    ok(gulch.isOpen(fx, cz) && gulch.isOpen(fx + b.face * 2.5, cz),
+      `${s.id} has open ground to start from`);
+  }
+}
+
+/**
+ * THE TOOTH IS DOING ITS JOB.
+ *
+ * It is the landmark, and it is the only thing standing between two base mouths
+ * 42 m apart on a dead flat field. Height alone is not the invariant — a spire
+ * nudged 10 m off the axis is still 13.5 m tall and no longer blocks anything —
+ * so the check walks the line between the base centres and requires the spire's
+ * own footprint to interrupt it.
+ */
+ok(TOOTH.height > 12, 'the Tooth is a landmark', `${TOOTH.height} m`);
+// `height` is what this section reasons about; the slabs are what gets built.
+// They are two numbers in two places, so they are checked against each other.
+ok(
+  Math.abs(TOOTH.levels.reduce((a, l) => a + l[2], 0) - TOOTH.height) < 0.01,
+  'and the slabs it is built from add up to that height',
+  `${TOOTH.levels.reduce((a, l) => a + l[2], 0)} m of slab`
+);
+// The top slab carries the silhouette: squat courses all the way up read as a
+// stepped mesa, and a mesa is not a thing you navigate by.
+ok(
+  TOOTH.levels[2][2] > TOOTH.levels[0][2] && TOOTH.levels[2][0] < TOOTH.levels[0][0] / 2,
+  'and it finishes in a spire rather than a step',
+  `${TOOTH.levels[2][0]} m wide, ${TOOTH.levels[2][2]} m tall on top`
+);
+{
+  const [red, blue] = [BASES[0], BASES[1]];
+  let blocked = 0;
+  for (let t = 0; t <= 1; t += 0.004) {
+    const x = red.x + (blue.x - red.x) * t;
+    const z = red.z + (blue.z - red.z) * t;
+    if (inSolidBloodGulch(x, z, 0)) blocked++;
+  }
+  ok(blocked > 20, 'and it breaks the mouth-to-mouth sightline', `${blocked} of 251 samples solid`);
+}
+ok(
+  RIDGES.every(([x, z, ry, len, w, h]) => h > 1.8 && h < 3.4),
+  'every field ridge is above head height and below a roof',
+  `${Math.min(...RIDGES.map((r) => r[5]))}..${Math.max(...RIDGES.map((r) => r[5]))} m`
+);
+
+// The floor is flat: this map pays for one collision box under the whole
+// playable area, so a dig or a rise sneaking into the height field is a real
+// regression and an expensive one.
+let gFlat = true;
+for (let x = -GULCH.halfX; x <= GULCH.halfX && gFlat; x += 2)
+  for (let z = -GULCH.halfZ; z <= GULCH.halfZ && gFlat; z += 2)
+    if (Math.abs(groundYBloodGulch(x, z)) > 0.2) gFlat = false;
+ok(gFlat, 'the canyon floor is flat — every rise on this map is built');
+ok(!gulch.isOpen(0, GULCH.halfZ + 3) && !gulch.isOpen(GULCH.halfX + 3, 0), 'outside the cliffs is not playable ground');
+
+// Sample the floor. An open canyon should read as open — but the ridges,
+// boulders and buttresses have to keep it well under an empty field.
+let gOpen = 0;
+let gTotal = 0;
+for (let x = -GULCH.halfX; x <= GULCH.halfX; x += 1)
+  for (let z = -GULCH.halfZ; z <= GULCH.halfZ; z += 1) {
+    gTotal++;
+    if (gulch.isOpen(x, z)) gOpen++;
+  }
+const gFrac = gOpen / gTotal;
+ok(gFrac > 0.5 && gFrac < 0.8, 'the canyon floor is open country with real cover in it',
+  `${(gFrac * 100).toFixed(0)}% open`);
+
+/**
+ * NO PATCH OF NO-MAN'S-LAND.
+ *
+ * The walkable fraction above is an average, and an average is exactly the
+ * wrong statistic for this map: 100 m of canyon can be 61% open with all of the
+ * cover at one end. What actually decides whether the field is crossable is the
+ * WORST cell — the furthest a player can be from something that stops a bullet.
+ *
+ * This is the check that found the four flank ridges missing: the corridors
+ * between each base's side wall and the cliff were 25 m of empty grass, and no
+ * average said so. The map ships at 10.5 m and the bar is 12, which is tight
+ * enough that deleting those ridges fails it again and loose enough that moving
+ * one mid-lane rock does not — a bar the layout cannot reach is not a bar.
+ */
+{
+  const nearest = (x, z) => {
+    let best = Infinity;
+    for (const s of GULCH_SOLIDS) {
+      const dx = Math.max(s.x0 - x, 0, x - s.x1);
+      const dz = Math.max(s.z0 - z, 0, z - s.z1);
+      const d = Math.hypot(dx, dz);
+      if (d < best) best = d;
+    }
+    return best;
+  };
+  let worst = 0;
+  let at = null;
+  for (let x = -GULCH.halfX; x <= GULCH.halfX; x += 1)
+    for (let z = -GULCH.halfZ; z <= GULCH.halfZ; z += 1) {
+      if (!gulch.isOpen(x, z)) continue;
+      const d = nearest(x, z);
+      if (d > worst) {
+        worst = d;
+        at = [x, z];
+      }
+    }
+  ok(worst < 12, 'nowhere on the field is a long way from cover',
+    `worst ${worst.toFixed(1)} m, at (${at})`);
+}
+
+/**
+ * EVERY SPAWN IS REACHABLE FROM EVERY OTHER.
+ *
+ * The per-map checks above ask whether each authored point stands on open
+ * ground; none of them asks whether a player can WALK from one to another. On a
+ * map whose cover is 30 authored rectangles, the way that fails is a boulder
+ * nudged against a ridge to close a lane, or a buttress grown until it meets
+ * the base — leaving a pocket of perfectly standable ground nobody can enter or
+ * leave. A flood fill from the boot spawn is the cheapest question that catches
+ * it, and it also proves both courtyards connect to the field.
+ */
+{
+  const seen = new Set();
+  const start = gulch.spawnPoints[0];
+  const stack = [[Math.round(start[0]), Math.round(start[1])]];
+  seen.add(`${stack[0][0]},${stack[0][1]}`);
+  while (stack.length) {
+    const [x, z] = stack.pop();
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx;
+      const nz = z + dz;
+      const k = `${nx},${nz}`;
+      if (seen.has(k)) continue;
+      // 0.45 m of clearance: a body's width, not a point.
+      if (!gulch.isOpen(nx, nz, 0.45)) continue;
+      seen.add(k);
+      stack.push([nx, nz]);
+    }
+  }
+  const stranded = gulch.spawnPoints.filter(([x, z]) => {
+    for (let dx = -1; dx <= 1; dx++)
+      for (let dz = -1; dz <= 1; dz++) if (seen.has(`${Math.round(x) + dx},${Math.round(z) + dz}`)) return false;
+    return true;
+  });
+  ok(stranded.length === 0, 'every spawn point can be walked to from the boot spawn',
+    stranded.length ? stranded.map(([x, z, , zone]) => `${zone}(${x},${z})`).join(' ') : `${seen.size} cells reachable`);
+}
+
+/**
+ * THE CANYON MOUTHS ARE SEALED — the same probe as Rust's gates and Nuketown's
+ * street mouths, for the same reason. The cliff is deliberately left open at
+ * both ends of the gulch, and the rockslide parked in each gap is the only
+ * thing between it and open terrain. The probe stays 3 m deep: run it deeper
+ * and it reaches the base's back wall, and becomes an assertion that cannot fail.
+ */
+for (const sx of [-1, 1]) {
+  const leaks = [];
+  for (let z = -GULCH.mouthHalf + 0.2; z <= GULCH.mouthHalf - 0.2; z += 0.2) {
+    let solid = false;
+    for (let d = 0; d <= 3 && !solid; d += 0.2) if (inSolidBloodGulch(sx * (GULCH.halfX - d), z, 0)) solid = true;
+    if (!solid) leaks.push(z.toFixed(1));
+  }
+  ok(leaks.length === 0, `the ${sx < 0 ? 'west' : 'east'} canyon mouth is sealed`,
+    leaks.length ? `open at z=${leaks.join(',')}` : `${GULCH.mouthHalf * 2} m of opening covered`);
+}
+
+// Every boulder is authored cover: the table the build places from is the table
+// occupancy reads, so a rock a player can see is a rock they can hide behind.
+ok(
+  BOULDERS.every(([x, z, r]) => r >= 1.0 && GULCH_SOLIDS.some((s) => s.id.startsWith('boulder') && x > s.x0 && x < s.x1 && z > s.z0 && z < s.z1)),
+  'every authored boulder is real cover, not a decal',
+  `${BOULDERS.length} of them`
+);
 
 console.log(
   fail === 0
