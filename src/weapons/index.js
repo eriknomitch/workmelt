@@ -911,7 +911,13 @@ export class WeaponSystem {
   debugPose(kind = 'idle', opts = {}) {
     const vm = this.viewmodel;
     this.debugMode = kind;
-    this.setWeaponImmediate('rifle');
+    // The carbine unless a shot asks otherwise, so every existing shot in
+    // src/dev/shots.js frames exactly what it always did. The sniper's scope is
+    // the one optic whose sight picture is not a hole through the tube (see
+    // parts.js buildOptic), and a depth mask composited against a separately
+    // rendered world is not something the standalone weapons preview can show —
+    // it needs the real frame, which means the harness needs to reach it.
+    this.setWeaponImmediate(opts.weapon ?? 'rifle');
     vm.stopClip();
     vm.recPos.reset();
     vm.recRot.reset();

@@ -646,6 +646,12 @@ export class WeaponMaterials {
     if (key === 'glass') return this.glass();
     if (key === 'lens_ring') return this.lensRing();
     if (key === 'lens_vig') return this.lensVignette();
+    // A wide eyepiece's exit pupil is flat: the 34% rim ramp exists to stand in
+    // for a field stop and a tube wall eating the outer rays, and behind a 36 mm
+    // aperture with the mask handing the picture to the world camera there is
+    // neither. Left at full strength it is the last of the black doughnut — it
+    // took the sight picture down 50% over its outer fifth.
+    if (key === 'lens_vig_soft') return this.lensVignette(0.1);
     let m = this.cache.get(key);
     if (m) return m;
     const def = WEAPON_MATERIALS[key];
@@ -950,6 +956,39 @@ export class WeaponMaterials {
       fog: false,
     });
     m.name = 'ow-lens-vignette';
+    this.cache.set(key, m);
+    this.owned.push(m);
+    return m;
+  }
+
+  /**
+   * SIGHT-PICTURE MASK — depth, no colour.
+   *
+   * A magnified scope's eyepiece cannot be drawn as a hole through the tube (see
+   * the wide-eyepiece note in parts.js buildOptic). It is drawn as a hole through
+   * the VIEWMODEL instead: the viewmodel has its own colour+depth target and is
+   * composited premultiplied over the already-rendered world, so a disc that
+   * writes depth and leaves colour and alpha untouched hands those pixels back to
+   * the world — at the world camera's ADS zoom, which is the sight picture.
+   *
+   * `colorWrite: false` with `depthWrite: true` is the whole material. It must
+   * stay opaque (three only depth-sorts and depth-writes opaques by default) and
+   * the mesh must carry a negative renderOrder, because a mask that runs after
+   * the geometry it hides is a mask that hides nothing.
+   */
+  apertureMask() {
+    const key = 'apertureMask';
+    let m = this.cache.get(key);
+    if (m) return m;
+    m = new THREE.MeshBasicMaterial({
+      colorWrite: false,
+      depthWrite: true,
+      depthTest: true,
+      side: THREE.DoubleSide,
+      fog: false,
+      toneMapped: false,
+    });
+    m.name = 'ow-aperture-mask';
     this.cache.set(key, m);
     this.owned.push(m);
     return m;

@@ -59,6 +59,20 @@ const skyMat = new THREE.ShaderMaterial({
 });
 const sky = new THREE.Mesh(new THREE.SphereGeometry(30, 32, 16), skyMat);
 sky.frustumCulled = false;
+/**
+ * BACKDROP FIRST, AND OUT OF THE DEPTH TEST.
+ *
+ * The game draws the world and the viewmodel into separate targets and
+ * composites one over the other (render/index.js steps 9 + 14), so nothing the
+ * viewmodel writes into depth can reject a world pixel. This page has one scene
+ * and one pass, which is close enough for every view except a scoped optic: the
+ * sniper's aperture mask (see parts.js buildOptic) is a depth-only disc that is
+ * supposed to hand its pixels back to the world, and against a shared depth
+ * buffer it ate the sky instead and rendered the sight picture solid black.
+ * Drawing the backdrop first, untested, restores the game's ordering.
+ */
+skyMat.depthTest = false;
+sky.renderOrder = -2;
 scene.add(sky);
 
 const key = new THREE.DirectionalLight(0xfff2e0, 3.4);

@@ -1444,6 +1444,49 @@ export function buildOptic(asm, o) {
   const zOb = -len / 2;
 
   /**
+   * WIDE EYEPIECE — and why the aperture budget above cannot deliver one.
+   *
+   * Everything from here to the objective is solved for a sight picture that is
+   * literally SEEN THROUGH the tube, and that construction has a hard ceiling on
+   * how much of the housing the glass can fill. Measured on the ADS frame at
+   * 1600x900 (src/weapons/preview.js `view=ads`, which is the ADS eye point):
+   *
+   *   housing silhouette   19.08 mm @  92.5 mm  ->  tan 0.2062   404 px
+   *   sight picture (stop) 24.85 mm @ 203.5 mm  ->  tan 0.1221   240 px
+   *
+   * and 240 px is the OPTIMISTIC number — the eye-relief ring and the vignette
+   * take the measured edge in to 188 px, a bezel wider than the glass. Even at
+   * 240 that is a 26 % bezel, and the ratio is fixed by the two DISTANCES, not by the
+   * radii: the eyecup is 93 mm from the eye and the objective bore is 204 mm, so
+   * the objective has to be 2.2x the eyecup's radius just to break even. Filling
+   * 90 % of the housing needs a 37 mm bore radius on a 17.5 mm tube — a 75 mm
+   * objective on a 35 mm body, a megaphone. Shortening the tube does not help:
+   * even at len = 0 the eye is close enough that the bore would still have to be
+   * 1.5x the tube.
+   *
+   * So a magnified scope stops being a see-through tube. `wideEyepiece` opens the
+   * ocular clear aperture to (just past) the full tube, narrows the eyecup to a
+   * rim, and returns a `mask` — a depth-only disc the viewmodel draws first, in
+   * ADS only. Because the viewmodel has its own colour+depth target and is
+   * composited premultiplied over the world (see render/index.js steps 9 + 14),
+   * a disc that writes depth and no colour leaves those pixels at alpha 0: the
+   * already-rendered, already-3.3x-zoomed world shows through, and every part of
+   * the weapon behind the disc — the light trap, the objective, the tube wall,
+   * the turrets, and the muzzle brake 660 mm downrange — is depth-rejected out of
+   * the glass. That is the same picture a real scope's eyepiece projects, at the
+   * cost of one extra draw and no extra scene pass.
+   *
+   * The ocular stack is then sized off the APERTURE CONE rather than off one
+   * radius. The cone through the eyecup lip diverges by 0.18 mm per mm of depth,
+   * so glass sized on the lip's radius but sunk 7 mm in leaves a bright untinted
+   * ring around the sight picture; every element below sits within 4.5 mm of the
+   * lip and is sized to land on the same circle.
+   */
+  const wide = !!o.wideEyepiece;
+  // Outer radius of the ocular ring — the short flare at the rear of the tube.
+  const rOcRing = rTube * (o.bellOc ?? 1.05);
+
+  /**
    * Main tube: a straight section at the ocular, a conical flare, then the
    * objective bell. Every rim carries a 0.3 mm chamfer face — the only thing on
    * the silhouette that can catch a specular line and say the rim has thickness.
@@ -1464,11 +1507,14 @@ export function buildOptic(asm, o) {
       [zOb + 0.022, rTube * 1.01],
       [zOb + 0.03, rTube],
       [zOc - 0.012, rTube],
-      [zOc - 0.01, rTube * 1.05],
-      [zOc - 0.002, rTube * 1.05],
-      [zOc - 0.0003, rTube * 1.02],
-      [zOc, rTube * 0.995],
-      [zOc, rBoreOc * 1.02],
+      [zOc - 0.01, rOcRing],
+      [zOc - 0.002, rOcRing],
+      // Rear face. On a wide eyepiece the bore is WIDER than the tube's mid-body
+      // radius, so the face is what is left of the ocular ring's wall — 0.24 mm
+      // of chamfered rim, and the rubber sleeves it (see the eyecup below).
+      [zOc - 0.0003, wide ? rOcRing * 0.995 : rTube * 1.02],
+      [zOc, wide ? rOcRing * 0.985 : rTube * 0.995],
+      [zOc, wide ? rBoreOc * 1.005 : rBoreOc * 1.02],
     ],
     SEG
   );
@@ -1485,13 +1531,25 @@ export function buildOptic(asm, o) {
    * Because the cone opens away from the eye, the wall is seen at a much shallower
    * angle than a cylinder's would be, so it occupies a thin 3 px annulus instead
    * of a 69 px band — which is the geometric half of the drainpipe fix.
+   *
+   * The trap's ocular end doubles as the FIELD STOP on a wide eyepiece, so it
+   * runs 7.5 mm further back — right up under the rubber lip. Stopping it 9 mm
+   * short (which is correct behind a 12 mm bore, where the eye-relief ring below
+   * covers the gap) would leave the last few millimetres of bore unmodelled, and
+   * with the aperture now at the tube wall that gap is inside the sight picture:
+   * back-face culling turns it into a notch of see-through at the rim.
    */
+  const zTrapOc = zOc - (wide ? 0.002 : 0.009);
   const baffle = latheZ(
     [
       [zOb + 0.001, rBoreOb],
       [zOb + 0.001, rBoreOb * 0.985],
-      [zOc - 0.009, rBoreOc * 0.985],
-      [zOc - 0.009, rBoreOc],
+      // The rear lip is a FRACTION of the bore, so it grows with it: 1.5 % is the
+      // 0.18 mm shoulder a 12 mm red dot bore wants and 0.55 mm — another ring of
+      // bezel — on a 36 mm one. 0.3 % holds it at a 1 px hairline and hands the
+      // framing back to the rubber lip 0.8 mm outboard.
+      [zTrapOc, rBoreOc * (wide ? 0.997 : 0.985)],
+      [zTrapOc, rBoreOc],
     ],
     SEG_IN
   );
@@ -1507,7 +1565,11 @@ export function buildOptic(asm, o) {
 
   // The ocular clear aperture — everything downstream (vignette, edge ring,
   // reticle vignette) is derived from this one number.
-  const lensR = rBoreOc * 0.99;
+  const lensR = rBoreOc * (wide ? 1.0 : 0.99);
+  // How far behind the tube's rear face the ocular stack sits. A wide eyepiece
+  // pulls it up against the rim (see the aperture-cone note above); a red dot
+  // keeps the deep-set element the eye-relief ring is built around.
+  const zStack = wide ? 0.0032 : 0.007;
 
   /**
    * EYE-RELIEF RING. A real sight has a black field stop right behind the ocular
@@ -1516,20 +1578,28 @@ export function buildOptic(asm, o) {
    * aperture edge is the tube's own lit inner wall and the "glass" reads as a
    * drilled hole. It is 1.2 mm deep and no more — anything longer is another
    * concentric ring.
+   *
+   * A wide eyepiece has no shoulder to put it on — the bore IS the tube — and it
+   * does not need one: the rubber lip 0.8 mm outboard is already an unlit edge
+   * against the glass, and the light trap now runs up to `zTrapOc` to supply the
+   * hairline. This ring is measurably the "thick black inner ring": at a 12 mm
+   * bore it is a 3.4 mm annulus facing the eye, 60 px of the 404 px housing.
    */
-  const relief = latheZ(
-    [
-      [0, lensR * 0.998],
-      [0.0012, lensR * 1.012],
-      [0.0034, rBoreOc * 1.01],
-      [0.0038, rTube * 1.0],
-      [0.0038, rBoreOc],
-      [0, rBoreOc],
-    ],
-    SEG_IN
-  );
-  asm.add(relief, 'optic_tube', { y, z: z + zOc - 0.0045 });
-  relief.dispose();
+  if (!wide) {
+    const relief = latheZ(
+      [
+        [0, lensR * 0.998],
+        [0.0012, lensR * 1.012],
+        [0.0034, rBoreOc * 1.01],
+        [0.0038, rTube * 1.0],
+        [0.0038, rBoreOc],
+        [0, rBoreOc],
+      ],
+      SEG_IN
+    );
+    asm.add(relief, 'optic_tube', { y, z: z + zOc - 0.0045 });
+    relief.dispose();
+  }
 
   // Lens elements — AR-coated glass, both ends, slightly dished. The coating's
   // angle-dependent hue (green on axis, magenta by 70 deg) lives on the
@@ -1552,7 +1622,7 @@ export function buildOptic(asm, o) {
     SEG_IN
   );
   asm.add(lensOb, 'glass', { y, z: z + zOb + 0.0055 });
-  asm.add(lensOc, 'glass', { y, z: z + zOc - 0.007, ry: Math.PI });
+  asm.add(lensOc, 'glass', { y, z: z + zOc - zStack, ry: Math.PI });
   lensOc.dispose();
   lensOb.dispose();
 
@@ -1573,8 +1643,16 @@ export function buildOptic(asm, o) {
   // was 0.9-0.965 at intensity 0.55 and rendered as a 12 px blown-white band
   // right around the sight picture: a worse artefact than the one it replaced.
   {
-    const edge = new THREE.RingGeometry(lensR * 0.965, lensR * 0.99, SEG_IN, 1);
-    asm.add(edge, 'lens_ring', { y, z: z + zOc - 0.0066 });
+    // 0.965 of a 12 mm aperture is the 0.30 mm the note above is about; 0.965 of a
+    // 36 mm one is 0.9 mm, and the hairline comes back as the blown band. Held at
+    // an absolute width on a wide eyepiece: 6 px at ADS scale rather than 18.
+    const edge = new THREE.RingGeometry(
+      wide ? lensR * 0.99 - 0.00032 : lensR * 0.965,
+      lensR * 0.99,
+      SEG_IN,
+      1
+    );
+    asm.add(edge, 'lens_ring', { y, z: z + zOc - zStack + 0.0004 });
     edge.dispose();
   }
 
@@ -1585,8 +1663,29 @@ export function buildOptic(asm, o) {
    * ocular glass, so it darkens the sight picture and nothing else.
    */
   const vig = new THREE.CircleGeometry(lensR * 0.995, SEG_IN);
-  asm.add(vig, 'lens_vig', { y, z: z + zOc - 0.0085 });
+  asm.add(vig, wide ? 'lens_vig_soft' : 'lens_vig', {
+    y,
+    z: z + zOc - zStack - (wide ? 0.0006 : 0.0015),
+  });
   vig.dispose();
+
+  /**
+   * APERTURE MASK — the depth-only disc described at the top of this function.
+   *
+   * It is NOT added to the assembly: it needs its own draw order (first, so the
+   * geometry it hides has not already written colour) and its own visibility (it
+   * only exists once the eye is behind the glass), and an Assembly bucket is a
+   * merged, always-on mesh. `buildOptic` returns the placement and the Viewmodel
+   * owns the mesh — see Viewmodel.addWeapon / _updateApertureMask.
+   *
+   * 4.5 mm behind the rear face puts it in front of the light trap's field stop
+   * (`zTrapOc`, 2 mm) and behind every element of the ocular stack, so the glass,
+   * the edge ring and the vignette all still draw over the sight picture. The
+   * radius is 5.5 % proud of the bore: enough that the rubber lip is what the eye
+   * sees the picture end at rather than the mask itself, and still 10 % inside the
+   * housing silhouette so it can never punch a hole in the eyecup.
+   */
+  const mask = wide ? { y, z: z + zOc - 0.0045, r: rBoreOc * 1.055 } : null;
 
   /**
    * Turrets: windage on the right, elevation on top, each a knurled cap with an
@@ -1743,18 +1842,43 @@ export function buildOptic(asm, o) {
    * as a hole punched in the frame. Moulded rubber is nearly as dark but it takes
    * the mask bake, the micro-relief and a faint shading gradient, so the bezel
    * reads as a surface.
+   *
+   * On a WIDE EYEPIECE the same part becomes a RIM. Every radius that sets the
+   * silhouette is untouched — 1.075 at 1.6 mm, the 1.1 crown at 5.5 mm, the 1.09
+   * rear-most point at 7.2 mm — so the optic's outer circle in ADS is the same
+   * 404 px it always was. Only the lip moves: out from 0.787 rTube to 0.995 of a
+   * bore that is now 1.04 rTube, which leaves 0.97 mm of rubber between the glass
+   * and the crown. Measured on the ADS frame: 357 px of sight picture to the hard
+   * edge, 348 px to the half-luminance crossing (a coated lens does not end on a
+   * pixel), inside 404 px of housing — a 5.8-6.9 % bezel against the 26 % it
+   * replaces. The rim is still 24 px wide on screen, which is all the moulded
+   * rubber ever needed to carry its own shading.
+   *
+   * The flank comes back at 1.06 rTube rather than 1.03: it now sleeves the
+   * ocular ring (`rOcRing`, 1.075) instead of the bare tube, and rubber sunk
+   * inside the alloy it is supposed to cover is a z-fight, not a bumper.
    */
   const cup = latheZ(
-    [
-      [0, rBoreOc * 0.995],
-      [0.0004, rBoreOc * 1.03],
-      [0.0009, rTube * 1.02],
-      [0.0018, rTube * 1.075],
-      [0.0055, rTube * 1.1],
-      [0.0072, rTube * 1.09],
-      [-0.0042, rTube * 1.085],
-      [-0.0048, rTube * 1.03],
-    ],
+    wide
+      ? [
+          [0, rBoreOc * 0.995],
+          [0.0006, rBoreOc * 1.012],
+          [0.0016, rTube * 1.075],
+          [0.0055, rTube * 1.1],
+          [0.0072, rTube * 1.09],
+          [-0.0042, rTube * 1.085],
+          [-0.0048, rOcRing * 1.004],
+        ]
+      : [
+          [0, rBoreOc * 0.995],
+          [0.0004, rBoreOc * 1.03],
+          [0.0009, rTube * 1.02],
+          [0.0018, rTube * 1.075],
+          [0.0055, rTube * 1.1],
+          [0.0072, rTube * 1.09],
+          [-0.0042, rTube * 1.085],
+          [-0.0048, rTube * 1.03],
+        ],
     SEG
   );
   asm.add(cup, 'rubber', { y, z: z + zOc - 0.0012 });
@@ -1803,6 +1927,8 @@ export function buildOptic(asm, o) {
     apertureR: lensR * 0.94,
     tubeR: rTube,
     len,
+    // Depth-only sight-picture mask, or null on a see-through optic.
+    mask,
     // Which reticle the viewmodel collimates behind this glass: a red dot's
     // emitter, or a magnified scope's etched crosshair. See Viewmodel._updateReticle.
     reticle: o.reticle ?? 'dot',
