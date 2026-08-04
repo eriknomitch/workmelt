@@ -457,6 +457,29 @@ export class Viewmodel {
     if (parts.trigger && n.triggerPivot) applyNode(parts.trigger, n.triggerPivot);
     if (parts.selector && n.selectorPivot) applyNode(parts.selector, n.selectorPivot);
 
+    /**
+     * The scope's sight-picture mask (see WeaponMaterials.apertureMask). It is
+     * built here rather than in the model assembly because it needs three things
+     * a merged material bucket cannot give it: it draws FIRST, it is hidden until
+     * the eye is behind the glass, and it opens with the ADS blend.
+     */
+    const maskSpec = model.nodes.opticGlass?.mask ?? null;
+    let apertureMask = null;
+    if (maskSpec) {
+      apertureMask = new THREE.Mesh(
+        new THREE.CircleGeometry(maskSpec.r, 64),
+        this.mats.apertureMask()
+      );
+      apertureMask.name = `${model.id}-aperture-mask`;
+      apertureMask.position.set(0, maskSpec.y, maskSpec.z);
+      apertureMask.renderOrder = -1;
+      apertureMask.frustumCulled = false;
+      apertureMask.castShadow = false;
+      apertureMask.receiveShadow = false;
+      apertureMask.visible = false;
+      group.add(apertureMask);
+    }
+
     const entry = {
       id: model.id,
       def,
@@ -464,6 +487,7 @@ export class Viewmodel {
       group,
       parts,
       meshes,
+      apertureMask,
       tris,
       clips: buildClips(model.nodes, def),
       // the sight point and its axis, in weapon space
@@ -895,6 +919,7 @@ export class Viewmodel {
 
     /* -------- reticle -------------------------------------------------- */
     this._updateReticle(w, ads);
+    this._updateApertureMask(w, ads);
 
     /* -------- viewmodel FOV ------------------------------------------- */
     const fovBase = 60;
@@ -903,6 +928,29 @@ export class Viewmodel {
       vcam.fov = targetFov;
       vcam.updateProjectionMatrix();
     }
+  }
+
+  /**
+   * OPEN THE SCOPE'S SIGHT PICTURE, and only while the eye is behind it.
+   *
+   * The mask is a depth punch through the viewmodel, so away from the ADS eye
+   * point it is a lie: the disc is 5.5 % wider than the bore, and seen from the
+   * hip pose's angle its silhouette clears the tube and bites a hole out of the
+   * mount, the objective and the barrel behind it. It has to be off at the hip.
+   *
+   * SCALED rather than switched. A visibility flip swaps a dark tube for a full
+   * sight picture in one frame, in the middle of a 0.34 s raise, and the eye
+   * reads that as a display glitch rather than as a scope. Growing the disc over
+   * the last 40 % of the blend is the same thing a real exit pupil does as the
+   * eye comes into position — the picture opens from a spot to the full field —
+   * and at scale 0 the geometry is degenerate, so the hip pose costs nothing.
+   */
+  _updateApertureMask(w, ads) {
+    const mask = w.apertureMask;
+    if (!mask) return;
+    const open = smootherstep(0.55, 0.95, ads);
+    mask.visible = open > 0.002;
+    if (mask.visible) mask.scale.set(open, open, 1);
   }
 
   /* ---------------------------------------------------------------------- */
@@ -1037,19 +1085,37 @@ export class Viewmodel {
     _v3.set(0, 0, -1).applyQuaternion(this.rig.quaternion).normalize();
 
     // Where the axis ray from the eye crosses the lens plane.
-    const s = _v.dot(_v3);
-    if (s <= 0.02) {
+    const axisS = _v.dot(_v3);
+    if (axisS <= 0.02) {
       this.reticle.visible = false;
       return;
     }
-    _v2.copy(_v3).multiplyScalar(s); // dot position in camera space
-    // Vignette: how far off the lens centre the apparent dot lands.
+    _v2.copy(_v3).multiplyScalar(axisS); // foot of the perpendicular from the lens
+    // Vignette: how far off the lens centre the apparent dot lands. Measured on
+    // the optic's own plane, so it is the true off-axis distance whatever plane
+    // the geometry ends up drawn on below.
     const offX = _v2.x - _v.x;
     const offY = _v2.y - _v.y;
     const off = Math.hypot(offX, offY);
     const apertureR = optic.apertureR ?? 0.01;
     // Eye-to-lens distance, captured BEFORE the lookAt below reuses `_v`.
     const lensDist = Math.max(1e-4, _v.length());
+    /**
+     * WHICH PLANE THE GEOMETRY SITS ON IS FREE, and on a masked optic it has to
+     * move. A collimated reticle's apparent DIRECTION is the tube axis at any
+     * distance — every size term below is `s * angle`, so pulling the plane in
+     * and shrinking the geometry by the same factor is a no-op on screen. But the
+     * plane that the optic's own centre projects to is 151 mm out, and the
+     * aperture mask writes depth at 103 mm, so a scope's crosshair drawn on it is
+     * depth-rejected by the very disc that opens the sight picture. The mask sits
+     * `mask.z - center.z` further back along the axis in weapon space, so its own
+     * plane is exact rather than guessed at; 92 % of it clears the mask and still
+     * lands behind nothing but air. Unmasked optics keep the original plane.
+     */
+    const s = optic.mask
+      ? Math.min(axisS, (axisS - (optic.mask.z - optic.center[2])) * 0.92)
+      : axisS;
+    _v2.copy(_v3).multiplyScalar(s);
     let alpha = 1 - smootherstep(apertureR * 0.5, apertureR * 1.05, off);
     alpha *= lerp(0.55, 1, ads); // brighter once the eye is behind the glass
 
@@ -1158,6 +1224,8 @@ export class Viewmodel {
   dispose() {
     for (const w of this.weapons.values()) {
       for (const m of w.meshes) m.geometry.dispose();
+      // Not in `meshes`: the mask is built outside the assembly (see addWeapon).
+      w.apertureMask?.geometry.dispose();
     }
     this.weapons.clear();
     this.armL.dispose();

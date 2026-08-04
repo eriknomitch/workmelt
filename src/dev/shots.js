@@ -63,6 +63,14 @@ export const SHOTS = {
     apply: (e) => e.ctx.peek('weapons')?.debugPose?.('ads'),
     doc: 'Aiming down sights — optic alignment, depth of field, reticle.',
   },
+  scope: {
+    pos: [6, 1.7, 10],
+    look: [-2, 1.8, -2],
+    fov: 58,
+    time: 16.5,
+    apply: (e) => e.ctx.peek('weapons')?.debugPose?.('ads', { weapon: 'sniper' }),
+    doc: 'Scoped sniper — the eyepiece aperture mask, the bezel, the 3.3x picture.',
+  },
   muzzle: {
     pos: [6, 1.7, 10],
     look: [-2, 1.8, -2],

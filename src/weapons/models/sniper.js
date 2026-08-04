@@ -347,25 +347,38 @@ export function buildSniper() {
 
   /* ---- optic ----------------------------------------------------------- */
   /**
-   * 35 mm tube, 105 mm long, a 56 mm belled objective under a 10 mm shade.
+   * 35 mm tube, 105 mm long, a 56 mm belled objective under a 10 mm shade, and a
+   * WIDE EYEPIECE — a 36.4 mm clear aperture inside a 38.5 mm eyecup.
    *
-   * SOLVED ON THE SAME APERTURE BUDGET AS THE RED DOT (see buildOptic), because
-   * doubling the tube length is exactly what breaks that budget: the sight
-   * picture is stopped by the objective bore subtended at (relief + len), so at
-   * the carbine's 1.065 objective ratio a 105 mm tube would deliver
-   * 0.0186/0.210 = 0.089 against a 0.183 housing — 48 %, the drainpipe.
-   * A magnified scope's answer is a bigger front lens, so `boreOb` 1.42 and
-   * `bellOb` 1.60:
-   *   ocular    0.0140 / 0.105 -> 0.1333
-   *   objective 0.0249 / 0.210 -> 0.1184     (the stop, as it should be)
-   *   housing   0.0193 / 0.105 -> 0.1833
-   * 65 % of the housing is sight picture, matching the red dot's 69 %.
+   * The objective numbers below are still the aperture budget's (see buildOptic):
+   * `boreOb` 1.42 and `bellOb` 1.60 are what keep the OBJECTIVE cone off the
+   * bottom of the ocular's on a tube twice the red dot's length, and they are
+   * what the sight picture falls back to at any ADS blend below full, when the
+   * mask has not opened yet. They are not what frames the shot any more.
+   *
+   * At full ADS the eyepiece is. A see-through tube's ratio is set by distance,
+   * not by radius — the eyecup is 93 mm from the eye and the objective bore is
+   * 204 mm — so the best the budget could ever do here was 240 px of glass in a
+   * 404 px housing, a 26 % bezel: the black doughnut this scope was. Filling the
+   * housing the way a magnified optic actually looks needs a 75 mm objective, or
+   * it needs the eyepiece to stop pretending to be a hole. `wideEyepiece` takes
+   * the second: the bore opens past the tube wall (`boreOc` 1.04 on a 1.075
+   * ocular ring), the rubber cup becomes a 0.97 mm rim without moving a single
+   * radius that sets the silhouette, and a depth-only disc hands the aperture
+   * back to the world camera's own 3.3x picture.
+   *
+   *   sight picture  17.93 mm @ 100.5 mm -> tan 0.1784   350 px
+   *   housing        19.08 mm @  92.5 mm -> tan 0.2062   404 px
+   * A 6.7 % bezel, and the muzzle brake the 95 mm mount height was fighting to
+   * push out of the glass is now behind the mask entirely.
    */
   const optic = buildOptic(body, {
     rTube: 0.0175,
     len: 0.105,
     hood: 0.01,
-    boreOc: 0.8,
+    wideEyepiece: true,
+    boreOc: 1.04,
+    bellOc: 1.075,
     boreOb: 1.42,
     bellOb: 1.6,
     y: opticY,
