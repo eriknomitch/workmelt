@@ -854,6 +854,18 @@ export const PALETTE = {
       bg_rock: { name: 'flat_matte', surface: 'concrete', opts: { ...FLAT, tint: 0xa4886a } },
       /** The shaded value of the same stone — scatter, plinths, rock shadow. */
       bg_rock_dark: { name: 'flat_matte', surface: 'concrete', opts: { ...FLAT, tint: 0x7b6552 } },
+      /**
+       * The spire, and only the spire — sun-bleached stone, a clear value above
+       * every other rock on the map.
+       *
+       * This is albedo doing a job lighting cannot. The landmark has to be
+       * picked out against the canyon wall from BOTH ends of a map whose ends
+       * face opposite ways, so whichever way the sun is turned, one of those
+       * views is backlit and the spire's visible faces and the wall behind them
+       * are lit by the same sky. A material two stops lighter survives that;
+       * a sun angle does not.
+       */
+      bg_spire: { name: 'flat_matte', surface: 'concrete', opts: { ...FLAT, tint: 0xd6c4a4 } },
       /** Both bases: walls, roofs, ramps, parapets. */
       bg_conc: { name: 'flat_matte', surface: 'concrete', opts: { ...FLAT, tint: 0xa8adb0 } },
       /**

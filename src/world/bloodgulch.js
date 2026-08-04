@@ -29,7 +29,7 @@ import { fbm3 } from './util.js';
  *                        perimeter is sealed, so nothing out there is reachable
  *                        and its triangles would only be BVH physics walks.
  *
- * The whole map lands at 12 draw calls against a budget of 320.
+ * The whole map lands at 13 draw calls against a budget of 320.
  *
  * LAYOUT (LEVEL space, origin at the canyon centre, north at -Z, x is the
  * base-to-base axis):
@@ -660,11 +660,20 @@ function buildPerimeter(A, rng) {
   }
 }
 
-/** The Tooth: three slabs, each turned off the one below it. */
+/**
+ * The Tooth: three slabs, each turned off the one below it.
+ *
+ * The bottom slab is the field's own stone so the spire grows out of the
+ * landscape; the two above it are `bg_spire`, which is the one material on this
+ * map that exists to be seen rather than to be cheap (it is the same flat bake,
+ * so "exists to be seen" still costs nothing). See the palette entry for why
+ * the landmark is separated by albedo and not by where the sun is put.
+ */
 function buildTooth(A, rng) {
   let y = 0;
-  for (const [w, d, h, ry] of TOOTH.levels) {
-    A.add('bg_rock', BOX(A), LL(IDENT, TOOTH.x, y + h / 2, TOOTH.z, ry, w, h, d));
+  for (let i = 0; i < TOOTH.levels.length; i++) {
+    const [w, d, h, ry] = TOOTH.levels[i];
+    A.add(i === 0 ? 'bg_rock' : 'bg_spire', BOX(A), LL(IDENT, TOOTH.x, y + h / 2, TOOTH.z, ry, w, h, d));
     A.box('concrete', TOOTH.x, y + h / 2, TOOTH.z, w, h, d, ry);
     y += h;
   }
@@ -878,18 +887,25 @@ export const BLOODGULCH_MAP = {
   isOpen: isOpenBloodGulch,
   build: buildBloodGulch,
   /**
-   * Late morning, high and clear. The gulch is remembered as a bright place,
-   * and clear air is also the cheap choice: `cloudCoverage` low enough that the
-   * sky is a gradient rather than a cloud field, and no cirrus layer at all.
+   * Mid-morning, clear, and the sun deliberately lower than noon — 9:30 sits
+   * around 50° rather than the 62° of 10:30, and on this map that is a
+   * legibility decision rather than a mood one.
    *
-   * `hour` is doing real work beyond the mood. At 10:30 the sun sits off the
-   * canyon's long axis, so the two cliff walls are lit and shaded rather than
-   * both being the same flat tan — the same job `transform.yaw` does for the
-   * bases. `fogHeight` is kept above the cliff line so the tops stay in it and
-   * the far mesas sit back where they belong.
+   * Every surface here is flat-shaded with no normal map, so the only thing
+   * that separates one vertical face from another is the angle it makes with
+   * the sun. Under a high sun the vertical faces are all lit by sky alone and
+   * come out the same value. A lower sun lights one side of everything vertical
+   * and lays long shadows across a floor that is otherwise one unbroken green.
+   * It is only half the answer, though, and the smaller half: the map faces
+   * both ways, so one end is always backlit. What actually keeps the landmark
+   * off the canyon wall is `bg_spire`'s albedo — see `buildTooth`.
+   *
+   * Clear air is also the cheap choice: `cloudCoverage` low enough that the sky
+   * is a gradient rather than a cloud field, and no cirrus layer at all.
+   * `fogHeight` stays above the cliff line so the tops sit back in it.
    */
   environment: {
-    hour: 10.5,
+    hour: 9.5,
     exposureBias: -0.15,
     weather: {
       turbidity: 2.6,
