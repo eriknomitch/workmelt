@@ -102,3 +102,45 @@ against a shared dev server; the others (`playtest:graphics`,
 `playtest:grenade`, `playtest:lobby`) are built the same way and all fall back
 to `OW_PORT` with small viewports. They are still a minute or more each under
 SwiftShader, so run the one that covers your change, not the set.
+
+## Always look at the images you generate
+
+Anything that writes a `.png` — `tools/capture.mjs`, `tools/imagediff.mjs`, a
+`page.screenshot` in a playtest, a one-off script — produces a file nobody has
+seen. The command exiting 0 is not the check; the picture is. So whenever a
+command writes an image to `/tmp` or the scratchpad, **immediately `Read` that
+exact path**. A `Read` on an image renders it inline in the transcript, which is
+the only way the render actually gets looked at rather than assumed. Paying 40 s
+of SwiftShader for a frame and then never reading it is worse than skipping the
+capture, because it reads as a visual check that never happened.
+
+Pass an explicit `--out=` under the scratchpad directory rather than letting a
+tool pick its own path, so you know what to read back:
+
+```
+cd /home/user/workmelt; time OW_PORT=5273 node tools/capture.mjs --shot=hero \
+  --w=640 --h=360 --settle=8 --timeout=600000 --query="prewarm=0&q=performance" \
+  --out=$SCRATCHPAD/default.png 2>&1 | tail -4
+```
+
+then `Read` with `file_path` = `$SCRATCHPAD/default.png` (the real absolute
+scratchpad path for the session — the tools take no shell expansion of a
+variable you did not export).
+
+**Then send it to the user with `SendUserFile`** when the image is the point of
+the work — a before/after, a layout change, a bug you are demonstrating.
+`Read` puts the frame in front of *me*; only `SendUserFile` puts it in front of
+*them*. Pass `display: "render"` so it opens inline instead of as a download
+card, batch related frames into one call, and caption it with what to look at:
+
+```
+SendUserFile({
+  files: ["$SCRATCHPAD/ads-before.png", "$SCRATCHPAD/ads-final.png"],
+  caption: "Before / after at the ADS eye point (960x540).",
+  display: "render",
+  status: "normal",
+})
+```
+
+Two frames captured at the same `--w/--h/--settle` are a fair before/after;
+frames captured at different settings are not, and must not be presented as one.
