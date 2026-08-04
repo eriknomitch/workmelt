@@ -815,4 +815,58 @@ export const PALETTE = {
       gb_dark: { name: 'flat_matte', surface: 'wood', opts: { ...FLAT, tint: 0x44484e } },
     };
   })(),
+
+  /* ────────────────────────────────────────────────────────────── the gulch ── */
+  /**
+   * `bg_*` — Blood Gulch's canyon family, and the same bargain as `gb_*` above:
+   * every key is `flat_matte` differing only by `tint`, so the whole map costs
+   * ONE resident 256 bake and no texture memory of its own. That is the map's
+   * brief — performance over realism — expressed in the material layer, where
+   * it is far cheaper than in the geometry.
+   *
+   * The `FLAT` block is repeated rather than shared with the greybox family
+   * above ON PURPOSE. `gb_*` opens by saying a family cannot leak because it is
+   * only a look if something references it; hoisting one shared constant would
+   * make every future edit to Nuketown's flatness an edit to this map's, which
+   * is exactly the coupling those keys exist to avoid.
+   *
+   * Tints stay inside the 0.02-0.9 reflectance band this file opens with —
+   * `maps.selftest.mjs` asserts it for both families.
+   */
+  ...(() => {
+    const FLAT = {
+      vertexMasks: false,
+      weather: [0, 0, 0, 0],
+      macro: [0.05, 0, 0, 0],
+      macroBig: [1, 0, 0, 0],
+      patch: [0, 0, 0, 0],
+      detail: [8, 0, 0, 0],
+      parallax: 0,
+      detile: 0,
+      normalStrength: 0,
+      aoStrength: 0,
+      roughness: [0, 0.88, 0.88],
+    };
+    return {
+      /** The valley floor. Dry summer grass, not lawn green. */
+      bg_grass: { name: 'flat_matte', surface: 'dirt', opts: { ...FLAT, tint: 0x74914e } },
+      /** Every cliff, buttress, ridge and boulder: the canyon's sandstone. */
+      bg_rock: { name: 'flat_matte', surface: 'concrete', opts: { ...FLAT, tint: 0xa4886a } },
+      /** The shaded value of the same stone — scatter, plinths, rock shadow. */
+      bg_rock_dark: { name: 'flat_matte', surface: 'concrete', opts: { ...FLAT, tint: 0x7b6552 } },
+      /** Both bases: walls, roofs, ramps, parapets. */
+      bg_conc: { name: 'flat_matte', surface: 'concrete', opts: { ...FLAT, tint: 0xa8adb0 } },
+      /**
+       * The two team accents. DESIGN.md's one-accent-per-map rule is bent here
+       * and only here: on this map "which end am I looking at" IS the red/blue
+       * split, so the colours are the navigation. They are confined to the
+       * bases' trim bands and flag stands — nothing in the landscape carries
+       * either of them, which is what keeps the pair legible at 90 m.
+       */
+      bg_red: { name: 'flat_matte', surface: 'concrete', opts: { ...FLAT, tint: 0xa8443c } },
+      bg_blue: { name: 'flat_matte', surface: 'concrete', opts: { ...FLAT, tint: 0x3c6ba8 } },
+      /** Door reveals and the underside of the roof ring — the shadow value. */
+      bg_dark: { name: 'flat_matte', surface: 'metal', opts: { ...FLAT, tint: 0x4b5054 } },
+    };
+  })(),
 };

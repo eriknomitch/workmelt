@@ -144,8 +144,9 @@ says otherwise.
 ```js
 const world = ctx.get('world');
 world.mapId                 // 'market' | 'rust' | 'wilmot' | 'loop' | 'fishers'
-                            // | 'nuketown' — see the REGISTRY in world/maps.js,
-                            // which is also where a map is enabled or parked
+                            // | 'nuketown' | 'bloodgulch' — see the REGISTRY in
+                            // world/maps.js, which is also where a map is
+                            // enabled or parked
 world.maps                  // [{ id, name, description, blurb, size }] for menus
                             // — enabled maps only, in registry order
 await world.setMap('rust')  // tear the level down and build another. Emits

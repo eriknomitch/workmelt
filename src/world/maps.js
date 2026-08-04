@@ -4,6 +4,7 @@ import { WILMOT_MAP } from './wilmot.js';
 import { LOOP_MAP } from './loop.js';
 import { FISHERS_MAP } from './fishers.js';
 import { NUKETOWN_MAP } from './nuketown.js';
+import { BLOODGULCH_MAP } from './bloodgulch.js';
 
 /**
  * WORLD — the map list.
@@ -101,6 +102,13 @@ const REGISTRY = [
     enabled: true,
     name: 'Nuketown',
     description: 'Two houses across a test-site street',
+  },
+  {
+    map: BLOODGULCH_MAP,
+    order: 37,
+    enabled: true,
+    name: 'Blood Gulch',
+    description: 'Box canyon, a base at each end',
   },
   {
     map: MARKET_MAP,
@@ -229,4 +237,4 @@ export function saveMapPreference(id) {
   }
 }
 
-export { MARKET_MAP, RUST_MAP, WILMOT_MAP, LOOP_MAP, FISHERS_MAP, NUKETOWN_MAP };
+export { MARKET_MAP, RUST_MAP, WILMOT_MAP, LOOP_MAP, FISHERS_MAP, NUKETOWN_MAP, BLOODGULCH_MAP };
