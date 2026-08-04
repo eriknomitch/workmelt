@@ -1177,6 +1177,20 @@ for (const b of BASES) {
  * own footprint to interrupt it.
  */
 ok(TOOTH.height > 12, 'the Tooth is a landmark', `${TOOTH.height} m`);
+// `height` is what this section reasons about; the slabs are what gets built.
+// They are two numbers in two places, so they are checked against each other.
+ok(
+  Math.abs(TOOTH.levels.reduce((a, l) => a + l[2], 0) - TOOTH.height) < 0.01,
+  'and the slabs it is built from add up to that height',
+  `${TOOTH.levels.reduce((a, l) => a + l[2], 0)} m of slab`
+);
+// The top slab carries the silhouette: squat courses all the way up read as a
+// stepped mesa, and a mesa is not a thing you navigate by.
+ok(
+  TOOTH.levels[2][2] > TOOTH.levels[0][2] && TOOTH.levels[2][0] < TOOTH.levels[0][0] / 2,
+  'and it finishes in a spire rather than a step',
+  `${TOOTH.levels[2][0]} m wide, ${TOOTH.levels[2][2]} m tall on top`
+);
 {
   const [red, blue] = [BASES[0], BASES[1]];
   let blocked = 0;

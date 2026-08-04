@@ -236,14 +236,26 @@ export class Minimap {
     // isOpen() is authored in world space; the affine above converts, so the
     // runs come out exactly axis-aligned in the level frame they were authored
     // in and tile without seams.
+    //
+    // The window comes from the MAP'S OWN BOUNDS, clamped to what the bake can
+    // hold. It used to be the market's extent as four literals, which drew no
+    // floor at all past x = ±44 — invisible on every map until one shipped
+    // wider than that (Blood Gulch is 104 m across), and then it is a minimap
+    // that goes blank in the last 8 m at each end of the canyon.
+    const HALF = this.span * 0.5;
+    const bounds = world.map?.bounds;
+    const bx0 = Math.max(-HALF, bounds ? bounds[0] : -44);
+    const bx1 = Math.min(HALF, bounds ? bounds[3] : 44);
+    const bz0 = Math.max(-HALF, bounds ? bounds[2] : -64);
+    const bz1 = Math.min(HALF, bounds ? bounds[5] : 54);
     const STEP = 0.5;
     g.fillStyle = '#63717e';
-    for (let lz = -64; lz < 54; lz += STEP) {
+    for (let lz = bz0; lz < bz1; lz += STEP) {
       let run = -1;
-      for (let lx = -44; lx <= 44 + STEP; lx += STEP) {
+      for (let lx = bx0; lx <= bx1 + STEP; lx += STEP) {
         const cxw = ox + lx * xx + (lz + STEP * 0.5) * zx;
         const czw = oz + lx * xz + (lz + STEP * 0.5) * zz;
-        const open = lx <= 44 && world.isOpen(cxw, czw, 0);
+        const open = lx <= bx1 && world.isOpen(cxw, czw, 0);
         if (open && run < 0) run = lx;
         else if (!open && run >= 0) {
           g.fillRect(run, lz, lx - run, STEP * 1.16);

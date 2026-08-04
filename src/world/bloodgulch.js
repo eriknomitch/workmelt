@@ -29,7 +29,7 @@ import { fbm3 } from './util.js';
  *                        perimeter is sealed, so nothing out there is reachable
  *                        and its triangles would only be BVH physics walks.
  *
- * The whole map lands around 15 draw calls against a budget of 320.
+ * The whole map lands at 12 draw calls against a budget of 320.
  *
  * LAYOUT (LEVEL space, origin at the canyon centre, north at -Z, x is the
  * base-to-base axis):
@@ -59,9 +59,9 @@ import { fbm3 } from './util.js';
  *                 so it is priced by having to climb it in the open. The roof
  *                 ring drops back into the courtyard through the hole, which is
  *                 the escape that keeps the roof from being a trap.
- *   THE TOOTH     a 13.5 m rock spire at the centre. It is the landmark, and it
+ *   THE TOOTH     a 15.5 m rock spire at the centre. It is the landmark, and it
  *                 is load-bearing: without it the two base mouths look straight
- *                 down 62 m of open grass at each other.
+ *                 down 42 m of open grass at each other.
  *   THE LANES     the field splits around the Tooth into a north and a south
  *                 lane, each broken by rock ridges every ~10 m so neither is an
  *                 unbroken firing line.
@@ -175,12 +175,18 @@ BASE.blocks = [
 export const TOOTH = {
   x: 0,
   z: -3,
-  height: 13.5,
-  /** `[w, d, h, ry]`, stacked bottom to top. */
+  height: 15.5,
+  /**
+   * `[w, d, h, ry]`, stacked bottom to top, and the top slab is the tall one on
+   * purpose. Three equal courses read as a stepped mesa; a 6.5 m finger on two
+   * squat courses reads as a spire, which is what a landmark has to do from
+   * 60 m away on a map where nothing carries a texture. `maps.selftest.mjs`
+   * asserts these still add up to `height`.
+   */
   levels: [
     [17.0, 15.0, 4.5, 0.12],
     [12.5, 10.5, 4.5, -0.18],
-    [7.0, 6.0, 4.5, 0.30],
+    [6.5, 5.5, 6.5, 0.30],
   ],
 };
 
@@ -475,12 +481,17 @@ const facing = (x, z, turn = 0) => Math.atan2(x - TOOTH.x, z - TOOTH.z) + turn;
 export const BLOODGULCH_SPAWNS = [
   /**
    * FROZEN — the boot spawn, and the frame every capture of this map is shot
-   * from. Off the red base's south shoulder looking down the gulch: the Tooth
-   * centre-frame, the blue base behind it, the red base's flank filling the
-   * left of the shot. The `turn` is what buys that last part — aimed straight
-   * at the spire the establishing shot of a two-base map contains one base.
+   * from: the red base's back quarter, 53 m off the Tooth on the diagonal.
+   *
+   * The distance is the whole point and it was arrived at by taking the picture.
+   * The first version of this point stood 6 m off the base's side wall, which
+   * is 20 m of wall across half the frame and nothing else — the same mistake
+   * Nuketown's boot spawn documents from the other direction. From back here
+   * the Tooth sits 16° off centre one way and the red base 16° the other, so a
+   * 75° frame holds the spire, one whole base and the blue base beyond it,
+   * which is the map in one shot.
    */
-  [-38, 15, 0.28, 'red-base'],
+  [-42, 30, 0.28, 'red-south'],
   // The four courtyard points sit in the corners the two cover blocks and the
   // flag stand leave — a spawn tucked against a block is one `buildSpawnPoints`
   // culls against real collision, and the zone quietly ships a point short.
@@ -604,31 +615,44 @@ function buildGround(A, rng) {
  * the two canyon mouths, and the mesas past them.
  */
 function buildPerimeter(A, rng) {
+  /**
+   * THE WALL IS THE DARKER STONE, THE FIELD IS THE LIGHTER ONE.
+   *
+   * Both keys are the same flat tint family, and the first GPU capture of this
+   * map is what made the split necessary: with cliffs, buttresses, ridges and
+   * boulders all on `bg_rock`, a rock 12 m away and a cliff 60 m behind it were
+   * the same value with no texture, no relief and no aerial perspective to tell
+   * them apart, and the field read as one continuous tan smear. Putting the
+   * whole perimeter a value down — and capping it with the lighter stone, so
+   * the top edge still catches the sun — is what separates the cover a player
+   * can use from the wall they cannot. It costs nothing: both materials were
+   * already in the map.
+   */
   for (const [x, z, w, d, h] of CLIFFS) {
     // Cliffs start below the floor so the join never shows a seam, and are
     // stepped back once near the top so the wall has a profile rather than
     // reading as a single extruded slab.
-    boxAt(A, 'bg_rock', x, -1.5, z, w, h + 1.5, d);
+    boxAt(A, 'bg_rock_dark', x, -1.5, z, w, h + 1.5, d);
     const sign = Math.sign(z || 1);
     const nx = Math.abs(z) > Math.abs(x) ? x : x + Math.sign(x) * 1.6;
     const nz = Math.abs(z) > Math.abs(x) ? z + sign * 1.6 : z;
-    A.add('bg_rock_dark', BOX(A), LL(IDENT, nx, h + 1.2, nz, 0, w * 0.82, 2.4, d * 0.7));
+    A.add('bg_rock', BOX(A), LL(IDENT, nx, h + 1.2, nz, 0, w * 0.82, 2.4, d * 0.7));
   }
   for (const [x, z, w, d, h] of BUTTRESSES) {
-    boxAt(A, 'bg_rock', x, 0, z, w, h, d);
+    boxAt(A, 'bg_rock_dark', x, 0, z, w, h, d);
     // A smaller cap, turned a little: two boxes is the difference between a
     // rock and a shipping container.
-    A.add('bg_rock_dark', BOX(A), LL(IDENT, x, h + 0.9, z, 0.22, w * 0.7, 1.8, d * 0.72));
+    A.add('bg_rock', BOX(A), LL(IDENT, x, h + 0.9, z, 0.22, w * 0.7, 1.8, d * 0.72));
   }
   for (const [x, z, w, d, h] of ROCKSLIDES) {
-    boxAt(A, 'bg_rock', x, 0, z, w, h, d);
+    boxAt(A, 'bg_rock_dark', x, 0, z, w, h, d);
     // A shoulder each end, so the slide meets the cliff jamb in a heap rather
     // than in a straight vertical joint. The lumps that read as fallen rock in
     // front of it are in `BOULDERS`, because they are cover and have to be
     // known to occupancy — a slide is not an excuse to scatter solid-looking
     // props the map does not believe in.
     for (const sz of [-1, 1])
-      A.add('bg_rock_dark', BOX(A), LL(IDENT, x, 1.1, z + sz * (d / 2 - 1.6), 0.18, w * 0.9, 2.2, 3.6));
+      A.add('bg_rock', BOX(A), LL(IDENT, x, 1.1, z + sz * (d / 2 - 1.6), 0.18, w * 0.9, 2.2, 3.6));
   }
   for (const [x, z, w, d, h] of MESAS) {
     const gy = groundYBloodGulch(x, z);
