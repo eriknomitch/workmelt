@@ -11,7 +11,8 @@ either works: `test:quality` = `src/core/selftest.mjs`, `test:graphics` =
 `src/core/graphics.selftest.mjs`, `test:input` = `src/core/input.selftest.mjs`,
 `test:viewport` = `src/core/viewport.selftest.mjs` + `src/render/resolution.selftest.mjs`,
 `test:metrics` = `tools/lib/selftest.mjs`, `test:audio` = `src/audio/probe.mjs`,
-`shot` = `tools/capture.mjs`, `playtest:lobby` = `tools/lobby-playtest.mjs`.
+`shot` = `tools/capture.mjs`, `playtest:lobby` = `tools/lobby-playtest.mjs`,
+`playtest:lobby-ui` = `tools/lobby-ui-playtest.mjs`.
 
 - `./scripts/setup.sh` bootstraps a fresh machine or cloud sandbox: dependencies, the Chromium build playwright expects, and a headless WebGL2 check.
 - `npm install` installs the pinned dependencies.
@@ -63,6 +64,10 @@ either works: `test:quality` = `src/core/selftest.mjs`, `test:graphics` =
 - `npm run playtest:{ads,graphics,grenade,lobby}` drive real browsers against real
   binds and menus. They judge DOM and engine state, not pixels, so they run
   anywhere. See the `visual-check` skill for what each one covers.
+- `npm run playtest:lobby-ui` checks the lobby surface alone — map cards,
+  garrison chips, style explorations, keyboard shortcuts — over
+  `?renderGame=false`, so no engine boots and it runs in seconds even without
+  a GPU. It cannot see the join flow; that stays `playtest:lobby`'s job.
 - `node server/map.selftest.mjs` walks the relay's room-map protocol against a real server on a real socket.
 - `node server/lobby.selftest.mjs` does the same for the match-start lobby: that a
   warm-up against bots stays private and does not lock the room, that a warm-up
