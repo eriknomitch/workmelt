@@ -2251,7 +2251,48 @@ export function buildPerimeter(A, rng) {
     }
     rubbleMound(A, rng, bx - 3.4, 0, bz, 2.2, 30);
     rubbleMound(A, rng, bx + 3.6, 0, bz, 2.0, 26);
-    A.box('concrete', bx, 1.4, bz + (bz > 0 ? 1.4 : -1.4), 16, 2.8, 1.2);
+    /**
+     * The seal itself: 16 m of breeze-block infill packed across the street
+     * mouth, capped, with the barriers and mounds above dressed against its
+     * foot. The `A.box` under it is unchanged and still owns the collision —
+     * what is new is that something is DRAWN inside that volume.
+     *
+     * It used to be the box alone: a 16 x 2.8 m pane of nothing you could see
+     * the far end of the street straight through, and could not shoot, walk or
+     * vault through. That reads as an invisible wall, and it is worst with the
+     * AX-7, because the street is the one sightline long enough to want it —
+     * rounds died in clear air at head height, 40 m short of anything.
+     *
+     * The run fills that volume rather than approximating it: the caps top out
+     * at exactly 2.8 m and the slabs sit inside the 1.2 m depth, so what you
+     * see is what stops you, to within the coping's own few centimetres of
+     * overhang. Heights and depths jitter per segment so the wall does not read
+     * as one poured slab.
+     */
+    const bwZ = bz + (bz > 0 ? 1.4 : -1.4);
+    const BW_SPAN = 16;
+    const BW_TOP = 2.8;
+    const bwSegs = 9;
+    for (let i = 0; i < bwSegs; i++) {
+      const w = BW_SPAN / bwSegs;
+      const px = bx - BW_SPAN / 2 + (i + 0.5) * w;
+      const h = BW_TOP - rng.range(0.16, 0.3);
+      const d = 1.2 - rng.range(0, 0.08);
+      A.add(
+        rng.pick(['brick', 'plaster_sand', 'concrete', 'plaster_cream']),
+        BOX(A),
+        LL(IDENT, px, h / 2, bwZ, 0, w + 0.04, h, d),
+        { masks: [0.45, 0.85, 0.5] }
+      );
+      // Capping course, sized to land the crest exactly on the collision top.
+      A.add(
+        'concrete',
+        BOX_SOFT(A),
+        LL(IDENT, px, (h + BW_TOP) / 2, bwZ, 0, w + 0.1, BW_TOP - h, Math.min(1.2, d + 0.06)),
+        { masks: [0.8, 0.4, 0.15] }
+      );
+    }
+    A.box('concrete', bx, 1.4, bwZ, BW_SPAN, BW_TOP, 1.2);
     for (let i = 0; i < 14; i++) {
       const px = bx + rng.range(-7, 7);
       const pz = bz + rng.range(-2, 2);

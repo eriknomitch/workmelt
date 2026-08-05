@@ -68,6 +68,12 @@ The browser client lives in `src/`. Features are divided into subsystem director
   readies up, and both land in one players-only match with fresh magazines.
 - `node server/skin.selftest.mjs` does the same for the player-colour slots the relay hands out — no two players in a room may share one.
 - `node src/world/maps.selftest.mjs` builds every map headlessly and checks the map-descriptor contract, spawn tables and layout invariants.
+- `node src/world/collision.selftest.mjs` checks every map, parked ones included,
+  for invisible walls: collision proxies with nothing drawn inside them that a
+  .338 still cannot pass. Collision is authored separately from the mesh, so
+  this failure is invisible in a capture — the frame is correct, and the thing
+  that is wrong is the thing that is not drawn. Mutation-checked by re-running
+  the market with its barricade geometry withheld.
 - `node src/world/spawns.selftest.mjs` checks the spawn director's scoring headlessly; `node src/world/spawns.probe.mjs` verifies spawn placement, the bot garrison and 30 respawns inside the real built level (needs a browser).
 - `node tools/capture.mjs` performs the required GPU-backed visual smoke test.
   It frames the boot map from its spawn 0; `--query="map=<id>"` shoots another.
