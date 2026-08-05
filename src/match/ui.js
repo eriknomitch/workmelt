@@ -849,6 +849,163 @@ const CSS = `
 .wm-lobby.board .hero .board-band .opts .chips { flex-wrap: nowrap; }
 .wm-lobby.board .hero .board-band .maps, .wm-lobby.board .hero .board-band .opts { margin: 0; }
 
+/* 5 — COMMAND CENTRE. Three full-height rails: brief and deploy on the left,
+   the selected map's plan alone on a lit stage in the middle, every choice
+   (map, garrison, callsign, style) stacked on the right. The screen stops
+   being a page that scrolls and becomes a console that fits.
+
+   This is the ONE layout that cannot be pure CSS over the shipped tree, and
+   the reason is worth writing down: the other four re-shape a band that is
+   already one subtree, whereas three bordered columns need three boxes, and
+   the things that belong in them (the room panel, the callsign, the style
+   picker, the key strip) live under three different parents. So setMapLayout
+   re-parents the EXISTING elements into three rails and puts them back when
+   the layout is dropped — see _setCommandRails(). Nothing is rebuilt and no
+   listener is re-bound, which is what keeps the "one model, one set of
+   callbacks" contract the other four layouts hold. */
+.wm-lobby.cmd { overflow: hidden; }
+.wm-lobby.cmd .shell { display: block; height: 100%; }
+/* The bar and the two-column body are emptied by the re-parent, not hidden
+   first — but they still hold their padding, so take them off the flow. */
+.wm-lobby.cmd .bar, .wm-lobby.cmd .body:not(.count) { display: none; }
+/* The countdown is the one screen that outranks the console: let it cover it
+   rather than trying to be a fourth column. */
+.wm-lobby.cmd .body.count { position: fixed; inset: 0; z-index: 2; background: rgb(var(--wm-void-rgb) / .93); }
+
+.wm-lobby .cmd-shell {
+  display: grid; grid-template-columns: 320px minmax(0, 1fr) 344px;
+  gap: 16px; padding: 16px; height: 100%; min-height: 0;
+}
+.wm-lobby .cmd-col {
+  border: 1px solid var(--wm-border); border-radius: var(--wm-r);
+  background: var(--wm-panel); box-shadow: var(--wm-shadow); min-width: 0; min-height: 0;
+}
+
+/* left rail — the brief, the room, and the two buttons, in that reading order */
+.wm-lobby .cmd-left {
+  display: flex; flex-direction: column; padding: 24px; overflow-y: auto; position: relative;
+}
+/* The one Melt Green wash on the screen, and it is a glow rather than a fill —
+   DESIGN.md caps the accent at ~4% and forbids it as a background. */
+.wm-lobby .cmd-left::before {
+  content: ''; position: absolute; top: -60px; right: -60px; width: 190px; height: 190px;
+  border-radius: 50%; background: var(--wm-accent); opacity: .07; filter: blur(60px); pointer-events: none;
+}
+.wm-lobby .cmd-left > * { position: relative; z-index: 1; }
+.wm-lobby.cmd .cmd-left .wm-mark { font-size: 46px; letter-spacing: .05em; margin: 0 0 16px; }
+.wm-lobby.cmd .cmd-left .eyebrow { margin: 0 0 14px; }
+.wm-lobby.cmd .cmd-left .lede { font-size: 13px; line-height: 1.6; margin: 0 0 20px; max-width: none; }
+/* The room card is sized by its contents, not by the rail: an empty roster is
+   the NORMAL state here (you are alone until somebody clicks your link), and a
+   card that grows to fill the column reads as a list that failed to load. */
+.wm-lobby.cmd .cmd-left .panel {
+  max-height: min(340px, 42vh); box-shadow: none; background: var(--wm-panel-2); flex: 0 1 auto;
+}
+.wm-lobby.cmd .cmd-left .panel-hd .code { font-size: 24px; }
+/* The slack goes here instead, which is what pins the two buttons to the
+   bottom of the rail no matter how many players are in the room. */
+.wm-lobby.cmd .cmd-left .cta {
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; max-width: none; margin-top: auto;
+}
+.wm-lobby.cmd .cmd-left .btn-primary { font-size: 21px; padding: 13px 20px 10px; }
+.wm-lobby.cmd .cmd-left .btn-ghost { font-size: 16px; padding: 10px 18px 8px; }
+/* The key strip stops being a full-width footer and becomes the caption under
+   the buttons it describes. */
+.wm-lobby.cmd .cmd-left .strip {
+  border: 0; background: none; padding: 14px 0 0; margin-top: auto; flex-wrap: wrap;
+  justify-content: center; gap: 14px; font-size: 10px;
+}
+.wm-lobby.cmd .cmd-left .strip .spacer { display: none; }
+
+/* centre stage — the selected map's plan, lit, with nothing competing */
+.wm-lobby .cmd-stage { position: relative; overflow: hidden; background: rgb(var(--wm-void-rgb) / .55); }
+/* Two graticules: a 32px grid over the whole stage and the centre cross the
+   plan is registered against. Painted in Ice White at 3-4%, so they read as
+   paper under the plan rather than as a second drawing. */
+.wm-lobby .cmd-stage::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background:
+    linear-gradient(to right, rgb(var(--wm-fg-rgb) / .035) 1px, transparent 1px) 0 0 / 32px 32px,
+    linear-gradient(to bottom, rgb(var(--wm-fg-rgb) / .035) 1px, transparent 1px) 0 0 / 32px 32px;
+}
+.wm-lobby .cmd-stage::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .5;
+  background:
+    linear-gradient(var(--wm-accent), var(--wm-accent)) 50% 0 / 1px 100% no-repeat,
+    linear-gradient(var(--wm-accent), var(--wm-accent)) 0 50% / 100% 1px no-repeat;
+  mask-image: radial-gradient(circle at 50% 50%, #000 0, #000 34%, transparent 62%);
+  -webkit-mask-image: radial-gradient(circle at 50% 50%, #000 0, #000 34%, transparent 62%);
+}
+.wm-lobby.cmd .cmd-stage .map-detail {
+  display: grid; place-items: center; position: absolute; inset: 0; padding: 88px;
+}
+/* The plan is drawn one device pixel per cell, so at its intrinsic size it is a
+   thumbnail. "object-fit: contain" scales it to the stage without touching the
+   canvas backing store — the aspect ratio stays the map's own, and "pixelated"
+   keeps the blocks square instead of smearing them at 6x. */
+.wm-lobby.cmd .cmd-stage .map-detail canvas {
+  width: 100%; height: 100%; object-fit: contain; border: 0; background: none;
+  image-rendering: pixelated;
+  /* Ice White is capped at ~10% of a composition and this plan covers a third
+     of the screen, so it is knocked back to paper weight — the graticule reads
+     through it and the name plate stays the brightest thing on the stage. */
+  opacity: .3;
+}
+/* The map's name and blurb, as a glass plate over the stage's bottom-left
+   corner rather than a caption under it — the plan keeps the whole panel. */
+.wm-lobby.cmd .cmd-stage .map-detail .dtext {
+  position: absolute; left: 22px; bottom: 22px; max-width: 350px; gap: 7px; padding: 20px 22px;
+  background: var(--wm-panel); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--wm-border); border-radius: var(--wm-r); box-shadow: var(--wm-shadow-lift);
+}
+.wm-lobby.cmd .cmd-stage .map-detail .dnm { font-size: 40px; }
+.wm-lobby.cmd .cmd-stage .map-detail .dsz {
+  align-self: start; padding: 4px 8px; border-radius: var(--wm-r-sm);
+  background: rgb(var(--wm-void-rgb) / .5); font-variant-numeric: tabular-nums;
+}
+/* The layout picker rides the stage's top-right corner, where the mock puts
+   its view toggles: it IS the view toggle here. */
+.wm-lobby.cmd .cmd-stage .layout-picker {
+  position: absolute; top: 16px; right: 16px; margin: 0; z-index: 1;
+}
+
+/* right rail — every choice on the screen, top to bottom, one scroll */
+.wm-lobby .cmd-right {
+  display: flex; flex-direction: column; gap: 18px; padding: 22px; overflow-y: auto;
+}
+.wm-lobby.cmd .cmd-right .hd { margin: 0; }
+.wm-lobby.cmd .cmd-right .map-grid {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px;
+}
+.wm-lobby.cmd .cmd-right .maptile canvas { max-height: 62px; }
+/* Sections are separated by a hairline rather than by space alone: at this
+   width the eye needs the break to stop reading the chips as more map tiles. */
+.wm-lobby.cmd .cmd-right .opts, .wm-lobby.cmd .cmd-right .callsign {
+  margin: 0; padding-top: 18px; border-top: 1px solid var(--wm-border);
+}
+.wm-lobby.cmd .cmd-right .opts .chips { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+/* Callsign and the gear share a row: both are "this client's settings" rather
+   than the room's, and the label belongs to the field, so it spans. */
+.wm-lobby.cmd .cmd-right .callsign {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center;
+}
+.wm-lobby.cmd .cmd-right .callsign label { grid-column: 1 / -1; }
+.wm-lobby.cmd .cmd-right .callsign input { width: 100%; }
+.wm-lobby.cmd .cmd-right .style-picker { margin: 0; flex-wrap: wrap; gap: 5px; }
+.wm-lobby.cmd .cmd-right .style-picker .label { flex: 1 0 100%; margin: 0 0 2px; }
+
+/* Under ~1180px the three rails stop being three rails. The stage is the one
+   that can go: the plan is already on every tile in the right rail. */
+@media (max-width: 1180px) {
+  .wm-lobby.cmd { overflow-y: auto; }
+  .wm-lobby.cmd .shell { height: auto; }
+  .wm-lobby .cmd-shell { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); height: auto; }
+  .wm-lobby .cmd-stage { display: none; }
+}
+@media (max-width: 820px) {
+  .wm-lobby .cmd-shell { grid-template-columns: minmax(0, 1fr); }
+}
+
 /* The debug-only layout picker. Deliberately a plain <select> rather than the
    chip row the style picker uses: it is developer furniture, not part of the
    brand surface, and it should not read as a thing a player is meant to touch. */
@@ -907,6 +1064,7 @@ export const MAP_LAYOUTS = [
   { key: 'rail', label: 'Split rail', note: 'List left, large plan right' },
   { key: 'strip', label: 'Filmstrip hero', note: 'One hero over a thumbnail strip' },
   { key: 'board', label: 'Deploy board', note: 'Map and garrison as one briefing band' },
+  { key: 'command', label: 'Command centre', note: 'Three rails — brief, lit plan, every choice' },
 ];
 
 const GEAR_SVG = `<svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor"
@@ -1199,6 +1357,9 @@ export class MatchStartUI {
      */
     this.mapLayout = 'carousel';
     this.layoutButtons = [];
+    /** The command-centre rails, and where every element in them came from. */
+    this._cmdRails = null;
+    this._cmdHomes = null;
     let debug = false;
     try { debug = new URLSearchParams(location.search).get('debug') === 'true'; } catch {}
     const picker = q('[data-layout-picker]');
@@ -1380,8 +1541,67 @@ export class MatchStartUI {
     this.mapLayout = next;
     this.mapsEl.setAttribute('data-map-layout', next);
     this.root.classList.toggle('board', next === 'board');
+    this._setCommandRails(next === 'command');
+    this.root.classList.toggle('cmd', next === 'command');
     for (const sel of this.layoutButtons) sel.value = next;
     try { localStorage.setItem('workmelt-map-layout', next); } catch {}
+  }
+
+  /**
+   * Build (or tear down) the command-centre's three rails.
+   *
+   * The rails are boxes, so unlike the other four explorations this one cannot
+   * be CSS alone — but it still must not rebuild anything, because every
+   * element it touches already carries the listener that reports its clicks to
+   * `src/match/index.js`. So it MOVES the live nodes and remembers where each
+   * one came from (parent + next sibling), which is what makes the teardown
+   * exact: switching away puts the lobby back byte-for-byte, in DOM order, and
+   * the shipped carousel is none the wiser.
+   *
+   * Anything already detached — the room panel and the copy button under
+   * `?mp=0`, the layout picker without `?debug=true` — is skipped rather than
+   * resurrected. A layout may not hand a player a control the mode removed.
+   */
+  _setCommandRails(on) {
+    if (on === !!this._cmdRails) return;
+    if (!on) {
+      for (const [el, home] of this._cmdHomes) home.parent.insertBefore(el, home.next);
+      this._cmdRails.wrap.remove();
+      this._cmdRails = null;
+      this._cmdHomes = null;
+      return;
+    }
+    const col = (cls) => {
+      const d = document.createElement('div');
+      d.className = `cmd-col ${cls}`;
+      return d;
+    };
+    const wrap = document.createElement('div');
+    wrap.className = 'cmd-shell';
+    const rails = { wrap, left: col('cmd-left'), stage: col('cmd-stage'), right: col('cmd-right') };
+    wrap.append(rails.left, rails.stage, rails.right);
+
+    const q = (sel) => this.root.querySelector(sel);
+    /** rail -> the elements it takes, in the order they should read. */
+    const plan = [
+      [rails.left, [this.eyebrowEl, q('.hero .wm-mark'), q('.lede'), this.roomPanel, q('.cta'), this.altBtn, q('.strip')]],
+      [rails.stage, [q('[data-layout-picker]'), this.mapDetailEl]],
+      [rails.right, [q('.maps .hd'), this.mapGridEl, q('.opts'), q('.callsign'), q('.style-picker')]],
+      // The gear is the exception: it joins the callsign's own row rather than
+      // the rail, because the two are one block ("this client's settings").
+      [q('.callsign'), [q('[data-settings]')]],
+    ];
+    this._cmdHomes = new Map();
+    for (const [rail, els] of plan) {
+      if (!rail) continue;
+      for (const el of els) {
+        if (!el || !el.isConnected) continue;
+        this._cmdHomes.set(el, { parent: el.parentNode, next: el.nextSibling });
+        rail.appendChild(el);
+      }
+    }
+    this.root.querySelector('.shell').appendChild(wrap);
+    this._cmdRails = rails;
   }
 
   _stepMap(delta) {
