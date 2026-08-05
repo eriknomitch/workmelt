@@ -115,7 +115,8 @@ export class AmmoPanel {
     setStyle(this.cur, 'transform', `scale(${p.toFixed(3)})`);
 
     const frac = ammo / magSize;
-    setClass(this.root, 'ow-ammo-low', ammo > 0 && frac <= 0.34);
+    const low = ammo > 0 && frac <= 0.34;
+    setClass(this.root, 'ow-ammo-low', low);
     setClass(this.root, 'ow-ammo-empty', ammo === 0);
 
     const reloading = !!s.reloading;
@@ -155,8 +156,13 @@ export class AmmoPanel {
     }
 
     // --- reload state -----------------------------------------------------
-    setStyle(this.reload, 'display', reloading || (ammo === 0 && !reloading) ? '' : 'none');
-    setText(this.reload, reloading ? 'RELOADING' : 'PRESS R TO RELOAD');
+    // Three rungs: RELOADING while the mag is out, a loud pulsing prompt on an
+    // empty gun, and a quiet RELOAD nudge as soon as the count goes amber —
+    // the last only when there is reserve to reload from, so it never asks for
+    // the impossible. It stays up until the player actually reloads.
+    const nudge = !reloading && (ammo === 0 || (low && (s.reserve | 0) > 0));
+    setStyle(this.reload, 'display', reloading || nudge ? '' : 'none');
+    setText(this.reload, reloading ? 'RELOADING' : ammo === 0 ? 'PRESS R TO RELOAD' : 'RELOAD');
     if (!reloading && ammo === 0) {
       // pulse the prompt so an empty gun is impossible to miss
       const pulse = 0.55 + 0.45 * Math.abs(Math.sin((s.time ?? 0) * 3.8));
