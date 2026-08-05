@@ -152,7 +152,7 @@ You may edit any file. Do this:
      rm -rf ${ROOT}/shots/perf-base
      OW_NO_HMR=1 node tools/baseline.mjs --out=${ROOT}/shots/perf-base --port=5320
    This is the reference image set. Everything after this must match it exactly.
-6. Once step 3 passes, flip pre-warm ON by default in src/main.js (it is currently
+6. Once step 3 passes, flip pre-warm ON by default in src/boot.js (it is currently
    gated behind ?prewarm=1) and re-run step 3's comparison inverted to confirm the
    default path is the verified one.
 

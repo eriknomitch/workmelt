@@ -82,7 +82,7 @@ export class MySystem {
 | `match` | `src/match/` | the Match Start view: map choice, bot-garrison choice, ready-up, countdown, and when the match goes live |
 
 Shared, owned by the lead (do not edit): `src/core/`, `src/main.js`,
-`src/dev/`, `tools/`, `vite.config.js`.
+`src/boot.js`, `src/dev/`, `tools/`, `vite.config.js`.
 
 ## Cross-subsystem events
 

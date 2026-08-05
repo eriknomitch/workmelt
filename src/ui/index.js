@@ -99,7 +99,7 @@ export class UiSystem {
     // the HUD opacity fade — see the rationale in perfhud.js. Suppressed
     // entirely in capture mode: the pixel gate (tools/imagediff.mjs) compares
     // frames byte for byte, and a live fps number would change every one of
-    // them. `config.deterministic` is the capture signal (src/main.js).
+    // them. `config.deterministic` is the capture signal (src/boot.js).
     // The flashbang layer is the one overlay that sits ABOVE the game chrome:
     // a stun that leaves the ammo counter crisp is not a stun.
     this.flashLayer = el('div', 'ow-layer', this.root);
