@@ -3,14 +3,46 @@
 # Ports dev:mp needs: the Vite client (strictPort, honours OW_PORT) and the relay.
 DEV_PORTS=(${OW_PORT:-5273} 8787)
 
+# Absolute path of this repo, used to prove a listener is ours before killing it.
+REPO_ROOT=${0:A:h}
+
 # A crashed dev:mp leaves its children reparented to init (PPID 1) still holding
-# these sockets, which makes the next run die with EADDRINUSE. Clear them first.
+# these sockets, which makes the next run die with EADDRINUSE.
+#
+# Only kill a listener that is provably one of those orphans:
+#   - owned by us (a port we cannot inspect is not one we should shoot at),
+#   - PPID 1, i.e. actually reparented — a live dev:mp's children are not,
+#   - command line rooted in this repo, so an unrelated service on 8787 survives.
+# Anything else on the port is left alone and reported, and the run stops rather
+# than marching into a confusing EADDRINUSE.
 kill_orphans() {
-  local port pid i
+  local port pid i ppid user command blocked=0
   for port in $DEV_PORTS; do
     for pid in ${(f)"$(lsof -nP -tiTCP:$port -sTCP:LISTEN 2>/dev/null)"}; do
       [[ -n $pid ]] || continue
-      print -u2 "[run] killing stale listener on :$port (pid $pid)"
+
+      user=$(ps -o user= -p $pid 2>/dev/null)
+      ppid=$(ps -o ppid= -p $pid 2>/dev/null | tr -d ' ')
+      command=$(ps -o command= -p $pid 2>/dev/null)
+
+      if [[ $user != $(id -un) ]]; then
+        print -u2 "[run] :$port held by pid $pid owned by ${user:-?} — not ours, leaving it"
+        blocked=1
+        continue
+      fi
+      if [[ $command != *$REPO_ROOT* ]]; then
+        print -u2 "[run] :$port held by pid $pid outside $REPO_ROOT — leaving it"
+        print -u2 "[run]   $command"
+        blocked=1
+        continue
+      fi
+      if [[ $ppid != 1 ]]; then
+        print -u2 "[run] :$port held by pid $pid (parent $ppid) — looks like a live dev server, leaving it"
+        blocked=1
+        continue
+      fi
+
+      print -u2 "[run] killing orphaned listener on :$port (pid $pid)"
       kill -TERM $pid 2>/dev/null
       # Give it a moment to close the socket, then insist.
       for i in {1..25}; do
@@ -22,10 +54,13 @@ kill_orphans() {
       fi
     done
   done
-  return 0
+  return $blocked
 }
 
-kill_orphans
+if ! kill_orphans; then
+  print -u2 "[run] a port is in use by something we will not kill; sort it out and re-run"
+  exit 1
+fi
 
 pnpm run dev:mp &
 until curl -sf http://localhost:${OW_PORT:-5273} >/dev/null; do
