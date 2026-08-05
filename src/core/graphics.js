@@ -561,6 +561,18 @@ export const GRAPHICS_OPTIONS = [
     format: (v) => v.toFixed(1),
   },
   {
+    id: 'dofPeripheral',
+    label: 'DOF Periphery',
+    group: 'post',
+    kind: 'slider',
+    min: 0,
+    max: 1,
+    step: 0.05,
+    renderSetting: 'dofPeripheral',
+    hint: 'How far the frame edges soften while scoped, as a fraction of the blur radius. The sight picture itself always stays in focus. 0 keeps the whole frame sharp except for what is genuinely off the focal plane.',
+    format: (v) => v.toFixed(2),
+  },
+  {
     id: 'sharpen',
     label: 'Sharpening',
     group: 'post',
