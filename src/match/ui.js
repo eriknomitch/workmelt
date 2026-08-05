@@ -3,37 +3,45 @@
  * The lobby — the screen WORKMELT opens on
  * ===========================================================================
  *
- * Styled from `DESIGN.md` through the tokens in `src/ui/brand.js`: Dark Slate
- * canvas, one Gunmetal panel, Bebas Neue for display and Inter for every
- * string, and Melt Green kept to the wordmark drip plus the ready/online dots.
+ * Styled from `DESIGN.md` (v0.3 — Console Black) through the tokens in
+ * `src/ui/brand.js`: a true-black canvas, three hairline-bordered rails, Geist
+ * for every string with Geist Mono carrying the tracked-out labels, and Signal
+ * Blue kept to selection, live status and the primary action's border.
+ *
+ * ---------------------------------------------------------------------------
+ * THE LAYOUT: THREE RAILS
+ * ---------------------------------------------------------------------------
+ *
+ *   left rail    the ROOM — the invite eyebrow, the active room code, the
+ *                relay status and the roster; below them, this client's own
+ *                setup (garrison, callsign, settings)
+ *   stage        the CURRENT MAP — its name written large, its artwork (or
+ *                its blueprint floorplan when no artwork ships), and the
+ *                action dock: primary, copy-invite, key hints
+ *   right rail   the MAP SELECTOR — one card per enabled map, thumbnail
+ *                floorplan plus name and description; the selected card is
+ *                the one wearing the Signal Blue border
+ *
+ * The stage's hero artwork is progressive: `public/maps/<id>.png` is probed
+ * per map and shown when it exists; a map without one keeps the floorplan
+ * stage, so shipping artwork is dropping a file, not touching this view.
  *
  * ---------------------------------------------------------------------------
  * THE UX CONTRACT: ONE CLICK IN, ONE CLICK TO SHARE
  * ---------------------------------------------------------------------------
- * The screen this replaced asked the player to choose between a BOTS panel and
- * a MULTIPLAYER panel before anything happened, which meant reading two blocks
- * of copy to answer a question ("can I just play?") that has one right answer.
+ * There is exactly one primary button and it is always the best next move:
  *
- * Now there is exactly one primary button and it is always the best next move:
- *
- *   alone in the room        PLAY          deploy immediately vs the garrison
- *   somebody else is here    READY UP      the relay starts when everyone is
- *   already readied up       CANCEL READY  the only thing left to undo
- *   the match is running     DEPLOY NOW    drop into it
+ *   alone in the room        PLAY VS N BOTS  deploy immediately vs the garrison
+ *   somebody else is here    READY UP        the relay starts when everyone is
+ *   already readied up       CANCEL READY    the only thing left to undo
+ *   the match is running     DEPLOY NOW      drop into it
  *
  * and exactly one secondary button, live in every one of those states:
  *
  *   COPY INVITE LINK  one click, whatever else is on screen
  *
  * Under the primary sits one optional link, which follows the same rule — it is
- * always the *other* reasonable move, and never a required one (`_paintAlt`):
- *
- *   waiting on people        WARM UP AGAINST BOTS   private, and the room's
- *                                                   countdown pulls you out of it
- *   you are ready, they are  START NOW WITH THE N   somebody joined and wandered
- *   not                      WHO ARE READY          off; do not wait on them
- *   the match is running     READY FOR THE NEXT     arms a rematch and tells the
- *                            MATCH                  players still in this one
+ * always the *other* reasonable move, and never a required one (`_paintAlt`).
  *
  * Nothing else on the screen is a required step. The map cards and the garrison
  * chips both have working defaults, the callsign is an inline field, and
@@ -60,653 +68,342 @@ const CSS = `
 .wm-lobby {
   position: fixed; inset: 0; z-index: 60; overflow-y: auto; cursor: default;
   font-family: var(--wm-body); color: var(--wm-fg); -webkit-font-smoothing: antialiased;
-  /* 65% of the composition is the canvas. The scrim is Dark Slate over the live
-     scene, densest at the top where the display type sits. */
-  background: linear-gradient(180deg,
-    rgb(var(--wm-bg-rgb) / .97) 0%, rgb(var(--wm-bg-rgb) / .93) 46%, rgb(var(--wm-void-rgb) / .96) 100%);
+  /* Console Black: the canvas is the void, at near-full opacity — the live
+     scene reads through only where a surface chooses to open a window. */
+  background: rgb(var(--wm-bg-rgb) / .97);
   opacity: 0; transition: opacity var(--wm-t-slow);
 }
 .wm-lobby.show { opacity: 1; }
 .wm-lobby.hidden { display: none; }
 .wm-lobby *, .wm-lobby *::before, .wm-lobby *::after { box-sizing: border-box; margin: 0; padding: 0; }
 .wm-lobby button, .wm-lobby input { font-family: inherit; color: inherit; }
-.wm-lobby :focus-visible { outline: 2px solid var(--wm-accent); outline-offset: 2px; }
+.wm-lobby :focus-visible { outline: 1px solid var(--wm-accent); outline-offset: 2px; }
 .wm-lobby .hide { display: none !important; }
 
-/* The document is a 3-row grid: bar / body / status strip, exactly as the
-   design export lays it out. min-height:100% rather than height, so a short
-   window scrolls to the buttons instead of clipping them. */
+/* Three hairline-bordered rails on the void. min-height:100% rather than
+   height, so a short window scrolls to the dock instead of clipping it. */
 .wm-lobby .shell {
-  min-height: 100%; display: grid; grid-template-rows: auto 1fr auto;
+  display: grid; grid-template-columns: 320px minmax(0, 1fr) 372px;
+  grid-template-areas: 'left stage right';
+  gap: 14px; padding: 14px; min-height: 100%; align-items: stretch;
+}
+.wm-lobby .col {
+  border: 1px solid var(--wm-border); background: rgb(var(--wm-surface-rgb) / .55);
+  min-width: 0; min-height: 0;
 }
 
-/* ── top bar ─────────────────────────────────────────────────────────────── */
-.wm-lobby .bar {
-  display: flex; align-items: center; gap: 16px; padding: 0 24px; min-height: 60px;
-  background: var(--wm-panel); border-bottom: 1px solid var(--wm-border);
+/* The two label registers of Console Black: a tracked-out mono eyebrow with a
+   leading tick, and the same mono without one for field labels. */
+.wm-lobby .eyebrow {
+  font-family: var(--wm-mono); font-size: 10px; font-weight: 500; line-height: 1.6;
+  letter-spacing: .24em; text-transform: uppercase; color: var(--wm-muted-fg);
+  padding-left: 10px; border-left: 1px solid var(--wm-fg-dim);
 }
-.wm-lobby .bar .wm-mark { font-size: 30px; }
-.wm-lobby .spacer { flex: 1 1 auto; }
-.wm-lobby .callsign {
-  display: flex; align-items: center; gap: 9px;
+.wm-lobby .lbl {
+  display: block; font-family: var(--wm-mono); font-size: 9.5px; font-weight: 500;
+  letter-spacing: .22em; text-transform: uppercase; color: var(--wm-muted-fg);
 }
-.wm-lobby .callsign label {
-  font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase;
-  color: var(--wm-muted-fg);
+
+/* ── left rail: the room, then this client's setup ───────────────────────── */
+.wm-lobby .rail-left {
+  grid-area: left; display: flex; flex-direction: column; gap: 22px; padding: 24px 22px;
 }
-.wm-lobby .callsign input {
-  width: 148px; background: var(--wm-panel-2); border: 1px solid var(--wm-border);
-  border-radius: var(--wm-r-sm); padding: 7px 9px; font-size: 13px; font-weight: 600;
-  letter-spacing: .01em; transition: border-color var(--wm-t);
+.wm-lobby .roomzone { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+.wm-lobby .roombox { border: 1px solid var(--wm-border); padding: 16px; }
+.wm-lobby .roombox-hd { display: flex; align-items: flex-start; gap: 10px; }
+.wm-lobby .roombox-hd .lbl { margin-bottom: 10px; }
+.wm-lobby .roombox-hd .grow { flex: 1 1 auto; min-width: 0; }
+.wm-lobby .code {
+  font-family: var(--wm-display); font-size: 30px; font-weight: 300; line-height: 1;
+  letter-spacing: .28em; text-transform: uppercase; color: var(--wm-fg);
 }
-.wm-lobby .callsign input:hover { border-color: var(--wm-muted-fg); }
-.wm-lobby .callsign input:focus { outline: none; border-color: var(--wm-accent); }
 .wm-lobby .icon-btn {
-  width: 34px; height: 34px; border-radius: var(--wm-r-sm); background: none;
+  width: 32px; height: 32px; border-radius: var(--wm-r-sm); background: none;
   border: 1px solid var(--wm-border); color: var(--wm-muted-fg); display: grid;
   place-items: center; cursor: pointer; flex: none;
   transition: color var(--wm-t), border-color var(--wm-t);
 }
 .wm-lobby .icon-btn:hover { color: var(--wm-fg); border-color: var(--wm-accent); }
+.wm-lobby .icon-btn.done { color: var(--wm-ok); border-color: var(--wm-ok); }
 
-/* ── body ────────────────────────────────────────────────────────────────── */
-.wm-lobby .body {
-  display: grid; grid-template-columns: minmax(0, 1fr) 372px; gap: 24px;
-  align-items: center; padding: 28px 24px; max-width: 1500px; width: 100%;
-  margin: 0 auto;
+/* The relay line: a small square lamp plus a tracked mono status. The lamp is
+   the accent while the relay is settling and Success once it is online. */
+.wm-lobby .netline {
+  display: flex; align-items: center; gap: 9px; margin-top: 16px; padding-top: 14px;
+  border-top: 1px solid var(--wm-border);
+  font-family: var(--wm-mono); font-size: 10px; font-weight: 500; letter-spacing: .18em;
+  text-transform: uppercase; color: var(--wm-accent);
 }
-.wm-lobby .hero { display: flex; flex-direction: column; min-width: 0; padding: 0 4px; }
+.wm-lobby .netline .sq { width: 7px; height: 7px; background: var(--wm-accent); flex: none; }
+.wm-lobby .netline.on { color: var(--wm-ok); }
+.wm-lobby .netline.on .sq { background: var(--wm-ok); }
+.wm-lobby .netline b { font-weight: 500; }
+.wm-lobby .status {
+  margin-top: 10px; font-family: var(--wm-mono); font-size: 10px; font-weight: 400;
+  line-height: 1.9; letter-spacing: .14em; text-transform: uppercase; color: var(--wm-muted-fg);
+}
+.wm-lobby .status b { color: var(--wm-fg-dim); font-weight: 500; }
 
-.wm-lobby .eyebrow {
-  font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase;
-  color: var(--wm-muted-fg);
-}
-.wm-lobby .eyebrow .on { color: var(--wm-ok); }
-.wm-lobby .hero .eyebrow { margin-bottom: 18px; }
-.wm-lobby .hero .wm-mark {
-  font-size: clamp(56px, 8.4vw, 126px); letter-spacing: .055em; margin-bottom: 26px;
-}
-.wm-lobby .lede {
-  font-size: 16px; line-height: 1.55; color: var(--wm-fg-dim); max-width: 56ch;
-  margin-bottom: 30px; text-wrap: balance;
-}
-.wm-lobby .lede b { color: var(--wm-fg); font-weight: 600; }
-
-/* map picker — the first decision, and the one that changes what the rest
-   mean. Cards rather than chips because each carries three lines of read. */
-.wm-lobby .maps { margin-bottom: 20px; }
-.wm-lobby .maps .hd { display: flex; align-items: baseline; gap: 10px; margin-bottom: 9px; }
-.wm-lobby .maps .hd .note { font-size: 11px; letter-spacing: .015em; color: var(--wm-muted-fg);
-  text-transform: none; font-weight: 400; }
-.wm-lobby .mapcards { display: flex; gap: 10px; flex-wrap: wrap; }
-.wm-lobby .mapcard {
-  flex: 1 1 250px; max-width: 400px; display: flex; flex-direction: column; gap: 3px;
-  padding: 12px 14px; text-align: left; cursor: pointer;
-  background: var(--wm-panel-2); border: 1px solid var(--wm-border); border-radius: var(--wm-r);
-  transition: border-color var(--wm-t), background var(--wm-t);
-}
-.wm-lobby .mapcard:hover:not(:disabled) { border-color: var(--wm-accent); }
-.wm-lobby .mapcard[aria-pressed="true"] { border-color: var(--wm-fg); background: var(--wm-hover); }
-.wm-lobby .mapcard:disabled { opacity: .45; cursor: not-allowed; }
-.wm-lobby .mapcard .nm {
-  font-family: var(--wm-display); font-size: 20px; letter-spacing: .07em;
-  text-transform: uppercase; line-height: 1; color: var(--wm-fg-dim);
-}
-.wm-lobby .mapcard[aria-pressed="true"] .nm { color: var(--wm-fg); }
-.wm-lobby .mapcard .sub {
-  font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
-  color: var(--wm-muted-fg);
-}
-.wm-lobby .mapcard .bl { margin-top: 4px; font-size: 12px; line-height: 1.45; color: var(--wm-muted-fg); }
-.wm-lobby .mapcard .sz { margin-top: 3px; font-size: 11px; color: var(--wm-muted-fg);
-  font-variant-numeric: tabular-nums; }
-
-/* garrison picker — 4 chips, one click, no drilling */
-.wm-lobby .opts { margin-bottom: 22px; }
-.wm-lobby .opts .eyebrow { display: block; margin-bottom: 9px; }
-.wm-lobby .chips { display: flex; gap: 8px; flex-wrap: wrap; }
-.wm-lobby .chip {
-  font-size: 12px; font-weight: 500; letter-spacing: .015em; padding: 7px 13px;
-  border-radius: var(--wm-r-sm); border: 1px solid var(--wm-border);
-  background: var(--wm-panel-2); color: var(--wm-muted-fg); cursor: pointer;
-  transition: color var(--wm-t), border-color var(--wm-t), background var(--wm-t);
-}
-.wm-lobby .chip:hover { color: var(--wm-fg); border-color: var(--wm-accent); }
-.wm-lobby .chip[aria-pressed="true"] {
-  color: var(--wm-bg); background: var(--wm-fg); border-color: var(--wm-fg); font-weight: 600;
-}
-.wm-lobby .note {
-  font-size: 12px; line-height: 1.5; color: var(--wm-muted-fg); margin-top: 10px; min-height: 18px;
-}
-
-/* ── buttons ─────────────────────────────────────────────────────────────── */
-.wm-lobby .cta { display: grid; grid-template-columns: minmax(0,1fr) 260px; gap: 12px; max-width: 820px; }
-.wm-lobby .btn {
-  font-family: var(--wm-display); text-transform: uppercase; letter-spacing: .08em;
-  cursor: pointer; border-radius: var(--wm-r); border: 1px solid transparent;
-  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
-  transition: background var(--wm-t), border-color var(--wm-t), color var(--wm-t), transform 90ms linear;
-}
-/* Primary: Ice White fill, Graphite text — 14.91:1. Hovering warms it toward
-   Melt Green rather than filling with it (green fill + white text fails AA). */
-.wm-lobby .btn-primary {
-  background: var(--wm-fg); color: var(--wm-bg); font-size: 26px; padding: 16px 28px 13px; width: 100%;
-}
-.wm-lobby .btn-primary:hover:not(:disabled) { background: var(--wm-fg-warm); }
-.wm-lobby .btn-primary:active:not(:disabled) { transform: translateY(2px); }
-.wm-lobby .btn-ghost {
-  background: transparent; color: var(--wm-fg); border-color: var(--wm-fg);
-  font-size: 19px; padding: 12px 22px 10px; width: 100%;
-}
-.wm-lobby .btn-ghost:hover:not(:disabled) { border-color: var(--wm-accent); }
-.wm-lobby .btn-ghost:active:not(:disabled) { transform: translateY(2px); }
-.wm-lobby .btn-ghost.done { border-color: var(--wm-ok); color: var(--wm-ok); }
-.wm-lobby .btn:disabled { opacity: .42; cursor: not-allowed; }
-.wm-lobby .btn .k {
-  font-family: var(--wm-body); font-size: 10px; font-weight: 600; letter-spacing: .08em;
-  border: 1px solid currentColor; border-radius: 3px; padding: 1px 4px; opacity: .55;
-  position: relative; top: -1px;
-}
-.wm-lobby .btn-sm {
-  font-family: var(--wm-body); font-size: 12px; font-weight: 600; letter-spacing: .02em;
-  background: transparent; color: var(--wm-fg-dim); border: 1px solid var(--wm-border);
-  border-radius: var(--wm-r-sm); padding: 5px 10px; cursor: pointer;
-  transition: color var(--wm-t), border-color var(--wm-t), background var(--wm-t);
-}
-.wm-lobby .btn-sm:hover { color: var(--wm-fg); border-color: var(--wm-accent); background: var(--wm-panel-2); }
-.wm-lobby .btn-sm.done { color: var(--wm-ok); border-color: var(--wm-ok); }
-
-/* The escape hatch under the primary button, only shown when the primary is
-   waiting on somebody else. A link, not a third button — it must not compete. */
-.wm-lobby .alt {
-  /* flex-start, or the rule under it stretches the whole hero column wide and
-     stops reading as a link. */
-  align-self: flex-start;
-  margin-top: 13px; font-size: 13px; color: var(--wm-muted-fg); background: none;
-  border: 0; padding: 0; cursor: pointer; text-align: left;
-  border-bottom: 1px solid var(--wm-border); transition: color var(--wm-t), border-color var(--wm-t);
-}
-.wm-lobby .alt:hover { color: var(--wm-fg); border-color: var(--wm-accent); }
-
-/* ── room panel ──────────────────────────────────────────────────────────── */
-.wm-lobby .panel {
-  background: var(--wm-panel); border: 1px solid var(--wm-border); border-radius: var(--wm-r);
-  box-shadow: var(--wm-shadow); display: flex; flex-direction: column; min-width: 0;
-  max-height: min(560px, 78vh);
-}
-.wm-lobby .panel-hd {
-  display: flex; align-items: center; gap: 12px; padding: 14px 18px;
-  border-bottom: 1px solid var(--wm-border); flex: none;
-}
-.wm-lobby .h-sec {
-  font-family: var(--wm-display); font-size: 22px; letter-spacing: .08em;
-  text-transform: uppercase; line-height: 1; white-space: nowrap;
-}
-.wm-lobby .code {
-  font-family: var(--wm-display); font-size: 24px; letter-spacing: .14em;
-  text-transform: uppercase; color: var(--wm-fg); line-height: 1;
-}
-.wm-lobby .panel-bd { padding: 8px 0; overflow-y: auto; min-height: 96px; flex: 1 1 auto; }
-.wm-lobby .panel-ft {
-  padding: 12px 18px; border-top: 1px solid var(--wm-border); flex: none;
-  display: flex; align-items: center; gap: 10px;
-}
-
+/* roster */
+.wm-lobby .roster { overflow-y: auto; min-height: 0; }
 .wm-lobby .row {
-  display: flex; align-items: center; gap: 12px; padding: 10px 18px;
+  display: flex; align-items: center; gap: 10px; padding: 9px 2px;
   transition: background var(--wm-t);
 }
 .wm-lobby .row + .row { border-top: 1px solid var(--wm-border); }
 .wm-lobby .row:hover { background: var(--wm-hover); }
 /* Square dots, not circles: the icon language is enterprise-software geometry. */
-.wm-lobby .dot { width: 8px; height: 8px; border-radius: 2px; flex: none; background: var(--wm-muted); }
+.wm-lobby .dot { width: 7px; height: 7px; flex: none; background: var(--wm-muted); }
 .wm-lobby .row.ready .dot { background: var(--wm-ok); }
 .wm-lobby .row.deployed .dot { background: var(--wm-fg); }
 /* Warming up: out of the lobby but not in a match — the same amber the relay
    status uses for "not settled yet". */
 .wm-lobby .row.warm .dot { background: var(--wm-warn); }
 .wm-lobby .row .who {
-  flex: 1 1 auto; min-width: 0; font-size: 13px; font-weight: 600; letter-spacing: .01em;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  flex: 1 1 auto; min-width: 0; font-size: 12px; font-weight: 500; letter-spacing: .04em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--wm-fg-dim);
 }
 .wm-lobby .row.me .who { color: var(--wm-fg); }
 .wm-lobby .row .st {
-  font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
-  color: var(--wm-muted-fg); flex: none;
+  font-family: var(--wm-mono); font-size: 9px; font-weight: 500; letter-spacing: .16em;
+  text-transform: uppercase; color: var(--wm-muted-fg); flex: none;
 }
 .wm-lobby .row.ready .st { color: var(--wm-ok); }
 .wm-lobby .row.deployed .st { color: var(--wm-fg-dim); }
 .wm-lobby .row.warm .st { color: var(--wm-warn); }
-/* A row that just appeared. The presence card says who arrived; this is what
-   points at WHERE they landed, so the two are one gesture rather than a card
-   the player has to reconcile with a list that silently grew. Rebuilt on every
-   lobby frame, so render() carries the elapsed time in as a negative delay and
-   the flash keeps running instead of restarting. */
+/* A row that just appeared. Rebuilt on every lobby frame, so render() carries
+   the elapsed time in as a negative delay and the flash keeps running instead
+   of restarting. Colour only, no transform — nothing here for
+   prefers-reduced-motion to undo. */
 .wm-lobby .row.fresh { animation: wm-row-in ${ROW_FLASH_MS}ms cubic-bezier(.2,.85,.3,1) both; }
-/* Colour only, no transform — nothing here for prefers-reduced-motion to undo. */
 @keyframes wm-row-in {
   0% { background: var(--wm-hover); box-shadow: inset 3px 0 0 var(--wm-ok); }
   100% { background: transparent; box-shadow: inset 3px 0 0 transparent; }
 }
 .wm-lobby .empty {
-  padding: 18px; font-size: 13px; line-height: 1.55; color: var(--wm-muted-fg);
+  padding: 4px 2px; font-family: var(--wm-mono); font-size: 10px; line-height: 1.9;
+  letter-spacing: .14em; text-transform: uppercase; color: var(--wm-muted-fg);
 }
-.wm-lobby .status { font-size: 12px; line-height: 1.45; color: var(--wm-muted-fg); flex: 1 1 auto; }
-.wm-lobby .status b { color: var(--wm-fg); font-weight: 600; }
 
-/* ── status strip ────────────────────────────────────────────────────────── */
-.wm-lobby .strip {
-  display: flex; align-items: center; gap: 22px; flex-wrap: wrap; padding: 10px 24px;
-  min-height: 36px; background: var(--wm-panel); border-top: 1px solid var(--wm-border);
-  font-size: 11px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase;
-  color: var(--wm-muted-fg);
+/* this client's setup — pinned under the room, above the sign-off mark */
+.wm-lobby .setup {
+  margin-top: auto; display: flex; flex-direction: column; gap: 18px;
+  padding-top: 18px; border-top: 1px solid var(--wm-border);
 }
-.wm-lobby .strip b { color: var(--wm-fg-dim); font-weight: 600; }
-.wm-lobby .strip .key {
-  border: 1px solid var(--wm-border); border-radius: 3px; padding: 1px 5px;
-  margin-right: 5px; color: var(--wm-fg-dim);
+.wm-lobby .opts .lbl { margin-bottom: 9px; }
+.wm-lobby .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.wm-lobby .chip {
+  font-family: var(--wm-mono); font-size: 9.5px; font-weight: 500; letter-spacing: .14em;
+  text-transform: uppercase; padding: 8px 11px;
+  border-radius: var(--wm-r-sm); border: 1px solid var(--wm-border);
+  background: transparent; color: var(--wm-muted-fg); cursor: pointer;
+  transition: color var(--wm-t), border-color var(--wm-t), background var(--wm-t);
+}
+.wm-lobby .chip:hover { color: var(--wm-fg); border-color: var(--wm-muted-fg); }
+.wm-lobby .chip[aria-pressed="true"] {
+  color: var(--wm-fg); border-color: var(--wm-accent); background: rgb(var(--wm-accent-rgb) / .1);
+}
+.wm-lobby .note {
+  font-size: 11px; line-height: 1.55; color: var(--wm-muted-fg); margin-top: 9px; min-height: 17px;
+}
+.wm-lobby .callsign .lbl { margin-bottom: 9px; }
+.wm-lobby .cs-row { display: flex; gap: 8px; align-items: center; }
+.wm-lobby .callsign input {
+  flex: 1 1 auto; min-width: 0; background: var(--wm-panel-2); border: 1px solid var(--wm-border);
+  border-radius: var(--wm-r-sm); padding: 8px 10px; font-size: 12px; font-weight: 500;
+  letter-spacing: .04em; transition: border-color var(--wm-t);
+}
+.wm-lobby .callsign input:hover { border-color: var(--wm-muted-fg); }
+.wm-lobby .callsign input:focus { outline: none; border-color: var(--wm-accent); }
+.wm-lobby .rail-mark { font-size: 15px; margin-top: 20px; color: var(--wm-fg-dim); }
+
+/* ── stage: the current map, written large ───────────────────────────────── */
+.wm-lobby .stage {
+  grid-area: stage; position: relative; display: flex; flex-direction: column; overflow: hidden;
+}
+.wm-lobby .stage-hd { position: relative; z-index: 2; padding: 24px 30px 0; }
+.wm-lobby .curmap {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: var(--wm-mono); font-size: 10px; font-weight: 500; letter-spacing: .24em;
+  text-transform: uppercase; color: var(--wm-muted-fg);
+}
+.wm-lobby .curmap svg { flex: none; }
+.wm-lobby .hero-name {
+  margin: 18px 0 8px; font-family: var(--wm-display); font-weight: 300;
+  font-size: clamp(38px, 4.6vw, 68px); line-height: 1.05; letter-spacing: .3em;
+  text-transform: uppercase; color: var(--wm-fg); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.wm-lobby .hero-sub {
+  font-family: var(--wm-mono); font-size: 10.5px; font-weight: 400; letter-spacing: .3em;
+  text-transform: uppercase; color: var(--wm-muted-fg);
+}
+
+/* The hero viewport. Artwork when public/maps/<id>.png exists; otherwise the
+   map's own floorplan on a faint graticule — the blueprint, not a blank. */
+.wm-lobby .hero-view { position: relative; flex: 1 1 auto; min-height: 240px; margin-top: 22px; }
+.wm-lobby .hero-img {
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+  object-position: center; display: none;
+}
+.wm-lobby .stage.has-art .hero-img { display: block; }
+.wm-lobby .hero-plan { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px 40px 150px; }
+.wm-lobby .hero-plan::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background:
+    linear-gradient(to right, rgb(var(--wm-fg-rgb) / .03) 1px, transparent 1px) 0 0 / 32px 32px,
+    linear-gradient(to bottom, rgb(var(--wm-fg-rgb) / .03) 1px, transparent 1px) 0 0 / 32px 32px;
+}
+.wm-lobby .stage.has-art .hero-plan { display: none; }
+/* The plan is drawn one cell per couple of device pixels; "pixelated" keeps the
+   blocks square instead of smearing them at 6x. */
+.wm-lobby .hero-plan canvas {
+  max-width: 100%; max-height: 100%; width: auto; height: auto;
+  image-rendering: pixelated; opacity: .35;
+}
+
+/* the action dock — primary, copy, key hints, and the optional alt link */
+.wm-lobby .dock {
+  position: absolute; z-index: 3; left: 50%; bottom: 22px; transform: translateX(-50%);
+  width: min(440px, calc(100% - 44px));
+  background: rgb(var(--wm-bg-rgb) / .92); border: 1px solid var(--wm-border);
+  padding: 20px 20px 14px; display: flex; flex-direction: column; gap: 10px;
+}
+.wm-lobby .btn {
+  font-family: var(--wm-body); font-size: 12px; font-weight: 500; letter-spacing: .24em;
+  text-transform: uppercase; cursor: pointer; border-radius: var(--wm-r);
+  border: 1px solid var(--wm-border); background: transparent; color: var(--wm-fg-dim);
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  padding: 15px 18px; width: 100%;
+  transition: background var(--wm-t), border-color var(--wm-t), color var(--wm-t), transform 90ms linear;
+}
+.wm-lobby .btn .ic { flex: none; }
+/* Primary: a Signal Blue border over a faint blue wash — never a blue fill
+   under light text. Hover deepens the wash; active presses down 1px. */
+.wm-lobby .btn-primary {
+  border-color: var(--wm-accent); color: var(--wm-fg);
+  background: rgb(var(--wm-accent-rgb) / .08);
+}
+.wm-lobby .btn-primary .ic { color: var(--wm-accent); }
+.wm-lobby .btn-primary:hover:not(:disabled) { background: rgb(var(--wm-accent-rgb) / .16); }
+.wm-lobby .btn-primary:active:not(:disabled) { transform: translateY(1px); }
+.wm-lobby .btn-ghost:hover:not(:disabled) { border-color: var(--wm-muted-fg); color: var(--wm-fg); }
+.wm-lobby .btn-ghost:active:not(:disabled) { transform: translateY(1px); }
+.wm-lobby .btn-ghost.done, .wm-lobby .btn.done { border-color: var(--wm-ok); color: var(--wm-ok); }
+.wm-lobby .btn:disabled { opacity: .42; cursor: not-allowed; }
+.wm-lobby .keys {
+  display: flex; align-items: center; justify-content: center; gap: 20px; padding-top: 4px;
+  font-family: var(--wm-mono); font-size: 9px; font-weight: 500; letter-spacing: .18em;
+  text-transform: uppercase; color: var(--wm-muted-fg);
+}
+.wm-lobby .keys b { font-weight: 500; color: var(--wm-muted-fg); }
+.wm-lobby .key {
+  border: 1px solid var(--wm-border); border-radius: var(--wm-r-sm); padding: 3px 6px;
+  margin-right: 7px; color: var(--wm-fg-dim);
+}
+/* The escape hatch under the primary button, only shown when the primary is
+   waiting on somebody else. A link, not a third button — it must not compete. */
+.wm-lobby .alt {
+  align-self: center; margin-top: 2px; font-size: 11px; letter-spacing: .04em;
+  color: var(--wm-muted-fg); background: none; border: 0; padding: 0 0 1px; cursor: pointer;
+  border-bottom: 1px solid var(--wm-border); transition: color var(--wm-t), border-color var(--wm-t);
+}
+.wm-lobby .alt:hover { color: var(--wm-fg); border-color: var(--wm-accent); }
+
+/* ── right rail: the map selector ────────────────────────────────────────── */
+.wm-lobby .rail-right {
+  grid-area: right; display: flex; flex-direction: column; gap: 16px; padding: 24px 22px;
+}
+.wm-lobby .rail-hd { display: flex; flex-direction: column; gap: 8px; }
+.wm-lobby .rail-hd .note { margin: 0; font-size: 10.5px; }
+.wm-lobby .mapcards {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px;
+  align-content: start; overflow-y: auto; min-height: 0;
+}
+.wm-lobby .mapcard {
+  display: flex; flex-direction: column; gap: 10px; padding: 10px; text-align: left;
+  cursor: pointer; background: transparent; border: 1px solid var(--wm-border);
+  border-radius: var(--wm-r); min-width: 0;
+  transition: border-color var(--wm-t), background var(--wm-t), opacity var(--wm-t);
+}
+.wm-lobby .mapcard:hover:not(:disabled) { border-color: var(--wm-muted-fg); }
+.wm-lobby .mapcard[aria-pressed="true"] { border-color: var(--wm-accent); }
+.wm-lobby .mapcard:disabled { opacity: .45; cursor: not-allowed; }
+.wm-lobby .mapcard .thumb {
+  position: relative; height: 96px; display: grid; place-items: center;
+  background: rgb(var(--wm-void-rgb) / .7); border: 1px solid var(--wm-border);
+}
+/* The selected card's badge: one small Signal Blue square in the artwork's
+   corner — selection is a mark, not a wash. */
+.wm-lobby .mapcard[aria-pressed="true"] .thumb::after {
+  content: ''; position: absolute; top: 7px; right: 7px; width: 6px; height: 6px;
+  background: var(--wm-accent);
+}
+.wm-lobby .mapcard canvas {
+  max-width: 82%; max-height: 78px; width: auto; height: auto;
+  image-rendering: pixelated; opacity: .4; transition: opacity var(--wm-t);
+}
+.wm-lobby .mapcard:hover:not(:disabled) canvas { opacity: .6; }
+.wm-lobby .mapcard[aria-pressed="true"] canvas { opacity: .85; }
+.wm-lobby .mapcard .nm {
+  font-size: 11px; font-weight: 500; letter-spacing: .2em; text-transform: uppercase;
+  color: var(--wm-fg-dim);
+}
+.wm-lobby .mapcard[aria-pressed="true"] .nm { color: var(--wm-fg); }
+.wm-lobby .mapcard .sub {
+  font-family: var(--wm-mono); font-size: 9px; font-weight: 400; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--wm-muted-fg); line-height: 1.5;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
 /* ── countdown ───────────────────────────────────────────────────────────── */
-/* Shares .body for its padding and grid row, so it has to reset the two-column
-   template or the number lands in the hero column instead of the middle. */
 .wm-lobby .count {
-  display: grid; grid-template-columns: minmax(0, 1fr); place-items: center;
-  text-align: center; padding: 40px 24px;
+  position: fixed; inset: 0; z-index: 4; display: grid; place-items: center;
+  text-align: center; padding: 40px 24px; background: rgb(var(--wm-bg-rgb) / .97);
 }
 .wm-lobby .count .n {
-  font-family: var(--wm-display); font-size: clamp(96px, 17vh, 190px); line-height: 1;
-  letter-spacing: .04em; color: var(--wm-fg); font-variant-numeric: tabular-nums;
+  font-family: var(--wm-display); font-weight: 300; font-size: clamp(96px, 17vh, 190px);
+  line-height: 1; letter-spacing: .08em; color: var(--wm-fg); font-variant-numeric: tabular-nums;
 }
 /* The one place motion overshoots — a panel-open beat, per DESIGN.md. */
 .wm-lobby .count .n.beat { animation: wm-beat 180ms cubic-bezier(.2,.85,.3,1); }
 @keyframes wm-beat { from { transform: scale(1.12); opacity: .35 } to { transform: none; opacity: 1 } }
-.wm-lobby .count .lbl {
-  margin-top: 18px; font-family: var(--wm-display); font-size: 26px; letter-spacing: .16em;
-  text-transform: uppercase; color: var(--wm-fg-dim);
+.wm-lobby .count .lbl2 {
+  margin-top: 22px; font-family: var(--wm-mono); font-size: 13px; font-weight: 500;
+  letter-spacing: .34em; text-transform: uppercase; color: var(--wm-fg-dim);
 }
-.wm-lobby .count .sub { margin-top: 10px; font-size: 13px; color: var(--wm-muted-fg); }
+.wm-lobby .count .sub { margin-top: 12px; font-family: var(--wm-mono); font-size: 10px;
+  letter-spacing: .18em; text-transform: uppercase; color: var(--wm-muted-fg); }
 
 /* ── responsive ──────────────────────────────────────────────────────────── */
-/* Semantic thresholds, not device names: the room panel drops under the hero as
-   soon as a 372px rail would squeeze the display type. */
-@media (max-width: 1080px) {
-  /* align-content, not just align-items: two auto rows in a taller grid stretch
-     by default, which opens a dead gap between the CTA and the room panel on a
-     portrait tablet. Centre the pair as one block instead. */
-  .wm-lobby .body {
-    grid-template-columns: minmax(0, 1fr); align-items: start; align-content: center; gap: 20px;
+/* Semantic thresholds, not device names: the selector drops under the stage as
+   soon as three rails would squeeze the display type. */
+@media (max-width: 1240px) {
+  .wm-lobby .shell {
+    grid-template-columns: 280px minmax(0, 1fr);
+    grid-template-areas: 'left stage' 'right right';
   }
-  .wm-lobby .panel { max-height: none; }
+  .wm-lobby .mapcards { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
 }
-@media (max-width: 720px) {
-  .wm-lobby .bar { gap: 10px; padding: 10px 16px; flex-wrap: wrap; }
-  .wm-lobby .bar .wm-mark { font-size: 24px; }
-  .wm-lobby .callsign input { width: 116px; }
-  .wm-lobby .body { padding: 20px 16px; }
-  .wm-lobby .cta { grid-template-columns: minmax(0, 1fr); }
-  .wm-lobby .lede { font-size: 14px; margin-bottom: 22px; }
-  .wm-lobby .strip { gap: 12px; padding: 9px 16px; }
+@media (max-width: 860px) {
+  .wm-lobby .shell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'stage' 'left' 'right';
+  }
+  .wm-lobby .stage { min-height: 74vh; }
+  .wm-lobby .hero-name { letter-spacing: .18em; }
 }
-/* Short windows: the display type yields to the buttons, never the other way. */
+/* Short windows: the display type yields to the dock, never the other way. */
 @media (max-height: 680px) {
-  .wm-lobby .body { padding: 16px 24px; gap: 16px; }
-  .wm-lobby .hero .wm-mark { font-size: clamp(44px, 6vw, 68px); margin-bottom: 16px; }
-  .wm-lobby .hero .eyebrow { margin-bottom: 10px; }
-  .wm-lobby .lede { font-size: 14px; margin-bottom: 18px; }
-  .wm-lobby .opts { margin-bottom: 16px; }
-  .wm-lobby .maps { margin-bottom: 14px; }
-  .wm-lobby .mapcard { padding: 9px 11px; }
-  .wm-lobby .mapcard .bl { display: none; }
-  .wm-lobby .btn-primary { font-size: 22px; padding: 12px 24px 10px; }
-  .wm-lobby .btn-ghost { font-size: 17px; padding: 10px 18px 8px; }
+  .wm-lobby .rail-left, .wm-lobby .rail-right { padding: 16px; }
+  .wm-lobby .stage-hd { padding: 16px 22px 0; }
+  .wm-lobby .hero-name { font-size: clamp(30px, 4vw, 44px); margin: 10px 0 6px; }
+  .wm-lobby .hero-view { margin-top: 12px; min-height: 170px; }
+  .wm-lobby .dock { padding: 12px 14px 10px; gap: 7px; bottom: 14px; }
+  .wm-lobby .btn { padding: 11px 16px; }
+  .wm-lobby .mapcard .thumb { height: 64px; }
+  .wm-lobby .mapcard canvas { max-height: 52px; }
 }
-
-/* ── map carousel --------------------------------------------------------- */
-.wm-lobby .map-carousel { display: grid; grid-template-columns: 34px minmax(0, 1fr) 34px; gap: 8px; align-items: stretch; }
-.wm-lobby .mapcards { position: relative; display: block; min-width: 0; height: 168px; overflow: hidden; }
-.wm-lobby .mapcards .mapcard {
-  display: flex; position: absolute; inset: 0; width: 100%; max-width: none; height: 100%;
-  opacity: 0; pointer-events: none; transform: translateX(112%) scale(.92); filter: blur(3px);
-  transition: transform 280ms cubic-bezier(.2,.85,.3,1), opacity 220ms ease, filter 280ms ease;
-  will-change: transform, opacity, filter;
-}
-.wm-lobby .mapcards .mapcard[data-carousel-state="active"] {
-  z-index: 2; opacity: 1; pointer-events: auto; transform: translateX(0) scale(1); filter: none;
-}
-.wm-lobby .mapcards .mapcard[data-carousel-state="prev"] {
-  z-index: 1; opacity: .48; transform: translateX(-87%) scale(.92); filter: blur(3px);
-}
-.wm-lobby .mapcards .mapcard[data-carousel-state="next"] {
-  z-index: 1; opacity: .48; transform: translateX(87%) scale(.92); filter: blur(3px);
-}
-.wm-lobby .mapcards .mapcard[data-carousel-state="prev"],
-.wm-lobby .mapcards .mapcard[data-carousel-state="next"] { pointer-events: auto; }
-.wm-lobby .mapcards .mapcard[data-carousel-state="prev"]:hover,
-.wm-lobby .mapcards .mapcard[data-carousel-state="next"]:hover { opacity: .7; }
-.wm-lobby .map-nav {
-  border: 1px solid var(--wm-border); background: var(--wm-panel-2); color: var(--wm-muted-fg);
-  cursor: pointer; font: 400 28px/1 var(--wm-body); transition: color var(--wm-t), border-color var(--wm-t), background var(--wm-t);
-}
-.wm-lobby .map-nav:hover:not(:disabled) { color: var(--wm-fg); border-color: var(--wm-accent); background: var(--wm-hover); }
-.wm-lobby .map-nav:disabled { opacity: .35; cursor: not-allowed; }
-.wm-lobby .map-position { min-height: 16px; margin-top: 7px; text-align: center; color: var(--wm-muted-fg); font: 600 10px/1 var(--wm-body); letter-spacing: .12em; }
-
-/* ── map layout explorations (?debug=true) ────────────────────────────────────
-   Five ways to present the same six maps, over ONE model and ONE set of
-   callbacks. "[data-map-layout]" on ".maps" is the only switch; every layout
-   below is CSS over the same two renderings the view always builds:
-
-     .map-carousel  the shipped pager — one card, ghosts either side
-     .map-grid      a tile per map, each with an "isOpen" floorplan thumbnail
-     .map-detail    the selected map, written out long
-
-   So a layout never rebuilds the DOM, and a click means the same thing in all
-   five. Only the shipped "carousel" is reachable without the debug flag. */
-/* "display: contents" so the band is inert in the four layouts that do not use
-   it — ".maps" and ".opts" stay direct flex children of ".hero", exactly as
-   they were before the wrapper existed. Only "board" gives it a box. */
-.wm-lobby .board-band { display: contents; }
-.wm-lobby .map-body { display: grid; min-width: 0; }
-.wm-lobby .map-grid { display: none; min-width: 0; }
-.wm-lobby .map-detail { display: none; min-width: 0; }
-
-.wm-lobby .maptile {
-  display: grid; gap: 7px; padding: 9px; text-align: left; cursor: pointer;
-  background: var(--wm-panel-2); border: 1px solid var(--wm-border);
-  border-radius: var(--wm-r-sm); color: inherit; min-width: 0;
-  transition: border-color var(--wm-t), background var(--wm-t), opacity var(--wm-t);
-}
-.wm-lobby .maptile:hover:not(:disabled) { border-color: var(--wm-muted-fg); background: var(--wm-hover); }
-.wm-lobby .maptile[aria-pressed="true"] { border-color: var(--wm-accent); background: var(--wm-hover); }
-.wm-lobby .maptile:disabled { opacity: .45; cursor: not-allowed; }
-/* The plan is orientation, not artwork — it is the 10% accent in the 65/20/10
-   ratio, not the 65. Cap the height so a tile stays a tile, and centre the
-   short-axis maps rather than stretching them off their true proportions. */
-.wm-lobby .maptile canvas {
-  display: block; width: auto; max-width: 100%; max-height: 74px; height: auto;
-  margin: 0 auto; border-radius: var(--wm-r-sm); opacity: .5;
-  background: rgb(var(--wm-void-rgb) / .55); transition: opacity var(--wm-t);
-}
-.wm-lobby .maptile:hover:not(:disabled) canvas { opacity: .72; }
-.wm-lobby .maptile[aria-pressed="true"] canvas { opacity: 1; }
-.wm-lobby .maptile .tnm {
-  font: 400 13px/1 var(--wm-display); letter-spacing: .04em; text-transform: uppercase; color: var(--wm-fg);
-}
-.wm-lobby .maptile .tmeta { display: grid; gap: 3px; min-width: 0; }
-.wm-lobby .maptile .tsub {
-  font: 400 11px/1.3 var(--wm-body); color: var(--wm-muted-fg);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.wm-lobby .maptile .tsz { font: 600 10px/1 var(--wm-body); letter-spacing: .1em; color: var(--wm-muted-fg); }
-.wm-lobby .maptile[aria-pressed="true"] .tsz { color: var(--wm-accent); }
-
-.wm-lobby .map-detail .dtext { display: grid; gap: 5px; align-content: start; min-width: 0; }
-.wm-lobby .map-detail .dnm { font: 400 22px/1 var(--wm-display); letter-spacing: .04em; text-transform: uppercase; }
-.wm-lobby .map-detail .dsub {
-  font: 600 11px/1.3 var(--wm-body); letter-spacing: .09em; text-transform: uppercase; color: var(--wm-muted-fg);
-}
-.wm-lobby .map-detail .dbl { font: 400 13px/1.5 var(--wm-body); color: var(--wm-fg-dim); }
-.wm-lobby .map-detail .dsz { font: 600 10px/1 var(--wm-body); letter-spacing: .1em; color: var(--wm-muted-fg); }
-.wm-lobby .map-detail canvas {
-  display: block; width: 100%; height: auto; border-radius: var(--wm-r-sm);
-  background: rgb(var(--wm-void-rgb) / .55); border: 1px solid var(--wm-border);
-}
-
-/* 1 — FLOORPLAN GRID. 3x2 at six maps: the whole roster, no paging, in the
-   band the carousel spent on two arrows and two blurred ghosts. */
-.wm-lobby .maps[data-map-layout="grid"] .map-carousel,
-.wm-lobby .maps[data-map-layout="grid"] .map-position { display: none; }
-.wm-lobby .maps[data-map-layout="grid"] .map-grid {
-  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px;
-}
-.wm-lobby .maps[data-map-layout="grid"] .map-detail { display: grid; gap: 3px; margin-top: 11px; }
-.wm-lobby .maps[data-map-layout="grid"] .map-detail canvas,
-.wm-lobby .maps[data-map-layout="grid"] .map-detail .dsz { display: none; }
-.wm-lobby .maps[data-map-layout="grid"] .map-detail .dnm { font-size: 13px; }
-
-/* 2 — SPLIT RAIL. List left, one large plan right. The only layout that does
-   not change shape when a seventh map lands — the rail just scrolls. */
-.wm-lobby .maps[data-map-layout="rail"] .map-carousel,
-.wm-lobby .maps[data-map-layout="rail"] .map-position { display: none; }
-.wm-lobby .maps[data-map-layout="rail"] .map-body {
-  display: grid; grid-template-columns: minmax(0, 210px) minmax(0, 1fr); gap: 14px; align-items: start;
-}
-/* Sized so all six rows fit without a scrollbar — a rail that clips its last
-   map is the carousel's problem wearing a different shape. It still scrolls,
-   which is the point of the layout: map seven costs nothing. */
-.wm-lobby .maps[data-map-layout="rail"] .map-grid {
-  display: grid; gap: 4px; align-content: start; max-height: 364px; overflow-y: auto;
-}
-.wm-lobby .maps[data-map-layout="rail"] .maptile {
-  grid-template-columns: 34px minmax(0, 1fr); align-items: center; gap: 9px; padding: 6px 8px;
-}
-.wm-lobby .maps[data-map-layout="rail"] .maptile .tmeta { display: grid; gap: 2px; min-width: 0; }
-.wm-lobby .maps[data-map-layout="rail"] .maptile .tnm { font-size: 13px; }
-.wm-lobby .maps[data-map-layout="rail"] .map-detail {
-  display: grid; gap: 7px; padding: 12px; background: var(--wm-panel-2);
-  border: 1px solid var(--wm-border); border-radius: var(--wm-r-sm);
-}
-.wm-lobby .maps[data-map-layout="rail"] .map-detail canvas { max-height: 168px; width: auto; margin: 0 auto; }
-
-/* 3 — FILMSTRIP HERO. The shipped hero weight, but the other five stop being
-   invisible. Smallest diff from what ships today. */
-.wm-lobby .maps[data-map-layout="strip"] .map-carousel,
-.wm-lobby .maps[data-map-layout="strip"] .map-position { display: none; }
-/* The hero reads before the strip, so it must paint before it — the DOM keeps
-   tiles first because that is the reading order every other layout wants. */
-.wm-lobby .maps[data-map-layout="strip"] .map-detail { order: -1; }
-.wm-lobby .maps[data-map-layout="strip"] .map-detail {
-  display: grid; grid-template-columns: minmax(0, 1fr) 190px; gap: 16px; align-items: center;
-  padding: 14px 16px; background: var(--wm-panel-2); border: 1px solid var(--wm-border);
-  border-radius: var(--wm-r-sm); margin-bottom: 9px;
-}
-/* DOM order is canvas-then-text everywhere; the hero wants it the other way, so
-   place by column rather than reordering the element for one layout. */
-.wm-lobby .maps[data-map-layout="strip"] .map-detail .dtext { grid-column: 1; grid-row: 1; gap: 6px; }
-.wm-lobby .maps[data-map-layout="strip"] .map-detail canvas {
-  grid-column: 2; grid-row: 1; max-height: 132px; width: auto; margin-left: auto;
-}
-.wm-lobby .maps[data-map-layout="strip"] .map-grid {
-  display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px;
-}
-.wm-lobby .maps[data-map-layout="strip"] .maptile { padding: 5px; gap: 4px; }
-.wm-lobby .maps[data-map-layout="strip"] .maptile .tnm { font-size: 11px; }
-.wm-lobby .maps[data-map-layout="strip"] .maptile .tsz { display: none; }
-
-/* 4 — DEPLOY BOARD. Map and garrison become columns of one briefing band, so
-   the eye sweeps left-to-right and lands on the primary. */
-.wm-lobby .maps[data-map-layout="board"] .map-carousel,
-.wm-lobby .maps[data-map-layout="board"] .map-position { display: none; }
-.wm-lobby .maps[data-map-layout="board"] .map-grid { display: grid; gap: 3px; }
-.wm-lobby .maps[data-map-layout="board"] .maptile {
-  grid-template-columns: 26px minmax(0, 1fr) auto; align-items: center; gap: 9px;
-  padding: 5px 8px; background: none; border-color: transparent;
-}
-.wm-lobby .maps[data-map-layout="board"] .maptile:hover:not(:disabled) { background: var(--wm-hover); }
-.wm-lobby .maps[data-map-layout="board"] .maptile[aria-pressed="true"] { border-color: var(--wm-accent); background: var(--wm-hover); }
-.wm-lobby .maps[data-map-layout="board"] .maptile .tmeta { min-width: 0; }
-.wm-lobby .maps[data-map-layout="board"] .maptile .tnm { font-size: 13px; }
-.wm-lobby .maps[data-map-layout="board"] .maptile .tsub { display: none; }
-.wm-lobby.board .hero .maps { grid-column: 1; }
-.wm-lobby.board .hero .opts { grid-column: 2; }
-.wm-lobby.board .hero .board-band {
-  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 340px); gap: 26px;
-  align-items: start; margin: 0 0 18px;
-}
-/* The garrison chips are one row or they are not a row. 340px is what four of
-   them measure; below that "Heavy" wraps and the band stops reading as columns. */
-.wm-lobby.board .hero .board-band .opts .chips { flex-wrap: nowrap; }
-.wm-lobby.board .hero .board-band .maps, .wm-lobby.board .hero .board-band .opts { margin: 0; }
-
-/* 5 — COMMAND CENTRE. Three full-height rails: brief and deploy on the left,
-   the selected map's plan alone on a lit stage in the middle, every choice
-   (map, garrison, callsign) stacked on the right. The screen stops
-   being a page that scrolls and becomes a console that fits.
-
-   This is the ONE layout that cannot be pure CSS over the shipped tree, and
-   the reason is worth writing down: the other four re-shape a band that is
-   already one subtree, whereas three bordered columns need three boxes, and
-   the things that belong in them (the room panel, the callsign, the key
-   strip) live under three different parents. So setMapLayout
-   re-parents the EXISTING elements into three rails and puts them back when
-   the layout is dropped — see _setCommandRails(). Nothing is rebuilt and no
-   listener is re-bound, which is what keeps the "one model, one set of
-   callbacks" contract the other four layouts hold. */
-.wm-lobby.cmd { overflow: hidden; }
-.wm-lobby.cmd .shell { display: block; height: 100%; }
-/* The bar and the two-column body are emptied by the re-parent, not hidden
-   first — but they still hold their padding, so take them off the flow. */
-.wm-lobby.cmd .bar, .wm-lobby.cmd .body:not(.count) { display: none; }
-/* The countdown is the one screen that outranks the console: let it cover it
-   rather than trying to be a fourth column. */
-.wm-lobby.cmd .body.count { position: fixed; inset: 0; z-index: 2; background: rgb(var(--wm-void-rgb) / .93); }
-
-.wm-lobby .cmd-shell {
-  display: grid; grid-template-columns: 320px minmax(0, 1fr) 344px;
-  gap: 16px; padding: 16px; height: 100%; min-height: 0;
-}
-.wm-lobby .cmd-col {
-  border: 1px solid var(--wm-border); border-radius: var(--wm-r);
-  background: var(--wm-panel); box-shadow: var(--wm-shadow); min-width: 0; min-height: 0;
-}
-
-/* left rail — the brief, the room, and the two buttons, in that reading order */
-.wm-lobby .cmd-left {
-  display: flex; flex-direction: column; padding: 24px; overflow-y: auto; position: relative;
-}
-/* The one Melt Green wash on the screen, and it is a glow rather than a fill —
-   DESIGN.md caps the accent at ~4% and forbids it as a background. */
-.wm-lobby .cmd-left::before {
-  content: ''; position: absolute; top: -60px; right: -60px; width: 190px; height: 190px;
-  border-radius: 50%; background: var(--wm-accent); opacity: .07; filter: blur(60px); pointer-events: none;
-}
-.wm-lobby .cmd-left > * { position: relative; z-index: 1; }
-.wm-lobby.cmd .cmd-left .wm-mark { font-size: 46px; letter-spacing: .05em; margin: 0 0 16px; }
-.wm-lobby.cmd .cmd-left .eyebrow { margin: 0 0 14px; }
-.wm-lobby.cmd .cmd-left .lede { font-size: 13px; line-height: 1.6; margin: 0 0 20px; max-width: none; }
-/* The room card is sized by its contents, not by the rail: an empty roster is
-   the NORMAL state here (you are alone until somebody clicks your link), and a
-   card that grows to fill the column reads as a list that failed to load. */
-.wm-lobby.cmd .cmd-left .panel {
-  max-height: min(340px, 42vh); box-shadow: none; background: var(--wm-panel-2); flex: 0 1 auto;
-}
-.wm-lobby.cmd .cmd-left .panel-hd .code { font-size: 24px; }
-/* The slack goes here instead, which is what pins the two buttons to the
-   bottom of the rail no matter how many players are in the room. */
-.wm-lobby.cmd .cmd-left .cta {
-  display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; max-width: none; margin-top: auto;
-}
-.wm-lobby.cmd .cmd-left .btn-primary { font-size: 21px; padding: 13px 20px 10px; }
-.wm-lobby.cmd .cmd-left .btn-ghost { font-size: 16px; padding: 10px 18px 8px; }
-/* The key strip stops being a full-width footer and becomes the caption under
-   the buttons it describes. */
-.wm-lobby.cmd .cmd-left .strip {
-  border: 0; background: none; padding: 14px 0 0; margin-top: auto; flex-wrap: wrap;
-  justify-content: center; gap: 14px; font-size: 10px;
-}
-.wm-lobby.cmd .cmd-left .strip .spacer { display: none; }
-
-/* centre stage — the selected map's plan, lit, with nothing competing */
-.wm-lobby .cmd-stage { position: relative; overflow: hidden; background: rgb(var(--wm-void-rgb) / .55); }
-/* Two graticules: a 32px grid over the whole stage and the centre cross the
-   plan is registered against. Painted in Ice White at 3-4%, so they read as
-   paper under the plan rather than as a second drawing. */
-.wm-lobby .cmd-stage::before {
-  content: ''; position: absolute; inset: 0; pointer-events: none;
-  background:
-    linear-gradient(to right, rgb(var(--wm-fg-rgb) / .035) 1px, transparent 1px) 0 0 / 32px 32px,
-    linear-gradient(to bottom, rgb(var(--wm-fg-rgb) / .035) 1px, transparent 1px) 0 0 / 32px 32px;
-}
-.wm-lobby .cmd-stage::after {
-  content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .5;
-  background:
-    linear-gradient(var(--wm-accent), var(--wm-accent)) 50% 0 / 1px 100% no-repeat,
-    linear-gradient(var(--wm-accent), var(--wm-accent)) 0 50% / 100% 1px no-repeat;
-  mask-image: radial-gradient(circle at 50% 50%, #000 0, #000 34%, transparent 62%);
-  -webkit-mask-image: radial-gradient(circle at 50% 50%, #000 0, #000 34%, transparent 62%);
-}
-.wm-lobby.cmd .cmd-stage .map-detail {
-  display: grid; place-items: center; position: absolute; inset: 0; padding: 88px;
-}
-/* The plan is drawn one device pixel per cell, so at its intrinsic size it is a
-   thumbnail. "object-fit: contain" scales it to the stage without touching the
-   canvas backing store — the aspect ratio stays the map's own, and "pixelated"
-   keeps the blocks square instead of smearing them at 6x. */
-.wm-lobby.cmd .cmd-stage .map-detail canvas {
-  width: 100%; height: 100%; object-fit: contain; border: 0; background: none;
-  image-rendering: pixelated;
-  /* Ice White is capped at ~10% of a composition and this plan covers a third
-     of the screen, so it is knocked back to paper weight — the graticule reads
-     through it and the name plate stays the brightest thing on the stage. */
-  opacity: .3;
-}
-/* The map's name and blurb, as a glass plate over the stage's bottom-left
-   corner rather than a caption under it — the plan keeps the whole panel. */
-.wm-lobby.cmd .cmd-stage .map-detail .dtext {
-  position: absolute; left: 22px; bottom: 22px; max-width: 350px; gap: 7px; padding: 20px 22px;
-  background: var(--wm-panel); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-  border: 1px solid var(--wm-border); border-radius: var(--wm-r); box-shadow: var(--wm-shadow-lift);
-}
-.wm-lobby.cmd .cmd-stage .map-detail .dnm { font-size: 40px; }
-.wm-lobby.cmd .cmd-stage .map-detail .dsz {
-  align-self: start; padding: 4px 8px; border-radius: var(--wm-r-sm);
-  background: rgb(var(--wm-void-rgb) / .5); font-variant-numeric: tabular-nums;
-}
-/* The layout picker rides the stage's top-right corner, where the mock puts
-   its view toggles: it IS the view toggle here. */
-.wm-lobby.cmd .cmd-stage .layout-picker {
-  position: absolute; top: 16px; right: 16px; margin: 0; z-index: 1;
-}
-
-/* right rail — every choice on the screen, top to bottom, one scroll */
-.wm-lobby .cmd-right {
-  display: flex; flex-direction: column; gap: 18px; padding: 22px; overflow-y: auto;
-}
-.wm-lobby.cmd .cmd-right .hd { margin: 0; }
-.wm-lobby.cmd .cmd-right .map-grid {
-  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px;
-}
-.wm-lobby.cmd .cmd-right .maptile canvas { max-height: 62px; }
-/* Sections are separated by a hairline rather than by space alone: at this
-   width the eye needs the break to stop reading the chips as more map tiles. */
-.wm-lobby.cmd .cmd-right .opts, .wm-lobby.cmd .cmd-right .callsign {
-  margin: 0; padding-top: 18px; border-top: 1px solid var(--wm-border);
-}
-.wm-lobby.cmd .cmd-right .opts .chips { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-/* Callsign and the gear share a row: both are "this client's settings" rather
-   than the room's, and the label belongs to the field, so it spans. */
-.wm-lobby.cmd .cmd-right .callsign {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center;
-}
-.wm-lobby.cmd .cmd-right .callsign label { grid-column: 1 / -1; }
-.wm-lobby.cmd .cmd-right .callsign input { width: 100%; }
-
-/* Under ~1180px the three rails stop being three rails. The stage is the one
-   that can go: the plan is already on every tile in the right rail. */
-@media (max-width: 1180px) {
-  .wm-lobby.cmd { overflow-y: auto; }
-  .wm-lobby.cmd .shell { height: auto; }
-  .wm-lobby .cmd-shell { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); height: auto; }
-  .wm-lobby .cmd-stage { display: none; }
-}
-@media (max-width: 820px) {
-  .wm-lobby .cmd-shell { grid-template-columns: minmax(0, 1fr); }
-}
-
-/* The debug-only layout picker. Deliberately a plain <select> rather than a
-   brand control: it is developer furniture, not part of the brand surface, and
-   it should not read as a thing a player is meant to touch. */
-.wm-lobby .layout-picker { display: flex; align-items: center; gap: 7px; margin-right: 12px; }
-.wm-lobby .layout-picker .label {
-  color: var(--wm-muted-fg); font: 600 10px/1 var(--wm-body); letter-spacing: .12em; text-transform: uppercase;
-}
-.wm-lobby .layout-picker select {
-  background: var(--wm-panel-2); border: 1px solid var(--wm-border); border-radius: var(--wm-r-sm);
-  color: var(--wm-fg); padding: 6px 8px; font: 600 11px/1 var(--wm-body); cursor: pointer;
-}
-.wm-lobby .layout-picker select:focus { outline: none; border-color: var(--wm-accent); }
-
 `;
 
 /** Sizes offered for the bot garrison; `squads` × `perSquad` hostiles. */
@@ -717,25 +414,15 @@ export const BOT_PRESETS = [
   { key: 'heavy', label: 'Heavy', squads: 3, perSquad: 4, note: 'Three squads of 4. Contact almost everywhere.' },
 ];
 
-/**
- * The map-selection explorations, in the order the picker offers them.
- *
- * `carousel` is what ships and is the only one a player without `?debug=true`
- * can ever see. The rest are design candidates rendered over the same model —
- * see the `[data-map-layout]` CSS block for the argument each one makes.
- */
-export const MAP_LAYOUTS = [
-  { key: 'carousel', label: 'Carousel', note: 'Shipped — one card, ghosts either side' },
-  { key: 'grid', label: 'Floorplan grid', note: 'All six at once, no paging' },
-  { key: 'rail', label: 'Split rail', note: 'List left, large plan right' },
-  { key: 'strip', label: 'Filmstrip hero', note: 'One hero over a thumbnail strip' },
-  { key: 'board', label: 'Deploy board', note: 'Map and garrison as one briefing band' },
-  { key: 'command', label: 'Command centre', note: 'Three rails — brief, lit plan, every choice' },
-];
-
-const GEAR_SVG = `<svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor"
-  stroke-width="1.5" aria-hidden="true"><path d="M3 6h14M3 10h14M3 14h14"/>
-  <circle cx="7" cy="6" r="1.8"/><circle cx="13" cy="10" r="1.8"/><circle cx="8" cy="14" r="1.8"/></svg>`;
+/* Icons read as enterprise-software logic, at a uniform 1.5px stroke. Written
+   without whitespace between tags: an icon shares its button with a label that
+   tests compare by textContent, and a newline inside the markup would be a
+   text node the comparison sees. */
+const GEAR_SVG = `<svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 6h14M3 10h14M3 14h14"/><circle cx="7" cy="6" r="1.8"/><circle cx="13" cy="10" r="1.8"/><circle cx="8" cy="14" r="1.8"/></svg>`;
+const COPY_SVG = `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="5" y="5" width="9" height="9"/><path d="M11 5V2H2v9h3"/></svg>`;
+const LINK_SVG = `<svg class="ic" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M6.5 9.5l3-3"/><path d="M7.5 4.5l1.2-1.2a2.5 2.5 0 013.5 3.5L11 8"/><path d="M8.5 11.5l-1.2 1.2a2.5 2.5 0 01-3.5-3.5L5 8"/></svg>`;
+const PLAY_SVG = `<svg class="ic" width="10" height="12" viewBox="0 0 10 12" aria-hidden="true"><path d="M0 0l10 6-10 6z" fill="currentColor"/></svg>`;
+const TARGET_SVG = `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 2v3M8 11v3M2 8h3M11 8h3"/></svg>`;
 
 /**
  * Draw a `mapPlan` floorplan into a fresh canvas.
@@ -785,9 +472,9 @@ export class MatchStartUI {
     host.appendChild(this.root);
 
     /**
-     * Room presence cards — under the bar and centred, i.e. exactly where the
-     * in-match overlay puts them, because the player crosses between the two
-     * screens and the news must not move.
+     * Room presence cards — under the top edge and centred, i.e. exactly where
+     * the in-match overlay puts them, because the player crosses between the
+     * two screens and the news must not move.
      *
      * A sibling of the lobby rather than a child of it: `.wm-lobby *` resets
      * every margin and padding at the same specificity the card's own rules
@@ -814,86 +501,83 @@ export class MatchStartUI {
     this.onSettings = null;
 
     this.root.innerHTML = `
-      <div class="shell">
-        <header class="bar">
-          <span class="wm-mark">${WORDMARK_HTML}</span>
-          <span class="spacer"></span>
-          <label class="layout-picker hide" data-layout-picker>
-            <span class="label">Map layout</span>
-            <select data-map-layout-select></select>
-          </label>
-          <span class="callsign">
-            <label for="wm-callsign">Callsign</label>
-            <input id="wm-callsign" data-name maxlength="20" spellcheck="false" autocomplete="off" />
-          </span>
-          <button type="button" class="icon-btn" data-settings title="Settings (Esc)"
-            aria-label="Settings">${GEAR_SVG}</button>
-        </header>
+      <div class="shell" data-body>
+        <aside class="col rail-left">
+          <span class="eyebrow" data-eyebrow></span>
 
-        <div class="body" data-body>
-          <section class="hero">
-            <span class="eyebrow" data-eyebrow></span>
-            <span class="wm-mark">${WORDMARK_HTML}</span>
-            <p class="lede">A tactical arena built out of the floor you already work on.
-              <b>Browser-first</b>, no install — send a link and your co-workers are in.</p>
-            <div class="board-band" data-board-band>
-            <div class="maps" data-maps data-map-layout="carousel">
-              <div class="hd">
-                <span class="eyebrow">Map</span>
-                <span class="note" data-map-note></span>
+          <div class="roomzone" data-room-panel>
+            <div class="roombox">
+              <div class="roombox-hd">
+                <span class="grow">
+                  <span class="lbl">Active room</span>
+                  <span class="code" data-room>------</span>
+                </span>
+                <button type="button" class="icon-btn" data-copy-2
+                  title="Copy invite link (C)" aria-label="Copy invite link">${COPY_SVG}</button>
               </div>
-              <div class="map-carousel">
-                <button type="button" class="map-nav" data-map-prev aria-label="Previous map">‹</button>
-                <div class="mapcards" data-mapcards role="group" aria-label="Map"></div>
-                <button type="button" class="map-nav" data-map-next aria-label="Next map">›</button>
+              <div class="netline" data-netline>
+                <span class="sq"></span><span data-strip-net>Relay connecting...</span>
               </div>
-              <div class="map-position" data-map-position aria-live="polite"></div>
-              <div class="map-body">
-                <div class="map-grid" data-mapgrid role="group" aria-label="Map"></div>
-                <div class="map-detail" data-mapdetail></div>
-              </div>
+              <p class="status" data-status>Connecting to the relay…</p>
             </div>
+            <div class="roster wm-scroll" data-roster></div>
+          </div>
+
+          <div class="setup">
             <div class="opts">
-              <span class="eyebrow">Garrison</span>
+              <span class="lbl">Garrison</span>
               <div class="chips" data-bots role="group" aria-label="Garrison size"></div>
               <p class="note" data-bot-note></p>
             </div>
+            <div class="callsign">
+              <label class="lbl" for="wm-callsign">Callsign</label>
+              <span class="cs-row">
+                <input id="wm-callsign" data-name maxlength="20" spellcheck="false" autocomplete="off" />
+                <button type="button" class="icon-btn" data-settings title="Settings (Esc)"
+                  aria-label="Settings">${GEAR_SVG}</button>
+              </span>
             </div>
-            <div class="cta">
-              <button type="button" class="btn btn-primary" data-primary>Play</button>
-              <button type="button" class="btn btn-ghost" data-copy>Copy invite link</button>
-            </div>
-            <button type="button" class="alt hide" data-alt>Warm up against bots while you wait</button>
-          </section>
-
-          <aside class="panel" data-room-panel>
-            <div class="panel-hd">
-              <span class="h-sec">Room</span>
-              <span class="spacer"></span>
-              <span class="code" data-room>------</span>
-              <button type="button" class="btn-sm" data-copy-2>Copy</button>
-            </div>
-            <div class="panel-bd wm-scroll" data-roster></div>
-            <div class="panel-ft"><span class="status" data-status>Connecting to the relay…</span></div>
-          </aside>
-        </div>
-
-        <div class="body count hide" data-count>
-          <div>
-            <div class="n" data-count-n>3</div>
-            <div class="lbl" data-count-lbl>Match starting</div>
-            <div class="sub" data-count-sub>Deploying to the floor</div>
+            <span class="wm-mark rail-mark">${WORDMARK_HTML}</span>
           </div>
-        </div>
+        </aside>
 
-        <footer class="strip">
-          <span data-strip-room>Room <b>------</b></span>
-          <span data-strip-net>Relay <b>connecting</b></span>
-          <span class="spacer"></span>
-          <span><span class="key">Enter</span><b data-strip-primary>Play</b></span>
-          <span><span class="key">C</span>Copy invite</span>
-          <span><span class="key">Esc</span>Settings</span>
-        </footer>
+        <section class="col stage" data-stage>
+          <div class="stage-hd">
+            <span class="curmap">${TARGET_SVG}<span>Current map</span></span>
+            <h1 class="hero-name" data-hero-name></h1>
+            <span class="hero-sub" data-hero-sub></span>
+          </div>
+          <div class="hero-view">
+            <img class="hero-img" data-hero alt="" aria-hidden="true" />
+            <div class="hero-plan" data-hero-plan></div>
+            <div class="dock">
+              <button type="button" class="btn btn-primary" data-primary>${PLAY_SVG}<span data-primary-lbl>Play</span></button>
+              <button type="button" class="btn btn-ghost" data-copy>${LINK_SVG}<span data-copy-lbl>Copy invite link</span></button>
+              <div class="keys">
+                <span><span class="key">Enter</span><b data-strip-primary>Play</b></span>
+                <span><span class="key">C</span>Copy</span>
+                <span><span class="key">Esc</span>Settings</span>
+              </div>
+              <button type="button" class="alt hide" data-alt>Warm up against bots while you wait</button>
+            </div>
+          </div>
+        </section>
+
+        <aside class="col rail-right" data-maps>
+          <div class="rail-hd">
+            <span class="eyebrow">Map selector</span>
+            <span class="note" data-map-note></span>
+          </div>
+          <div class="mapcards wm-scroll" data-mapcards role="group" aria-label="Map"></div>
+        </aside>
+      </div>
+
+      <div class="count hide" data-count>
+        <div>
+          <div class="n" data-count-n>3</div>
+          <div class="lbl2" data-count-lbl>Match starting</div>
+          <div class="sub" data-count-sub>Deploying to the floor</div>
+        </div>
       </div>
     `;
 
@@ -901,35 +585,47 @@ export class MatchStartUI {
     this.bodyEl = q('[data-body]');
     this.mapsEl = q('[data-maps]');
     this.mapCardsEl = q('[data-mapcards]');
-    this.mapPrev = q('[data-map-prev]');
-    this.mapNext = q('[data-map-next]');
-    this.mapPosition = q('[data-map-position]');
     this.mapNoteEl = q('[data-map-note]');
-    this.mapGridEl = q('[data-mapgrid]');
-    this.mapDetailEl = q('[data-mapdetail]');
     this.eyebrowEl = q('[data-eyebrow]');
+    this.stageEl = q('[data-stage]');
+    this.heroName = q('[data-hero-name]');
+    this.heroSub = q('[data-hero-sub]');
+    this.heroImg = q('[data-hero]');
+    this.heroPlanEl = q('[data-hero-plan]');
     this.botChips = q('[data-bots]');
     this.botNote = q('[data-bot-note]');
     this.primaryBtn = q('[data-primary]');
+    this.primaryLbl = q('[data-primary-lbl]');
     this.altBtn = q('[data-alt]');
     this.copyBtn = q('[data-copy]');
+    this.copyLbl = q('[data-copy-lbl]');
     this.copyBtn2 = q('[data-copy-2]');
     this.nameIn = q('[data-name]');
     this.roomEl = q('[data-room]');
     this.roomPanel = q('[data-room-panel]');
     this.rosterEl = q('[data-roster]');
     this.statusEl = q('[data-status]');
+    this.netlineEl = q('[data-netline]');
     this.countEl = q('[data-count]');
     this.countN = q('[data-count-n]');
     this.countLbl = q('[data-count-lbl]');
     this.countSub = q('[data-count-sub]');
-    this.stripRoom = q('[data-strip-room]');
     this.stripNet = q('[data-strip-net]');
     this.stripPrimary = q('[data-strip-primary]');
+
     // The lobby has exactly one visual treatment: the WORKMELT brand system as
-    // documented in DESIGN.md. A browser that still carries the old lab
-    // preference is cleared rather than honoured — there is nothing to restore.
-    try { localStorage.removeItem('workmelt-lobby-style'); } catch {}
+    // documented in DESIGN.md. A browser still carrying a preference from the
+    // retired theme labs or layout explorations has it cleared, not honoured.
+    try {
+      localStorage.removeItem('workmelt-lobby-style');
+      localStorage.removeItem('workmelt-map-layout');
+    } catch {}
+
+    /* The hero artwork is a probe: the img element asks for the file and the
+       stage only wears it once it has actually decoded. A missing file is the
+       normal case, and it must leave the blueprint stage untouched. */
+    this.heroImg.addEventListener('load', () => this.stageEl.classList.add('has-art'));
+    this.heroImg.addEventListener('error', () => this.stageEl.classList.remove('has-art'));
 
     this.chipEls = new Map();
     for (const p of BOT_PRESETS) {
@@ -977,17 +673,11 @@ export class MatchStartUI {
     if (!multiplayer) {
       this.roomPanel.remove();
       this.copyBtn.remove();
-      this.stripRoom.remove();
-      this.stripNet.textContent = 'Offline — multiplayer disabled by ?mp=0';
-      this.bodyEl.style.gridTemplateColumns = 'minmax(0, 1fr)';
-      this.bodyEl.style.maxWidth = '980px';
     }
     this._setEyebrow();
 
-    /** id -> card element, filled by setMaps(). */
+    /** id -> card element and id -> summary, filled by setMaps(). */
     this.mapBtns = new Map();
-    /** id -> tile element and id -> summary, for the layout explorations. */
-    this.mapTiles = new Map();
     this.mapById = new Map();
     this.mapOrder = [];
     this.mapId = null;
@@ -997,46 +687,11 @@ export class MatchStartUI {
     this.mapLocked = false;
     this.mapNoteIdle = '';
 
-    this.mapPrev.addEventListener('click', () => this._stepMap(-1));
-    this.mapNext.addEventListener('click', () => this._stepMap(1));
-
-    /**
-     * Map-layout explorations. The picker only exists under `?debug=true`, and
-     * without it the lobby is pinned to the shipped carousel — a stored
-     * preference must not be able to hand a player an unshipped layout.
-     */
-    this.mapLayout = 'carousel';
-    this.layoutButtons = [];
-    /** The command-centre rails, and where every element in them came from. */
-    this._cmdRails = null;
-    this._cmdHomes = null;
-    let debug = false;
-    try { debug = new URLSearchParams(location.search).get('debug') === 'true'; } catch {}
-    const picker = q('[data-layout-picker]');
-    const select = q('[data-map-layout-select]');
-    if (debug) {
-      picker.classList.remove('hide');
-      for (const l of MAP_LAYOUTS) {
-        const o = document.createElement('option');
-        o.value = l.key;
-        o.textContent = `${l.label} — ${l.note}`;
-        select.appendChild(o);
-      }
-      select.addEventListener('change', () => this.setMapLayout(select.value));
-      this.layoutButtons = [select];
-      let savedLayout = 'carousel';
-      try { savedLayout = localStorage.getItem('workmelt-map-layout') || savedLayout; } catch {}
-      this.setMapLayout(savedLayout);
-      select.value = this.mapLayout;
-    } else {
-      picker.remove();
-    }
-
     /** What the primary button currently does; render() keeps it honest. */
     this._mode = 'solo';
     /** What the link under it does. Null hides it. */
     this._altMode = null;
-    /** How many are ready, for the "start now with the N who are" label. */
+    /** How many are ready, for the "start now with the N who are ready" label. */
     this._altForce = 0;
   }
 
@@ -1056,8 +711,8 @@ export class MatchStartUI {
       return;
     }
     this.eyebrowEl.textContent = this.invited
-      ? 'You were invited — join the room below'
-      : 'Season 1 · Live operations';
+      ? 'You were invited — join below'
+      : 'Season 1 — Live operations';
   }
 
   /**
@@ -1066,42 +721,19 @@ export class MatchStartUI {
    */
   setMaps(list = []) {
     this.mapCardsEl.textContent = '';
-    this.mapGridEl.textContent = '';
     this.mapBtns.clear();
-    this.mapTiles.clear();
     this.mapById = new Map(list.map((m) => [m.id, m]));
     this.mapOrder = list.map((m) => m.id);
-    for (const m of list) {
-      const t = document.createElement('button');
-      t.type = 'button';
-      t.className = 'maptile';
-      t.setAttribute('aria-pressed', 'false');
-      t.appendChild(paintPlan(m.plan));
-      const meta = document.createElement('span');
-      meta.className = 'tmeta';
-      for (const [cls, text] of [['tnm', m.name], ['tsub', m.description], ['tsz', m.size]]) {
-        if (!text) continue;
-        const s = document.createElement('span');
-        s.className = cls;
-        s.textContent = text;
-        meta.appendChild(s);
-      }
-      t.appendChild(meta);
-      t.addEventListener('click', () => this.onMap?.(m.id));
-      this.mapGridEl.appendChild(t);
-      this.mapTiles.set(m.id, t);
-    }
     for (const m of list) {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'mapcard';
       b.setAttribute('aria-pressed', 'false');
-      for (const [cls, text] of [
-        ['nm', m.name],
-        ['sub', m.description],
-        ['bl', m.blurb],
-        ['sz', m.size],
-      ]) {
+      const thumb = document.createElement('span');
+      thumb.className = 'thumb';
+      thumb.appendChild(paintPlan(m.plan));
+      b.appendChild(thumb);
+      for (const [cls, text] of [['nm', m.name], ['sub', m.description]]) {
         if (!text) continue;
         const span = document.createElement('span');
         span.className = cls;
@@ -1120,128 +752,32 @@ export class MatchStartUI {
 
   setMap(id) {
     this.mapId = id;
-    const active = this.mapOrder.indexOf(id);
-    const visible = active >= 0 ? active : 0;
-    for (const [k, b] of this.mapBtns) {
-      const selected = k === id;
-      b.setAttribute('aria-pressed', String(selected));
-      const index = this.mapOrder.indexOf(k);
-      let state = 'hidden';
-      if (index === visible) state = 'active';
-      else if (this.mapOrder.length > 2 && index === (visible - 1 + this.mapOrder.length) % this.mapOrder.length) state = 'prev';
-      else if (this.mapOrder.length > 2 && index === (visible + 1) % this.mapOrder.length) state = 'next';
-      b.setAttribute('data-carousel-state', state);
-    }
-    for (const [k, t] of this.mapTiles) t.setAttribute('aria-pressed', String(k === id));
-    this._paintMapDetail(this.mapById.get(id) ?? this.mapById.get(this.mapOrder[visible]));
-    this.mapPosition.textContent = this.mapOrder.length > 1
-      ? `${visible + 1} / ${this.mapOrder.length}`
-      : '';
+    for (const [k, b] of this.mapBtns) b.setAttribute('aria-pressed', String(k === id));
+    this._paintHero(this.mapById.get(id) ?? this.mapById.get(this.mapOrder[0]));
     this._syncMap();
   }
 
   /**
-   * The selected map, written out long. Every layout that is not the shipped
-   * carousel shows some part of this element; CSS decides which part, so the
-   * content is built once and never per layout.
+   * The stage: the selected map's name written large, and its artwork when
+   * `public/maps/<id>.png` exists — the floorplan blueprint otherwise.
    */
-  _paintMapDetail(m) {
-    const el = this.mapDetailEl;
-    if (!el) return;
-    el.textContent = '';
-    if (!m) return;
-    el.appendChild(paintPlan(m.plan));
-    const text = document.createElement('div');
-    text.className = 'dtext';
-    for (const [cls, val] of [['dnm', m.name], ['dsub', m.description], ['dbl', m.blurb], ['dsz', m.size]]) {
-      if (!val) continue;
-      const s = document.createElement('span');
-      s.className = cls;
-      s.textContent = val;
-      text.appendChild(s);
-    }
-    el.appendChild(text);
-  }
-
-  /**
-   * Switch which map-selection exploration is on screen. Debug-only: the
-   * shipped lobby is always `carousel`, and `?debug=true` is what puts the
-   * picker in the bar. One model, one set of callbacks, five presentations —
-   * see the CSS block for what each one is arguing.
-   */
-  setMapLayout(layout = 'carousel') {
-    const next = MAP_LAYOUTS.some((l) => l.key === layout) ? layout : 'carousel';
-    this.mapLayout = next;
-    this.mapsEl.setAttribute('data-map-layout', next);
-    this.root.classList.toggle('board', next === 'board');
-    this._setCommandRails(next === 'command');
-    this.root.classList.toggle('cmd', next === 'command');
-    for (const sel of this.layoutButtons) sel.value = next;
-    try { localStorage.setItem('workmelt-map-layout', next); } catch {}
-  }
-
-  /**
-   * Build (or tear down) the command-centre's three rails.
-   *
-   * The rails are boxes, so unlike the other four explorations this one cannot
-   * be CSS alone — but it still must not rebuild anything, because every
-   * element it touches already carries the listener that reports its clicks to
-   * `src/match/index.js`. So it MOVES the live nodes and remembers where each
-   * one came from (parent + next sibling), which is what makes the teardown
-   * exact: switching away puts the lobby back byte-for-byte, in DOM order, and
-   * the shipped carousel is none the wiser.
-   *
-   * Anything already detached — the room panel and the copy button under
-   * `?mp=0`, the layout picker without `?debug=true` — is skipped rather than
-   * resurrected. A layout may not hand a player a control the mode removed.
-   */
-  _setCommandRails(on) {
-    if (on === !!this._cmdRails) return;
-    if (!on) {
-      for (const [el, home] of this._cmdHomes) home.parent.insertBefore(el, home.next);
-      this._cmdRails.wrap.remove();
-      this._cmdRails = null;
-      this._cmdHomes = null;
+  _paintHero(m) {
+    this.heroName.textContent = m?.name ?? '';
+    this.heroSub.textContent = m?.description ?? '';
+    this.heroPlanEl.textContent = '';
+    if (!m) {
+      this.stageEl.classList.remove('has-art');
+      this.heroImg.removeAttribute('src');
       return;
     }
-    const col = (cls) => {
-      const d = document.createElement('div');
-      d.className = `cmd-col ${cls}`;
-      return d;
-    };
-    const wrap = document.createElement('div');
-    wrap.className = 'cmd-shell';
-    const rails = { wrap, left: col('cmd-left'), stage: col('cmd-stage'), right: col('cmd-right') };
-    wrap.append(rails.left, rails.stage, rails.right);
-
-    const q = (sel) => this.root.querySelector(sel);
-    /** rail -> the elements it takes, in the order they should read. */
-    const plan = [
-      [rails.left, [this.eyebrowEl, q('.hero .wm-mark'), q('.lede'), this.roomPanel, q('.cta'), this.altBtn, q('.strip')]],
-      [rails.stage, [q('[data-layout-picker]'), this.mapDetailEl]],
-      [rails.right, [q('.maps .hd'), this.mapGridEl, q('.opts'), q('.callsign')]],
-      // The gear is the exception: it joins the callsign's own row rather than
-      // the rail, because the two are one block ("this client's settings").
-      [q('.callsign'), [q('[data-settings]')]],
-    ];
-    this._cmdHomes = new Map();
-    for (const [rail, els] of plan) {
-      if (!rail) continue;
-      for (const el of els) {
-        if (!el || !el.isConnected) continue;
-        this._cmdHomes.set(el, { parent: el.parentNode, next: el.nextSibling });
-        rail.appendChild(el);
-      }
+    this.heroPlanEl.appendChild(paintPlan(m.plan, { scale: 4 }));
+    const want = `/maps/${encodeURIComponent(m.id)}.png`;
+    if (this.heroImg.getAttribute('src') !== want) {
+      this.stageEl.classList.remove('has-art');
+      this.heroImg.src = want;
+    } else if (this.heroImg.complete && this.heroImg.naturalWidth > 0) {
+      this.stageEl.classList.add('has-art');
     }
-    this.root.querySelector('.shell').appendChild(wrap);
-    this._cmdRails = rails;
-  }
-
-  _stepMap(delta) {
-    if (this.mapBusy || this.mapLocked || this.mapOrder.length < 2) return;
-    const current = Math.max(0, this.mapOrder.indexOf(this.mapId));
-    const next = (current + delta + this.mapOrder.length) % this.mapOrder.length;
-    this.onMap?.(this.mapOrder[next]);
   }
 
   /**
@@ -1273,9 +809,6 @@ export class MatchStartUI {
   _syncMap() {
     const off = this.mapBusy || this.mapLocked;
     for (const b of this.mapBtns.values()) b.disabled = off;
-    for (const t of this.mapTiles.values()) t.disabled = off;
-    this.mapPrev.disabled = off || this.mapOrder.length < 2;
-    this.mapNext.disabled = off || this.mapOrder.length < 2;
     this.mapNoteEl.textContent = this.mapBusy
       ? 'Loading…'
       : this.mapLocked
@@ -1293,9 +826,7 @@ export class MatchStartUI {
   }
 
   setRoom(code) {
-    const shown = (code ?? '------').toUpperCase();
-    this.roomEl.textContent = shown;
-    if (this.stripRoom.isConnected) this.stripRoom.innerHTML = `Room <b>${escapeHtml(shown)}</b>`;
+    this.roomEl.textContent = (code ?? '------').toUpperCase();
   }
 
   setName(name) {
@@ -1306,17 +837,15 @@ export class MatchStartUI {
   flashCopied(label = 'Link copied') {
     clearTimeout(this._copyT);
     if (this.copyBtn.isConnected) {
-      this.copyBtn.textContent = label;
+      this.copyLbl.textContent = label;
       this.copyBtn.classList.add('done');
     }
-    this.copyBtn2.textContent = 'Copied';
     this.copyBtn2.classList.add('done');
     this._copyT = setTimeout(() => {
       if (this.copyBtn.isConnected) {
-        this.copyBtn.textContent = 'Copy invite link';
+        this.copyLbl.textContent = 'Copy invite link';
         this.copyBtn.classList.remove('done');
       }
-      this.copyBtn2.textContent = 'Copy';
       this.copyBtn2.classList.remove('done');
     }, 1600);
   }
@@ -1342,12 +871,13 @@ export class MatchStartUI {
     const others = players.filter((p) => p.id !== m.myId);
 
     this.rosterEl.textContent = '';
-    if (!players.length) {
+    // Empty and disconnected says nothing here — the status line under the
+    // relay lamp already carries the "waiting on the relay" paragraph, and the
+    // same copy twice in one rail reads as a stutter.
+    if (!players.length && m.connected) {
       const d = document.createElement('div');
       d.className = 'empty';
-      d.textContent = m.connected
-        ? 'Nobody here yet. Send the invite link and they land in this room.'
-        : 'Waiting on the relay. You can play the garrison right now — co-workers can still join later.';
+      d.textContent = 'Nobody here yet. Send the invite link and they land in this room.';
       this.rosterEl.appendChild(d);
     }
     const now = this._now();
@@ -1384,9 +914,10 @@ export class MatchStartUI {
       this.rosterEl.appendChild(row);
     }
 
+    this.netlineEl.classList.toggle('on', !!m.connected);
     this.stripNet.innerHTML = m.connected
-      ? `Relay <b>online</b> · <b>${players.length}</b> in room`
-      : `Relay <b>${m.everConnected ? 'reconnecting' : 'connecting'}</b>`;
+      ? `Relay online — <b>${players.length}</b> in room`
+      : `Relay ${m.everConnected ? 'reconnecting' : 'connecting'}...`;
 
     // ---- what is the single best next move? -------------------------------
     if (this.mapBusy) {
@@ -1424,7 +955,7 @@ export class MatchStartUI {
         ? `That room is full (${m.full} players). Ask for a new link — you can still play right now.`
         : m.everConnected
           ? 'Offline — reconnecting to the relay.'
-          : 'Connecting to the relay…';
+          : 'Waiting on the relay. You can play the garrison right now — co-workers can still join later.';
     } else if (!others.length) {
       this._mode = m.ready ? 'unready' : 'solo';
       this._altMode = m.ready ? 'solo' : null;
@@ -1461,7 +992,7 @@ export class MatchStartUI {
       solo: this._botCount ? `Play vs ${this._botCount} bots` : 'Play',
     }[this._mode];
 
-    this.primaryBtn.textContent = this.mapBusy ? 'Loading map' : label;
+    this.primaryLbl.textContent = this.mapBusy ? 'Loading map' : label;
     this.primaryBtn.disabled = this.mapBusy;
     this.primaryBtn.className = this._mode === 'unready' ? 'btn btn-ghost' : 'btn btn-primary';
     this.stripPrimary.textContent = this.mapBusy ? 'Loading map' : label;
@@ -1559,8 +1090,4 @@ export class MatchStartUI {
     this.presenceEl.remove();
     this.root.remove();
   }
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }

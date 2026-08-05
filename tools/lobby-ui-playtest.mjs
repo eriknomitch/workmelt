@@ -12,12 +12,11 @@
  *
  *   • UI-only mode holds its contract: no engine, and /src/boot.js is never
  *     even requested;
- *   • every enabled map in the registry gets a card, and clicking one repaints
- *     the selection and persists the preference (the solo path);
+ *   • every enabled map in the registry gets a selector card, and clicking one
+ *     repaints the selection and persists the preference (the solo path);
  *   • every garrison chip repaints the primary CTA with its real bot count;
- *   • the lobby ships one visual treatment — the brand system — with no
- *     selector and no variant class on the root;
- *   • the `?debug=true` layout picker exists exactly when asked for;
+ *   • the lobby ships one visual treatment and one layout — the brand system —
+ *     with no style selector, no variant class and no layout picker anywhere;
  *   • Enter reaches the (inert) primary and C flashes the copy button;
  *   • `?mp=0` collapses the room panel.
  *
@@ -65,8 +64,8 @@ async function open(query) {
 try {
   const maps = mapSummaries();
 
-  /* ---- the default view, with the debug layout picker ------------------- */
-  const { page, fetched } = await open('&debug=true');
+  /* ---- the default view ------------------------------------------------- */
+  const { page, fetched } = await open('');
 
   eq('no engine boots', await page.evaluate('!!window.__ENGINE__'), false);
   eq('the UI-only view is exposed', await page.evaluate('!!window.__UIONLY__'), true);
@@ -127,11 +126,11 @@ try {
   eq('the lobby wears the brand system alone', await page.evaluate(
     () => /variant-/.test(document.querySelector('.wm-lobby').className)
   ), false);
-
-  /* ---- debug layout picker ---------------------------------------------- */
-  eq('?debug=true shows the layout picker', await page.evaluate(
+  // The map-layout explorations are retired with the Console Black redesign:
+  // the selector rail is the one layout, and nothing may put a picker back.
+  eq('no layout picker is rendered', await page.evaluate(
     () => !!document.querySelector('[data-layout-picker]')
-  ), true);
+  ), false);
 
   /* ---- keyboard: Enter is the primary, C is copy ------------------------- */
   await page.evaluate(() => document.querySelector('.wm-lobby').focus?.());
@@ -154,14 +153,14 @@ try {
   if (SHOT) await page.screenshot({ path: SHOT, type: 'png' });
   await page.close();
 
-  /* ---- ?mp=0 collapses the room panel; no picker without ?debug ---------- */
+  /* ---- ?mp=0 collapses the room panel ------------------------------------ */
   const solo = await open('&mp=0');
   eq('?mp=0 removes the room panel', await solo.page.evaluate(
     () => !!document.querySelector('[data-room-panel]')
   ), false);
-  eq('no layout picker without ?debug=true', await solo.page.evaluate(
-    () => !!document.querySelector('[data-layout-picker]')
-  ), false);
+  eq('the garrison chips survive ?mp=0', await solo.page.evaluate(
+    () => document.querySelectorAll('[data-bots] .chip').length > 0
+  ), true);
   await solo.page.close();
 } finally {
   console.log(results.join('\n'));
