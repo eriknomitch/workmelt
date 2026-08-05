@@ -196,10 +196,11 @@ export class PauseMenu {
     }
 
     // Trackpad escape hatch: right-mouse-held is a two-finger click on a
-    // laptop, which cannot coexist with the one-finger click that fires. Either
-    // knob alone solves it; together they take the pointer out of aiming
-    // entirely. See `core/controls.js`.
-    const adsRow = this._row('Aim (ADS)');
+    // laptop, which cannot coexist with the one-finger click that fires. This
+    // row covers the mouse; the key below takes the pointer out of aiming
+    // entirely and always toggles. See `core/controls.js`.
+    const adsRow = this._row('Aim (Mouse)');
+    adsRow.title = 'How the right mouse button aims. The ADS key always toggles.';
     const adsSeg = el('div', 'ow-seg', adsRow);
     this.adsModeBtns = [];
     for (const mode of ADS_MODES) {
@@ -209,9 +210,10 @@ export class PauseMenu {
       this.adsModeBtns.push([b, mode]);
     }
 
-    const adsKeyRow = this._row('ADS Key');
+    const adsKeyRow = this._row('ADS Key (Toggle)');
     this.adsKeyBtn = el('button', 'ow-bind', adsKeyRow, 'X');
     this.adsKeyBtn.type = 'button';
+    this.adsKeyBtn.title = 'Tap to raise the optic, tap again to lower it';
     this.adsKeyBtn.addEventListener('click', () => this._beginRebind());
     this._rebinding = false;
     this._rebindKeydown = null;

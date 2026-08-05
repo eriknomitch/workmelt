@@ -17,14 +17,15 @@ npm run dev          # http://127.0.0.1:5273  (override with OW_PORT)
 The game opens on a **Match Start** screen rather than dropping you mid-firefight:
 pick a **map**, pick a bot garrison and start on your own, or wait for a friend
 to join your room and ready up together. Once the match is live, click the canvas
-to lock the cursor. WASD move, mouse aim, LMB fire, RMB or X ADS, R reload, Shift sprint,
-Ctrl crouch, Space jump, Q/E lean, Esc release.
+to lock the cursor. WASD move, mouse aim, LMB fire, RMB hold to ADS, X to toggle ADS,
+R reload, Shift sprint, Ctrl crouch, Space jump, Q/E lean, Esc release.
 
 **On a trackpad**, aiming down sights has its own settings, because a two-finger
-click cannot be held while a one-finger click fires. The pause menu exposes both
-halves of the fix: **Aim (ADS)** switches the aim button from `hold` to
-`toggle`, and **ADS Key** rebinds aiming to the keyboard — X by default, so
-aiming works without a mouse out of the box. Both are stored per browser.
+click cannot be held while a one-finger click fires. The keyboard bind is the
+default fix: **X** raises the optic and a second tap lowers it, so aiming needs
+neither the pointer nor a hold out of the box (**ADS Key** rebinds it). For the
+mouse itself, **Aim (Mouse)** switches the right button between `hold` — the
+classic default — and `toggle`. Both are stored per browser.
 
 Graphics default to **Auto** per browser profile. On first launch the game
 estimates the active display cadence, calibrates a

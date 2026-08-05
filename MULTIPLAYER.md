@@ -23,9 +23,9 @@ npm run dev:mp        # runs the client (:5273) + relay (:8787) together
 - **Tab** shows the scoreboard (kills / deaths / K-D). Edit your callsign in the
   lobby's top-bar field or the in-match bar; it's remembered per browser.
 
-Controls are the same as single-player (WASD, mouse, LMB fire, RMB or X ADS, R
-reload, Shift sprint, Ctrl crouch, Space jump), including the trackpad-friendly
-**Aim (ADS)** and **ADS Key** settings in the pause menu.
+Controls are the same as single-player (WASD, mouse, LMB fire, RMB to hold ADS or
+X to toggle it, R reload, Shift sprint, Ctrl crouch, Space jump), including the
+trackpad-friendly **Aim (Mouse)** and **ADS Key** settings in the pause menu.
 
 ### Starting a match
 

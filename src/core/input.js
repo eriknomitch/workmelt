@@ -52,7 +52,7 @@ export class Input {
     this.gamepadIndex = null;
     this.stick = { moveX: 0, moveY: 0, lookX: 0, lookY: 0 };
 
-    /** Resolved once per frame from `config.adsMode` + `config.adsKey`. */
+    /** Resolved once per frame from the ADS key latch + `config.adsMode`. */
     this._ads = false;
     this._adsLatched = false;
 
@@ -162,10 +162,12 @@ export class Input {
     this.clearAdsToggle();
   }
 
-  /** Drop a latched toggle-mode ADS. Safe to call every frame. */
+  /** Drop a latched ADS. Safe to call every frame. */
   clearAdsToggle() {
     this._adsLatched = false;
-    if (this.config.adsMode === 'toggle') this._ads = false;
+    // Recompute what `_resolveAds` would say with no latch: a right button that
+    // is genuinely still down keeps aiming in hold mode, the latch does not.
+    this._ads = this.config.adsMode === 'toggle' ? false : this.down.has('Mouse2');
   }
 
   beginFrame() {
@@ -199,29 +201,34 @@ export class Input {
 
   /**
    * Fold every ADS source — right mouse, the optional keyboard bind — into one
-   * boolean, so `hold` vs `toggle` is decided in exactly one place and every
-   * consumer of `input.ads` (player, weapons, HUD) agrees on the answer.
+   * boolean, so every consumer of `input.ads` (player, weapons, HUD) agrees on
+   * the answer.
    *
-   * Toggle mode is what makes aiming possible on a trackpad: a two-finger click
-   * cannot be *held* while a one-finger click fires, but it can be tapped.
+   * The two sources deliberately behave differently, because they are held
+   * differently. The keyboard bind is *always* a toggle: a tap latches, another
+   * tap releases. Holding a key down for the length of a scoped engagement
+   * fights everything else the left hand is doing (WASD, lean, crouch), and the
+   * bind exists precisely so a trackpad player never has to hold an aim button.
+   * `config.adsMode` therefore governs the mouse alone — 'hold' is the classic
+   * right-button behaviour and stays the default there.
+   *
+   * Both sources drive one shared latch, so either can drop what the other set;
+   * a mouse *hold* is simply added on top and never touches it.
    */
   _resolveAds() {
     const key = this.config.adsKey;
     const bound = typeof key === 'string' && key ? key : null;
+    const mouseToggle = this.config.adsMode === 'toggle';
 
-    if (this.config.adsMode === 'toggle') {
-      if (this._pressed.has('Mouse2') || (bound && this._pressed.has(bound)))
-        this._adsLatched = !this._adsLatched;
-      // Sprint is gated on not being scoped, so without this a latched player
-      // would press sprint and watch nothing happen. Same as a hold player
-      // letting go of the button to break into a run.
-      else if (this._adsLatched && this.actionPressed('sprint')) this._adsLatched = false;
-      this._ads = this._adsLatched;
-      return;
-    }
+    const tapped =
+      (bound && this._pressed.has(bound)) || (mouseToggle && this._pressed.has('Mouse2'));
+    if (tapped) this._adsLatched = !this._adsLatched;
+    // Sprint is gated on not being scoped, so without this a latched player
+    // would press sprint and watch nothing happen. Same as a hold player
+    // letting go of the button to break into a run.
+    else if (this._adsLatched && this.actionPressed('sprint')) this._adsLatched = false;
 
-    this._adsLatched = false;
-    this._ads = this.down.has('Mouse2') || (bound ? this.down.has(bound) : false);
+    this._ads = this._adsLatched || (!mouseToggle && this.down.has('Mouse2'));
   }
 
   endFrame() {}
