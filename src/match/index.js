@@ -33,7 +33,7 @@
  *   • WHERE the player deploys — a spawn scored by `world.spawns` rather than
  *     the menu backdrop everyone was standing on — and, when there is no `net`
  *     to own it, the respawn cycle after a bot kills you.
- *   • WHEN the garrison spawns. `config.deferGarrison` (set in src/main.js) tells
+ *   • WHEN the garrison spawns. `config.deferGarrison` (set in src/boot.js) tells
  *     `ai` not to populate during boot; this system calls `ai.populate()` with
  *     the chosen size at the moment the match starts, so a players-only match
  *     really has no bots in it.

@@ -208,7 +208,7 @@ export const DEFAULTS = {
   /**
    * Don't garrison the level during boot — the `match` subsystem spawns the AI
    * when a match actually starts, so a players-only match has no bots in it.
-   * Set by src/main.js whenever the Match Start view is in play.
+   * Set by src/boot.js whenever the Match Start view is in play.
    */
   deferGarrison: false,
 };
