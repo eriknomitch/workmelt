@@ -226,7 +226,7 @@ menu regressions.
 Makes the system durable instead of a one-time pass.
 
 - Rewrite the imagery and world-palette sections of `DESIGN.md` against what
-  actually shipped, and point `CLAUDE.md`'s deep-dive list at this document.
+  actually shipped, and point `AGENTS.md`'s deep-dive list at this document.
 - Update `.claude/skills/create-map` so a new map is born inside the system:
   declares an accent and a landmark, draws from the blueprint kit, ships a
   blueprint card.
