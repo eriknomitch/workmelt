@@ -9,6 +9,18 @@
  * the shared shot list does not cover (the pause menu, a clean HUD, ...).
  * `--fonts` reports which condensed families the browser can actually resolve —
  * the HUD's whole typographic character depends on that answer.
+ *
+ * Two modes ride `?renderGame=false` (src/dev/uionly.js) instead of a full
+ * boot, because nothing they look at needs an engine — which on a software
+ * rasteriser is the difference between seconds and minutes:
+ *
+ *   --fonts          only needs brand.js installed in a page.
+ *   --state=lobby    screenshots the lobby surface; `--style=<variant>` picks
+ *                    one of its style explorations first. NOTE: the real lobby
+ *                    sits its scrim over the live scene, UI-only sits it over
+ *                    the flat page background — visually near-identical, but
+ *                    not bit-identical, so this is an iteration tool, not a
+ *                    baseline source.
  */
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
@@ -60,8 +72,13 @@ const logs = [];
 page.on('console', (m) => logs.push(`[${m.type()}] ${m.text()}`));
 page.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}`));
 
+// The fonts probe and the lobby state judge only the DOM, so they skip the
+// engine entirely; every HUD state still needs the real boot behind it.
+const uiOnly = args.fonts || STATE === 'lobby';
+
 try {
-  await page.goto(`http://127.0.0.1:${PORT}/?capture=1&shot=hud`, { waitUntil: 'domcontentloaded' });
+  const query = uiOnly ? '?renderGame=false' : '?capture=1&shot=hud';
+  await page.goto(`http://127.0.0.1:${PORT}/${query}`, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction('window.__READY__ === true', null, { timeout: 90000 });
 
   if (args.fonts) {
@@ -92,7 +109,11 @@ try {
     });
     console.log(JSON.stringify(report, null, 2));
   } else {
-    await page.evaluate((s) => window.__ENGINE__?.ctx.peek('ui')?.debugState(s), STATE);
+    if (STATE === 'lobby') {
+      if (args.style) await page.evaluate((s) => window.__UIONLY__?.setStyle(s), String(args.style));
+    } else {
+      await page.evaluate((s) => window.__ENGINE__?.ctx.peek('ui')?.debugState(s), STATE);
+    }
     await page.evaluate(
       (n) =>
         new Promise((done) => {
