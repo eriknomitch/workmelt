@@ -144,7 +144,7 @@ says otherwise.
 ```js
 const world = ctx.get('world');
 world.mapId                 // 'market' | 'rust' | 'wilmot' | 'loop' | 'fishers'
-                            // | 'nuketown' | 'bloodgulch' — see the REGISTRY in
+                            // | 'nuketown' | 'bloodgulch' | 'dome' — see the REGISTRY in
                             // world/maps.js, which is also where a map is
                             // enabled or parked
 world.maps                  // [{ id, name, description, blurb, size }] for menus

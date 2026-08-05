@@ -89,6 +89,19 @@ import {
   groundYBloodGulch,
 } from './bloodgulch.js';
 import {
+  DOME,
+  RADOME,
+  RADOME_STAIR_FOOT_Z,
+  BUNKER,
+  STRUCTURES as DOME_STRUCTURES,
+  CONTAINERS as DOME_CONTAINERS,
+  MOUTHS as DOME_MOUTHS,
+  RUIN_WALLS,
+  WRECKS,
+  inSolidDome,
+  groundYDome,
+} from './dome.js';
+import {
   LOOP,
   EL,
   STATION,
@@ -1333,6 +1346,164 @@ ok(
   'every authored boulder is real cover, not a decal',
   `${BOULDERS.length} of them`
 );
+
+/* ───────────────────────────────────────────────────── dome — the station ── */
+console.log(B('\ndome — the station'));
+
+const dome = mapById('dome');
+
+const dRects = [];
+for (const s of DOME_STRUCTURES) dRects.push([s.id, s.x - s.w / 2, s.z - s.d / 2, s.x + s.w / 2, s.z + s.d / 2]);
+for (const [x, z, ry, tier] of DOME_CONTAINERS) {
+  if (tier !== 0) continue;
+  const hx = (ry === 0 ? CONTAINER.l : CONTAINER.w) / 2;
+  const hz = (ry === 0 ? CONTAINER.w : CONTAINER.l) / 2;
+  dRects.push([`cont(${x},${z})`, x - hx, z - hz, x + hx, z + hz]);
+}
+for (const [x, z, ry, len] of RUIN_WALLS) {
+  const hx = (ry === 0 ? len : 0.4) / 2;
+  const hz = (ry === 0 ? 0.4 : len) / 2;
+  dRects.push([`ruin(${x},${z})`, x - hx, z - hz, x + hx, z + hz]);
+}
+for (const [x, z] of WRECKS) dRects.push([`wreck(${x},${z})`, x - 2.2, z - 2.2, x + 2.2, z + 2.2]);
+
+const dOverlaps = [];
+for (let i = 0; i < dRects.length; i++)
+  for (let j = i + 1; j < dRects.length; j++) {
+    const a = dRects[i];
+    const b = dRects[j];
+    if (a[1] < b[3] && a[3] > b[1] && a[2] < b[4] && a[4] > b[2]) dOverlaps.push(`${a[0]} ∩ ${b[0]}`);
+  }
+ok(dOverlaps.length === 0, 'nothing solid is inside anything else solid', dOverlaps.slice(0, 3).join(', '));
+
+const dOut = dRects.filter((r) => r[1] < -DOME.halfX || r[2] < -DOME.halfZ || r[3] > DOME.halfX || r[4] > DOME.halfZ);
+ok(dOut.length === 0, 'everything solid is inside the fence line', dOut.map((r) => r[0]).join(' '));
+
+/**
+ * THE RADOME IS THE MAP, and its numbers are load-bearing in ways no still
+ * frame shows. The catwalk must oversail the machine room (a ring narrower
+ * than the shed would land the stair on the shed roof instead), the sphere
+ * must clear standing head height everywhere on the walkway, and the pedestal
+ * must actually fit inside the room built around it. Any of these can drift a
+ * few tenths in an edit and the map still builds, still screenshots fine, and
+ * quietly loses its overlook.
+ */
+ok(RADOME.catOuter > RADOME.shedHalf, 'the catwalk oversails the machine room',
+  `ring to ${RADOME.catOuter} m vs shed at ${RADOME.shedHalf} m`);
+ok(RADOME.catY > RADOME.shedH + 0.9, 'and clears its roof by a real margin',
+  `${(RADOME.catY - RADOME.shedH).toFixed(1)} m`);
+ok(RADOME.pedR + 0.4 < RADOME.shedHalf, 'the pedestal fits inside the room with a walkway around it');
+{
+  // Sphere clearance over the walkway, from the same numbers the build uses:
+  // surface height above the ring at its inner edge, minus the deck height.
+  const dy = Math.sqrt(RADOME.sphereR ** 2 - RADOME.catInner ** 2);
+  const clearance = RADOME.sphereY - dy - RADOME.catY;
+  ok(clearance > 2.0, 'the sphere clears head height over the whole catwalk',
+    `${clearance.toFixed(2)} m at the inner edge`);
+}
+ok(RADOME.sphereY + RADOME.sphereR > 16, 'the sphere is tall enough to be the landmark',
+  `${(RADOME.sphereY + RADOME.sphereR).toFixed(1)} m to the crown`);
+
+/**
+ * THE STAIR IS THE ONLY WAY UP, so two facts about it are the whole vertical
+ * design: the top step lands exactly on the catwalk's south edge (derived and
+ * asserted from the same constants, so they cannot drift apart), and the foot
+ * plus its run-up stand on open ground — a container nudged over the run-up
+ * would strand the overlook with every other check green.
+ */
+{
+  const run = Math.round(RADOME.catY / 0.275) * 0.3;
+  ok(Math.abs(RADOME_STAIR_FOOT_Z - (RADOME.z + RADOME.catOuter) - run) < 1e-9,
+    'the stair top lands on the catwalk edge', `${run.toFixed(1)} m of run`);
+  const clear = [];
+  for (let d = 0; d <= 2.4; d += 0.4)
+    if (!dome.isOpen(RADOME.stairX, RADOME_STAIR_FOOT_Z + 0.4 + d)) clear.push(d.toFixed(1));
+  ok(clear.length === 0, 'and its foot and run-up stand on open ground',
+    clear.length ? `blocked ${clear.join(',')} m out` : `foot at z=${RADOME_STAIR_FOOT_Z.toFixed(1)}`);
+}
+
+/**
+ * The bunker's yard wall is three ways in — door, breach, door — which is what
+ * keeps a 30 m hall from being a two-door trap. The breach must stay a real
+ * walk-through opening, and the doors must stay at the ends, one each side of
+ * it, or the interior collapses to a camp with one watched approach.
+ */
+ok(BUNKER.doors.length === 2 && BUNKER.doors[0] < -8 && BUNKER.doors[1] > 8,
+  'the bunker keeps a door at each end', `u = ${BUNKER.doors.join(', ')}`);
+ok(BUNKER.breach.w >= 3 && BUNKER.breach.h >= 2.4,
+  'and the breach between them is a walk-through opening',
+  `${BUNKER.breach.w} × ${BUNKER.breach.h} m`);
+ok(BUNKER.roofHole.s >= 2, 'the roof hole is real, not a crack', `${BUNKER.roofHole.s} m square`);
+
+// The apron is a graded pad: every rise on this map is built, so a dig
+// sneaking into the height field is a regression.
+let dFlat = true;
+for (let x = -DOME.halfX; x <= DOME.halfX && dFlat; x += 2)
+  for (let z = -DOME.halfZ; z <= DOME.halfZ && dFlat; z += 2) if (Math.abs(groundYDome(x, z)) > 0.2) dFlat = false;
+ok(dFlat, 'the compound floor is flat — every rise on this map is built');
+ok(!dome.isOpen(0, DOME.halfZ + 3) && !dome.isOpen(DOME.halfX + 3, 0), 'outside the fence is not playable ground');
+
+// Sample the yard. Two structures and a container scatter in 68 x 52 m — this
+// sits in Rust's open-yard band, not the Loop's dense block.
+let dOpen = 0;
+let dTotal = 0;
+for (let x = -DOME.halfX; x <= DOME.halfX; x += 1)
+  for (let z = -DOME.halfZ; z <= DOME.halfZ; z += 1) {
+    dTotal++;
+    if (dome.isOpen(x, z)) dOpen++;
+  }
+const dFrac = dOpen / dTotal;
+ok(dFrac > 0.55 && dFrac < 0.9, 'most of the compound is walkable', `${(dFrac * 100).toFixed(0)}% open`);
+
+/**
+ * EVERY SPAWN IS REACHABLE FROM EVERY OTHER — the flood fill Blood Gulch
+ * carries, for the same reason: cover on this map is authored rectangles, and
+ * the way connectivity fails is a container nudged against the radome shed or
+ * a wreck against the ruin line, leaving standable ground nobody can enter.
+ */
+{
+  const seen = new Set();
+  const start = dome.spawnPoints[0];
+  const stack = [[Math.round(start[0]), Math.round(start[1])]];
+  seen.add(`${stack[0][0]},${stack[0][1]}`);
+  while (stack.length) {
+    const [x, z] = stack.pop();
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx;
+      const nz = z + dz;
+      const k = `${nx},${nz}`;
+      if (seen.has(k)) continue;
+      if (!dome.isOpen(nx, nz, 0.45)) continue;
+      seen.add(k);
+      stack.push([nx, nz]);
+    }
+  }
+  const stranded = dome.spawnPoints.filter(([x, z]) => {
+    for (let dx = -1; dx <= 1; dx++)
+      for (let dz = -1; dz <= 1; dz++) if (seen.has(`${Math.round(x) + dx},${Math.round(z) + dz}`)) return false;
+    return true;
+  });
+  ok(stranded.length === 0, 'every spawn point can be walked to from the boot spawn',
+    stranded.length ? stranded.map(([x, z, , zone]) => `${zone}(${x},${z})`).join(' ') : `${seen.size} cells reachable`);
+}
+
+/**
+ * THE FENCE MOUTHS ARE SEALED — the same probe as Rust's gates, for the same
+ * reason. Each long side opens once, and the container parked across the gap
+ * is the only thing between that opening and empty desert. The probe stays
+ * 3 m deep: any deeper and it reaches unrelated mid-yard cover and becomes an
+ * assertion that cannot fail.
+ */
+for (const [sz, mx, mw] of DOME_MOUTHS) {
+  const leaks = [];
+  for (let x = mx - mw / 2 + 0.2; x <= mx + mw / 2 - 0.2; x += 0.2) {
+    let solid = false;
+    for (let d = 0; d <= 3 && !solid; d += 0.2) if (inSolidDome(x, sz * (DOME.halfZ - d), 0)) solid = true;
+    if (!solid) leaks.push(x.toFixed(1));
+  }
+  ok(leaks.length === 0, `the ${sz < 0 ? 'north' : 'south'} mouth is sealed`,
+    leaks.length ? `open at x=${leaks.join(',')}` : `${mw} m of opening covered`);
+}
 
 console.log(
   fail === 0
