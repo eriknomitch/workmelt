@@ -1,7 +1,35 @@
 #!/usr/bin/env zsh
+
+# Ports dev:mp needs: the Vite client (strictPort, honours OW_PORT) and the relay.
+DEV_PORTS=(${OW_PORT:-5273} 8787)
+
+# A crashed dev:mp leaves its children reparented to init (PPID 1) still holding
+# these sockets, which makes the next run die with EADDRINUSE. Clear them first.
+kill_orphans() {
+  local port pid i
+  for port in $DEV_PORTS; do
+    for pid in ${(f)"$(lsof -nP -tiTCP:$port -sTCP:LISTEN 2>/dev/null)"}; do
+      [[ -n $pid ]] || continue
+      print -u2 "[run] killing stale listener on :$port (pid $pid)"
+      kill -TERM $pid 2>/dev/null
+      # Give it a moment to close the socket, then insist.
+      for i in {1..25}; do
+        kill -0 $pid 2>/dev/null || break
+        sleep 0.2
+      done
+      if kill -0 $pid 2>/dev/null; then
+        kill -KILL $pid 2>/dev/null
+      fi
+    done
+  done
+  return 0
+}
+
+kill_orphans
+
 pnpm run dev:mp &
-until curl -sf http://localhost:5273 >/dev/null; do
+until curl -sf http://localhost:${OW_PORT:-5273} >/dev/null; do
   sleep 0.2
 done
-open http://localhost:5273
+open http://localhost:${OW_PORT:-5273}
 wait
