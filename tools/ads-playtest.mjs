@@ -81,13 +81,20 @@ try {
   const bindLabel = () =>
     page.evaluate(() => document.querySelector('.ow-bind')?.textContent ?? null);
 
-  /* ---- defaults: X aims, and you can fire while aiming ------------------ */
-  eq('boots in hold mode', (await cfg()).adsMode, 'hold');
+  /* ---- defaults: X toggles, and you can fire while aiming ---------------- */
+  eq('the mouse boots in hold mode', (await cfg()).adsMode, 'hold');
   eq('boots with X bound', (await cfg()).adsKey, 'KeyX');
 
-  await key('keydown', 'KeyX');
+  const clearsAtStart = await clears();
+  await tap('KeyX');
   await settle();
-  eq('holding X aims', await ads(), true);
+  check(
+    'tapping X latches the optic out of the box',
+    (await ads()) === true,
+    `ads=${await ads()} after ${(await clears()) - clearsAtStart} clear(s)`
+  );
+  await settle();
+  eq('releasing X does not drop it', await ads(), true);
 
   await page.evaluate(() =>
     dispatchEvent(new MouseEvent('mousedown', { button: 0, bubbles: true }))
@@ -96,12 +103,13 @@ try {
   const both = await page.evaluate(
     '({ads: window.__ENGINE__.input.ads, fire: window.__ENGINE__.input.fire})'
   );
-  // The whole point: on a trackpad this pair was previously impossible.
+  // The whole point: on a trackpad this pair was previously impossible, and it
+  // now needs no hold on either hand.
   check('can fire while aiming from the keyboard', both.ads && both.fire, JSON.stringify(both));
   await page.evaluate(() => dispatchEvent(new MouseEvent('mouseup', { button: 0, bubbles: true })));
-  await key('keyup', 'KeyX');
+  await tap('KeyX');
   await settle();
-  eq('releasing X drops the optic', await ads(), false);
+  eq('a second tap of X drops the optic', await ads(), false);
 
   /* ---- the settings rows ------------------------------------------------ */
   await page.evaluate('window.__ENGINE__.ctx.get("ui").menu.show()');
@@ -111,7 +119,7 @@ try {
   );
   check(
     'pause menu lists both ADS rows',
-    rows.includes('AIM (ADS)') && rows.includes('ADS KEY'),
+    rows.includes('AIM (MOUSE)') && rows.includes('ADS KEY (TOGGLE)'),
     rows.join('|')
   );
   // `.ow-bind` must not collide with `.ow-key`, which is the in-world prompt cap.
@@ -122,12 +130,12 @@ try {
 
   await page.evaluate(() => {
     const row = [...document.querySelectorAll('.ow-row')].find(
-      (r) => r.querySelector('.name')?.textContent === 'AIM (ADS)'
+      (r) => r.querySelector('.name')?.textContent === 'AIM (MOUSE)'
     );
     [...row.querySelectorAll('button')].find((b) => b.textContent === 'toggle').click();
   });
   await settle();
-  eq('clicking toggle updates config', (await cfg()).adsMode, 'toggle');
+  eq('clicking toggle updates the mouse mode', (await cfg()).adsMode, 'toggle');
   eq('the choice is persisted', JSON.parse(await stored()).adsMode, 'toggle');
 
   /* ---- rebinding -------------------------------------------------------- */

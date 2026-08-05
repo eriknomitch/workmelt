@@ -140,8 +140,9 @@ codebase):
 
 ## Accessibility & Inclusion
 
-- Trackpad and keyboard-only aiming are supported first-class (ADS hold/toggle,
-  ADS key rebind), and control binds are user-remappable and persisted.
+- Trackpad and keyboard-only aiming are supported first-class (a toggling ADS key
+  bound out of the box, mouse hold/toggle), and control binds are user-remappable
+  and persisted.
 - Contrast floors on the brand canvas are measured and enforced per `DESIGN.md`;
   Steel, Info and Danger are large-text and icon only.
 - Visibility settings (brightness, shadow lift, exposure key, sharpness) exist so

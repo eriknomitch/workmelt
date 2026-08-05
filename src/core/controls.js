@@ -9,12 +9,16 @@
  * trackpad player can aim or fire but never both. Two knobs fix that without
  * touching anyone's mouse setup:
  *
- *   adsMode 'toggle' — a tap latches the optic instead of requiring a hold.
- *   adsKey           — a keyboard bind, so ADS leaves the pointer entirely.
+ *   adsKey  — a keyboard bind, so ADS leaves the pointer entirely. It is always
+ *             a toggle: tap to raise the optic, tap again to lower it. Holding
+ *             a key for a whole engagement fights everything else the left hand
+ *             is doing, and no hold is exactly what the bind is for.
+ *   adsMode — how the *right mouse button* behaves: 'hold' (classic, and the
+ *             default) or 'toggle'. It does not affect `adsKey`.
  *
  * `adsKey` defaults to X: unbound elsewhere, and under the same left hand that
  * already covers Z/C for stance, so a trackpad player can aim and fire out of
- * the box.
+ * the box without changing a setting.
  */
 
 import { ACTIONS } from './input.js';

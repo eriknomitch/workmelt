@@ -190,12 +190,16 @@ export const DEFAULTS = {
   sensitivity: 0.0022,
   adsSensScale: 0.65,
   /**
-   * How the aim button behaves: 'hold' (classic) or 'toggle'. Toggle exists for
-   * trackpads, where a two-finger click cannot be held while a one-finger click
-   * fires. Persisted by `core/controls.js`.
+   * How the right mouse button aims: 'hold' (classic) or 'toggle'. Toggle
+   * exists for trackpads, where a two-finger click cannot be held while a
+   * one-finger click fires. Does not apply to `adsKey`. Persisted by
+   * `core/controls.js`.
    */
   adsMode: 'hold',
-  /** Optional keyboard bind for ADS, so aiming never needs the pointer at all. */
+  /**
+   * Optional keyboard bind for ADS, so aiming never needs the pointer at all.
+   * Always a toggle — tap to raise the optic, tap again to lower it.
+   */
   adsKey: 'KeyX',
   invertY: false,
   exposure: 1.0,
