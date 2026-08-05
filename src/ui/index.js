@@ -5,7 +5,7 @@ import { Crosshair } from './crosshair.js';
 import { Hitmarkers } from './hitmarkers.js';
 import { DamageArcs } from './damage.js';
 import { HealthFx } from './health.js';
-import { AmmoPanel } from './ammo.js';
+import { AmmoPanel, ReloadHint } from './ammo.js';
 import { Killfeed } from './killfeed.js';
 import { Compass, MatchBar } from './compass.js';
 import { Minimap } from './minimap.js';
@@ -86,6 +86,7 @@ export class UiSystem {
     this.arcs = new DamageArcs(this.centreLayer);
     this.crosshair = new Crosshair(this.centreLayer);
     this.hit = new Hitmarkers(this.centreLayer);
+    this.reloadHint = new ReloadHint(this.centreLayer);
     this.minimap = new Minimap(this.chromeLayer, this.rng.fork());
     this.compass = new Compass(this.chromeLayer);
     this.matchBar = new MatchBar(this.chromeLayer);
@@ -656,6 +657,7 @@ export class UiSystem {
     this.arcs.update(dt, rx, rz, fx, fz);
     this.health.update(dt, s);
     this.ammo.update(dt, s);
+    this.reloadHint.update(dt, s);
     this.killfeed.update(dt);
     this.matchBar.update(s);
     this.prompt.update(dt);
@@ -748,6 +750,7 @@ export class UiSystem {
     this.arcs.dispose();
     this.health.dispose();
     this.ammo.dispose();
+    this.reloadHint.dispose();
     this.killfeed.dispose();
     this.compass.dispose();
     this.matchBar.dispose();
