@@ -78,6 +78,11 @@ either works: `test:quality` = `src/core/selftest.mjs`, `test:graphics` =
 - `node src/weapons/loadout.selftest.mjs` checks that a spawn restocks the whole
   loadout — every magazine and reserve — so ammunition does not deplete across
   lives and matches. There are no ammo pickups; this is the only refill.
+- `node src/weapons/autoreload.selftest.mjs` checks the auto-reload contract
+  (`config.autoReload`, default ON): a dry pull reloads immediately, running
+  dry waits out the shot cycle, and a weapon switch, a draw clip, a cooking
+  grenade, an exhausted reserve or the setting turned off each defer or refuse
+  gracefully instead of cutting an animation or spamming the reload.
 - `node server/skin.selftest.mjs` does the same for the player-colour slots the relay hands out — no two players in a room may share one.
 - `node src/world/maps.selftest.mjs` builds every map headlessly and checks the map-descriptor contract, spawn tables and layout invariants.
 - `node src/world/collision.selftest.mjs` checks every map, parked ones included,

@@ -201,6 +201,12 @@ export const DEFAULTS = {
    * Always a toggle — tap to raise the optic, tap again to lower it.
    */
   adsKey: 'KeyX',
+  /**
+   * Reload automatically when the magazine runs dry — on a dry trigger pull,
+   * or a beat after the last round leaves. Persisted by `core/controls.js`;
+   * `weapons` reads it live every frame, so the menu toggle needs no event.
+   */
+  autoReload: true,
   invertY: false,
   exposure: 1.0,
   /** Capture mode disables anything nondeterministic so screenshots are stable. */

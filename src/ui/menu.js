@@ -210,6 +210,23 @@ export class PauseMenu {
       this.adsModeBtns.push([b, mode]);
     }
 
+    // Persisted with the other control prefs (see core/controls.js). `weapons`
+    // reads `config.autoReload` live every frame, so no event wiring is needed
+    // beyond the generic `ui:setting` announcement.
+    const arRow = this._row('Auto-Reload');
+    arRow.title = 'Reload automatically when the magazine runs dry';
+    const arSeg = el('div', 'ow-seg', arRow);
+    this.autoReloadBtns = [];
+    for (const [label, val] of [
+      ['off', false],
+      ['on', true],
+    ]) {
+      const b = el('button', null, arSeg, label);
+      b.type = 'button';
+      b.addEventListener('click', () => this._setAutoReload(val));
+      this.autoReloadBtns.push([b, val]);
+    }
+
     const adsKeyRow = this._row('ADS Key (Toggle)');
     this.adsKeyBtn = el('button', 'ow-bind', adsKeyRow, 'X');
     this.adsKeyBtn.type = 'button';
@@ -238,6 +255,7 @@ export class PauseMenu {
       this.ctx.config.invertY = false;
       this._setAdsMode(DEFAULT_CONTROLS.adsMode);
       this._setAdsKey(DEFAULT_CONTROLS.adsKey);
+      this._setAutoReload(DEFAULT_CONTROLS.autoReload);
       // Clears the advanced overrides (FOV included) as well as the mode and
       // target, then reloads — which is what puts the presets back.
       this.ctx.peek('quality')?.resetDefaults();
@@ -502,6 +520,13 @@ export class PauseMenu {
     this.syncFromConfig();
   }
 
+  _setAutoReload(on) {
+    this.ctx.config.autoReload = !!on;
+    this._persistControls();
+    this.ctx.events.emit('ui:setting', { key: 'autoReload', value: !!on });
+    this.syncFromConfig();
+  }
+
   _setAdsKey(code) {
     this.ctx.config.adsKey = code;
     this.ctx.input?.clearAdsToggle?.();
@@ -512,7 +537,7 @@ export class PauseMenu {
 
   _persistControls() {
     const cfg = this.ctx.config;
-    saveControlSettings({ adsMode: cfg.adsMode, adsKey: cfg.adsKey });
+    saveControlSettings({ adsMode: cfg.adsMode, adsKey: cfg.adsKey, autoReload: cfg.autoReload });
   }
 
   /**
@@ -587,6 +612,8 @@ export class PauseMenu {
 
       const adsMode = cfg.adsMode ?? 'hold';
       for (const [b, v] of this.adsModeBtns) b.classList.toggle('on', adsMode === v);
+      const autoReload = cfg.autoReload !== false;
+      for (const [b, v] of this.autoReloadBtns) b.classList.toggle('on', autoReload === v);
       // Don't stomp the prompt while the player is mid-rebind.
       if (!this._rebinding && this._keyFlash <= 0)
         setText(this.adsKeyBtn, keyLabel(cfg.adsKey ?? null));

@@ -19,6 +19,12 @@
  * `adsKey` defaults to X: unbound elsewhere, and under the same left hand that
  * already covers Z/C for stance, so a trackpad player can aim and fire out of
  * the box without changing a setting.
+ *
+ *   autoReload — whether an empty magazine reloads itself (on a dry trigger
+ *                pull, or a beat after the last round leaves). ON by default,
+ *                like every modern shooter; OFF makes R the only way, for
+ *                players who want to decide when the gun leaves their shoulder.
+ *                `weapons` reads it live from `config.autoReload` every frame.
  */
 
 import { ACTIONS } from './input.js';
@@ -30,6 +36,7 @@ export const DEFAULT_CONTROLS = Object.freeze({
   version: 1,
   adsMode: 'hold',
   adsKey: 'KeyX',
+  autoReload: true,
 });
 
 /**
@@ -109,7 +116,11 @@ export function normalizeControls(raw) {
   // `null` is a meaningful choice ("no keyboard bind") and must round-trip.
   if (raw?.adsKey === null) adsKey = null;
   else if (isBindableKey(raw?.adsKey)) adsKey = raw.adsKey;
-  return { version: 1, adsMode, adsKey };
+  // Strict boolean: a settings file saved before this field existed reads as
+  // the default (on), and truthy junk does not silently become a choice.
+  const autoReload =
+    typeof raw?.autoReload === 'boolean' ? raw.autoReload : DEFAULT_CONTROLS.autoReload;
+  return { version: 1, adsMode, adsKey, autoReload };
 }
 
 export function loadControlSettings(storage = browserStorage()) {

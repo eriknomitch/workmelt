@@ -75,6 +75,7 @@ const config = createConfig({
   quality: bootQuality,
   adsMode: controls.adsMode,
   adsKey: controls.adsKey,
+  autoReload: controls.autoReload,
   graphicsMode: graphics.mode,
   targetFps: graphics.targetFps,
   displayRefreshHz: graphics.refreshHz ?? 120,

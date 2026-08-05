@@ -278,21 +278,35 @@ check('bad stored controls fall back instead of throwing', () => {
     version: 1,
     adsMode: 'hold',
     adsKey: 'KeyX',
+    autoReload: true,
   });
   // An explicit "no bind" has to round-trip, unlike a missing field.
   assert.equal(normalizeControls({ adsKey: null }).adsKey, null);
   assert.equal(normalizeControls(undefined).adsKey, 'KeyX');
 });
 
+check('auto-reload defaults on and only a real boolean turns it off', () => {
+  assert.equal(DEFAULT_CONTROLS.autoReload, true);
+  assert.equal(createConfig().autoReload, true);
+  // A settings file saved before the field existed reads as the default.
+  assert.equal(normalizeControls({ adsMode: 'hold', adsKey: 'KeyX' }).autoReload, true);
+  assert.equal(normalizeControls({ autoReload: false }).autoReload, false);
+  assert.equal(normalizeControls({ autoReload: true }).autoReload, true);
+  // Truthy/falsy junk is not a choice.
+  assert.equal(normalizeControls({ autoReload: 0 }).autoReload, true);
+  assert.equal(normalizeControls({ autoReload: 'off' }).autoReload, true);
+});
+
 check('controls round-trip through storage', () => {
   const storage = memoryStorage();
   assert.deepEqual(loadControlSettings(storage), { ...DEFAULT_CONTROLS });
 
-  saveControlSettings({ adsMode: 'toggle', adsKey: 'KeyB' }, storage);
+  saveControlSettings({ adsMode: 'toggle', adsKey: 'KeyB', autoReload: false }, storage);
   assert.deepEqual(loadControlSettings(storage), {
     version: 1,
     adsMode: 'toggle',
     adsKey: 'KeyB',
+    autoReload: false,
   });
 
   saveControlSettings({ adsMode: 'toggle', adsKey: null }, storage);
@@ -308,6 +322,7 @@ check('missing storage is not an error', () => {
     version: 1,
     adsMode: 'toggle',
     adsKey: 'KeyX',
+    autoReload: true,
   });
 });
 
