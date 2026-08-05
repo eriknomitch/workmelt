@@ -114,6 +114,8 @@ export class WeaponSystem {
     this._switchTimer = 0;
     this._switchTo = null;
     this._reloadPhase = null;
+    /** Countdown to an automatic reload; < 0 = not armed. See _runAutoReload. */
+    this._autoReloadT = -1;
 
     this._muzzle = new THREE.Vector3();
     this._dir = new THREE.Vector3();
@@ -418,6 +420,9 @@ export class WeaponSystem {
     this._sinceShot = 10;
     this._reloadPhase = null;
     this._pendingReloadEmpty = false;
+    // An auto-reload armed by the last life's final shot must not fire into
+    // the fresh, full magazine.
+    this._autoReloadT = -1;
     // A reload clip in flight would land its ammo event on the new magazine.
     // `_semiLatch` is deliberately left alone: it tracks whether the trigger is
     // physically held, which a respawn does not change.
@@ -433,6 +438,60 @@ export class WeaponSystem {
     this.viewmodel.play(empty ? 'reloadEmpty' : 'reloadTac');
     this._pendingReloadEmpty = empty;
     return true;
+  }
+
+  /**
+   * Auto-reload: an empty magazine reloads itself. ON by default
+   * (`config.autoReload`, a Controls toggle persisted by core/controls.js);
+   * OFF means R is the only way, and even a dry trigger pull just drops the
+   * bolt on nothing.
+   *
+   * Two paths in:
+   *   - a dry trigger PULL reloads immediately, like every modern shooter —
+   *     the player asked for a bang, so the hands go straight for a magazine.
+   *     "Dry" is judged against `wasEmpty`, the state BEFORE this frame's
+   *     trigger ran: the pull that just fired the last round is a shot, not
+   *     a click, and must not have its cycle swallowed by an instant reload;
+   *   - running dry without pulling again arms a short countdown instead:
+   *     the last shot's cycle (`_fireTimer`, which on the bolt gun is the
+   *     whole bolt stroke) plus a beat, so the shot reads before the reload
+   *     starts.
+   *
+   * And the cases that must NOT reload, each of which re-arms cleanly:
+   *   - already reloading, or mid weapon switch — `reload()` refuses both,
+   *     but the timer is parked too so a cancelled reload (switching away
+   *     mid-animation loses the clip before `magin` lands any ammo) simply
+   *     re-arms when the empty weapon comes back up;
+   *   - a draw or inspect clip in flight — the auto path waits for the hands
+   *     rather than cutting the animation the way a deliberate R does, which
+   *     is what makes switch-to-empty-weapon look right: holster, draw, then
+   *     the reload;
+   *   - a cooking grenade owns the weapon hand until it is thrown;
+   *   - no reserve left — nothing to load, so the countdown never arms and
+   *     `reload()` is not spammed every frame.
+   *
+   * State is re-read from `s` rather than `_state.empty`, which was gathered
+   * before the trigger ran this frame — on the frame the last round leaves,
+   * that snapshot still says the weapon is loaded.
+   */
+  _runAutoReload(dt, input, s, wasEmpty = false) {
+    if (this.ctx.config.autoReload === false) return;
+    const empty = s.mag === 0 && !s.chambered;
+    if (!empty || s.reserve <= 0 || this.reloading || this.switching) {
+      this._autoReloadT = -1;
+      return;
+    }
+    const cooking = this.throwables?.cooking;
+    if (input.firePressed && wasEmpty && !cooking) {
+      this._autoReloadT = -1;
+      this.reload();
+      return;
+    }
+    if (this._autoReloadT < 0) this._autoReloadT = Math.max(this._fireTimer, 0) + 0.3;
+    this._autoReloadT -= dt;
+    if (this._autoReloadT > 0 || cooking || this.viewmodel?.clipPlaying) return;
+    this._autoReloadT = -1;
+    this.reload();
   }
 
   inspect() {
@@ -745,8 +804,9 @@ export class WeaponSystem {
       this._runThrowables(input);
       this._runTrigger(dt, input.fire, input.firePressed, def, s);
       st.trigger = input.fire && this.canFire();
-      // Auto-reload on a dry trigger pull, like every modern shooter.
-      if (input.firePressed && st.empty) this.reload();
+      // `st.empty` is the pre-trigger snapshot, which is what tells a dry
+      // pull apart from the pull that just fired the last round.
+      this._runAutoReload(dt, input, s, st.empty);
     } else if (this.debugMode) {
       this._runDebug(ctx);
       st.trigger = this._sinceShot < 0.09;
