@@ -125,7 +125,7 @@ const REF_DAYLIGHT = 4.6;
  *                             viewFillRatio, viewRimRatio, viewHemiRatio,
  *                             viewFillOcclusion, dofMaxCoc, dofNearRatio,
  *                             dofFocusMin/Max, dofFarStart, dofFarRange,
- *                             dofNearScale
+ *                             dofNearScale, dofNearMax, dofPeripheral
  *
  * Note on colour space: chromatic aberration, bloom and the cos^4 lens vignette
  * are LINEAR-light lens effects and happen before the tone map — a vignette
@@ -452,18 +452,33 @@ export class RenderSystem {
       adsVignette: 0.34,
       grain: 0.010,
       // ---- ADS depth of field (see dof.js) ---------------------------------
-      // maxCoc is in pixels at 1080p and is reached well beyond focusMax, so
-      // geometry past ~25 m goes visibly soft while the optic — composited after
-      // the pass — stays pin sharp.
+      // maxCoc is in pixels at 1080p, and every band below is placed RELATIVE to
+      // whatever the reticle is on, so the sight picture is the sharp thing on
+      // screen and the frame falls away around it.
       // 3.3 px at 1080p, down 40%: at 5.5 the near and mid ground of an ADS frame
       // was a watercolour smear that hid the very thing the sights are pointed at.
       dofMaxCoc: 3.3,
       dofNearRatio: 0.38,
       dofFocusMin: 3.0,
-      dofFocusMax: 18.0,
+      // A rail, not a working range. It was 18 m, which put the focal plane
+      // short of anything worth scoping — the target blurred and the cover next
+      // to you did not. Now it is the world camera's far plane (engine.js), so
+      // nothing you can actually see can sit behind the focal plane when the
+      // reticle is on the sky: "aiming at nothing" means focused at infinity.
+      dofFocusMax: 1200.0,
       dofFarStart: 1.15,
       dofFarRange: 18.0,
       dofNearScale: 0.55,
+      // Absolute ceiling on the near band, in metres. Near blur is for the ledge
+      // you are leaning over; without this cap a 120 m focal plane makes "near"
+      // mean everything inside 66 m and dissolves the mid-ground.
+      dofNearMax: 2.5,
+      // Peripheral softening as a fraction of maxCoc. This is the part that
+      // actually reads as "your eye is behind a tube": it ramps in outside the
+      // sight-picture disc, so the centre gets sharper relative to the frame
+      // rather than softer. Paired with adsVignette, which does the same in
+      // brightness.
+      dofPeripheral: 0.85,
       sharpen: 0.25,
       lutStrength: 1.0,
       shutter: 0.42,

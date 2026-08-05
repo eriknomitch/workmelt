@@ -41,6 +41,13 @@ The browser client lives in `src/`. Features are divided into subsystem director
   per event, that a devicePixelRatio move at a fixed CSS size still reaches the
   renderer, and the resolution budget's clamp arithmetic — area respected,
   aspect ratio exact, `MAX_TEXTURE_SIZE` never breached.
+- `node src/render/dof.selftest.mjs` checks the ADS depth-of-field focus contract:
+  that the pixel under the reticle is sharp at every engagement range, that the
+  near band never reaches the mid-ground, that the far band always lands behind
+  the aim point, and that the peripheral softening stays outside the sight-picture
+  disc. A still frame cannot tell you whether the thing you are aiming at is the
+  sharpest pixel on screen, which is exactly how the focal plane came to be pinned
+  at 18 m — so the invariant is asserted arithmetically instead.
 - `node src/core/graphics.selftest.mjs` checks the advanced graphics option schema, including that an empty override set is a bit-exact no-op on every preset.
 - `node src/core/selftest.mjs` covers adaptive quality and the option persistence/live-apply contract.
 - `npm run playtest:ads` drives the pause menu and ADS binds in a real browser.
