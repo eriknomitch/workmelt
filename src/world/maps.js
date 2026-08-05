@@ -188,10 +188,55 @@ export function isMapId(id) {
 }
 
 /**
+ * A map's FLOORPLAN, rasterised from its own `isOpen` predicate.
+ *
+ * The menu used to describe a level in prose alone, which makes six maps read
+ * as six paragraphs. `isOpen(x, z, margin)` is the same analytic predicate
+ * `ui/minimap` draws as floor, so a silhouette costs no art, no texture and no
+ * fetch — it is the level answering "where can a character stand".
+ *
+ * LEVEL space, sampled over `bounds` on the X/Z plane. `cols` fixes the long
+ * axis and the short axis follows from the aspect ratio, so a wide canyon and
+ * a square compound come back at their true proportions rather than both
+ * squashed into a square. Returns cells row-major, north (−Z) first, as a
+ * Uint8Array of 0/1 — small enough to hand to a menu and trivially drawable.
+ *
+ * Pure and deterministic: no rng, no allocation per frame, and nothing here is
+ * loaded at runtime by the world itself.
+ */
+export function mapPlan(map, cols = 56) {
+  const [minX, , minZ, maxX, , maxZ] = map.bounds;
+  const w = maxX - minX;
+  const d = maxZ - minZ;
+  const long = Math.max(w, d);
+  const cx = Math.max(8, Math.round((cols * w) / long));
+  const cz = Math.max(8, Math.round((cols * d) / long));
+  const cells = new Uint8Array(cx * cz);
+  const open = map.isOpen;
+  if (typeof open === 'function') {
+    for (let j = 0; j < cz; j++) {
+      // +0.5 samples the centre of the cell, not its corner, so a wall that
+      // lands exactly on a grid line does not erase the row behind it.
+      const z = minZ + ((j + 0.5) / cz) * d;
+      for (let i = 0; i < cx; i++) {
+        const x = minX + ((i + 0.5) / cx) * w;
+        cells[j * cx + i] = open(x, z, 0.3) ? 1 : 0;
+      }
+    }
+  }
+  return { cols: cx, rows: cz, cells };
+}
+
+/**
  * The menu's model: everything `src/match` needs, and nothing it does not.
  *
  * Menu order is registry order, and the presentation strings are the registry's
  * — the descriptor supplies only what was authored with the level.
+ *
+ * `plan` is the one derived field: the lobby draws a floorplan thumbnail from
+ * it, and computing it here rather than in `src/match` is what keeps the view
+ * from importing `isOpen` and `bounds` — i.e. the level itself — to draw a
+ * picture of it.
  */
 export function mapSummaries() {
   return MAPS.map((m) => ({
@@ -200,6 +245,7 @@ export function mapSummaries() {
     description: META.get(m.id).description,
     blurb: m.blurb,
     size: m.size,
+    plan: mapPlan(m),
   }));
 }
 
