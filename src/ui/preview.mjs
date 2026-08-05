@@ -15,11 +15,10 @@
  * rasteriser is the difference between seconds and minutes:
  *
  *   --fonts          only needs brand.js installed in a page.
- *   --state=lobby    screenshots the lobby surface; `--style=<variant>` picks
- *                    one of its style explorations first. NOTE: the real lobby
- *                    sits its scrim over the live scene, UI-only sits it over
- *                    the flat page background — visually near-identical, but
- *                    not bit-identical, so this is an iteration tool, not a
+ *   --state=lobby    screenshots the lobby surface. NOTE: the real lobby sits
+ *                    its scrim over the live scene, UI-only sits it over the
+ *                    flat page background — visually near-identical, but not
+ *                    bit-identical, so this is an iteration tool, not a
  *                    baseline source.
  */
 import { chromium } from 'playwright';
@@ -109,9 +108,7 @@ try {
     });
     console.log(JSON.stringify(report, null, 2));
   } else {
-    if (STATE === 'lobby') {
-      if (args.style) await page.evaluate((s) => window.__UIONLY__?.setStyle(s), String(args.style));
-    } else {
+    if (STATE !== 'lobby') {
       await page.evaluate((s) => window.__ENGINE__?.ctx.peek('ui')?.debugState(s), STATE);
     }
     await page.evaluate(

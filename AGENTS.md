@@ -65,7 +65,7 @@ either works: `test:quality` = `src/core/selftest.mjs`, `test:graphics` =
   binds and menus. They judge DOM and engine state, not pixels, so they run
   anywhere. See the `visual-check` skill for what each one covers.
 - `npm run playtest:lobby-ui` checks the lobby surface alone — map cards,
-  garrison chips, style explorations, keyboard shortcuts — over
+  garrison chips, keyboard shortcuts — over
   `?renderGame=false`, so no engine boots and it runs in seconds even without
   a GPU. It cannot see the join flow; that stays `playtest:lobby`'s job.
 - `node server/map.selftest.mjs` walks the relay's room-map protocol against a real server on a real socket.

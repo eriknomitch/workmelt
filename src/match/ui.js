@@ -362,313 +362,6 @@ const CSS = `
   .wm-lobby .btn-ghost { font-size: 17px; padding: 10px 18px 8px; }
 }
 
-/* ── visual explorations ──────────────────────────────────────────────────
-   These are intentionally independent of the production brand tokens above.
-   The selector is a design-lab affordance: it keeps the interaction model
-   identical while making the visual posture easy to compare in a real room. */
-.wm-lobby.variant-signal {
-  --lab-ink: #f7f4ed; --lab-soft: #c0c4cc; --lab-dim: #858b98;
-  --lab-accent: #ff6b35; --lab-blue: #75a7ff; --lab-line: rgba(247,244,237,.17);
-  --lab-panel: rgba(18, 24, 38, .74); --lab-panel-2: rgba(28, 36, 55, .8);
-  background: radial-gradient(circle at 78% 16%, rgba(48,94,170,.32), transparent 32%),
-    linear-gradient(115deg, rgba(10,15,26,.94) 0%, rgba(17,24,40,.82) 55%, rgba(10,15,26,.95) 100%);
-  color: var(--lab-ink); font-family: Inter, system-ui, sans-serif;
-}
-.wm-lobby.variant-signal .bar { min-height: 72px; padding: 0 34px; background: rgba(9,14,24,.46); border-color: var(--lab-line); }
-.wm-lobby.variant-signal .bar .wm-mark { font-size: 32px; }
-.wm-lobby.variant-signal .body { grid-template-columns: minmax(0, 1fr) 330px; gap: 56px; max-width: 1380px; padding: 70px 42px 58px; align-items: start; }
-.wm-lobby.variant-signal .hero { padding-top: 18px; }
-.wm-lobby.variant-signal .eyebrow { color: var(--lab-accent); letter-spacing: .2em; }
-.wm-lobby.variant-signal .hero .wm-mark { font-family: Inter, system-ui, sans-serif; font-size: clamp(64px, 10vw, 148px); font-weight: 800; letter-spacing: -.075em; line-height: .84; margin: 20px 0 30px; }
-.wm-lobby.variant-signal .wm-mark .t::after, .wm-lobby.variant-signal .wm-mark .t::before { background: var(--lab-accent); }
-.wm-lobby.variant-signal .lede { max-width: 38ch; color: var(--lab-soft); font-size: 18px; line-height: 1.45; }
-.wm-lobby.variant-signal .lede b { color: var(--lab-ink); }
-.wm-lobby.variant-signal .maps, .wm-lobby.variant-signal .opts { margin-bottom: 27px; }
-.wm-lobby.variant-signal .mapcards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
-.wm-lobby.variant-signal .mapcard { min-height: 122px; max-width: none; padding: 17px; border: 1px solid var(--lab-line); border-radius: 0; background: var(--lab-panel-2); }
-.wm-lobby.variant-signal .mapcard:hover:not(:disabled) { border-color: var(--lab-blue); transform: translateY(-2px); }
-.wm-lobby.variant-signal .mapcard[aria-pressed="true"] { border-color: var(--lab-accent); background: linear-gradient(135deg, rgba(255,107,53,.2), var(--lab-panel-2)); box-shadow: inset 4px 0 var(--lab-accent); }
-.wm-lobby.variant-signal .mapcard .nm { font-family: Inter, system-ui, sans-serif; font-size: 17px; font-weight: 800; letter-spacing: .02em; }
-.wm-lobby.variant-signal .mapcard .sub { color: var(--lab-blue); }
-.wm-lobby.variant-signal .mapcard .bl, .wm-lobby.variant-signal .mapcard .sz, .wm-lobby.variant-signal .note { color: var(--lab-dim); }
-.wm-lobby.variant-signal .chip { border-radius: 999px; background: transparent; border-color: var(--lab-line); }
-.wm-lobby.variant-signal .chip[aria-pressed="true"] { background: var(--lab-accent); border-color: var(--lab-accent); color: #17121a; }
-.wm-lobby.variant-signal .cta { max-width: none; }
-.wm-lobby.variant-signal .btn { border-radius: 0; }
-.wm-lobby.variant-signal .btn-primary { background: var(--lab-accent); color: #17121a; font-family: Inter, system-ui, sans-serif; font-size: 17px; font-weight: 800; padding: 18px 26px; }
-.wm-lobby.variant-signal .btn-primary:hover:not(:disabled) { background: #ff8c61; }
-.wm-lobby.variant-signal .btn-ghost { border-color: var(--lab-line); color: var(--lab-ink); font-family: Inter, system-ui, sans-serif; font-size: 15px; }
-.wm-lobby.variant-signal .panel { border-radius: 0; border-color: var(--lab-line); background: var(--lab-panel); box-shadow: 16px 16px 0 rgba(0,0,0,.16); }
-.wm-lobby.variant-signal .panel-hd { padding: 20px; border-color: var(--lab-line); }
-.wm-lobby.variant-signal .h-sec, .wm-lobby.variant-signal .code { font-family: Inter, system-ui, sans-serif; font-weight: 800; letter-spacing: .02em; }
-.wm-lobby.variant-signal .row + .row, .wm-lobby.variant-signal .panel-ft { border-color: var(--lab-line); }
-.wm-lobby.variant-signal .strip { padding: 13px 34px; background: rgba(9,14,24,.72); border-color: var(--lab-line); color: var(--lab-dim); }
-
-.wm-lobby.variant-terminal {
-  --lab-ink: #d7f9df; --lab-soft: #91b99c; --lab-dim: #5e8769; --lab-accent: #9cff57;
-  background: #07110c; color: var(--lab-ink); font-family: 'SFMono-Regular', Consolas, monospace;
-  background-image: linear-gradient(rgba(156,255,87,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(156,255,87,.025) 1px, transparent 1px);
-  background-size: 32px 32px;
-}
-.wm-lobby.variant-terminal::before { content: 'WORKMELT // SECURE SESSION'; position: fixed; top: 92px; right: 34px; color: var(--lab-dim); font-size: 10px; letter-spacing: .16em; writing-mode: vertical-rl; }
-.wm-lobby.variant-terminal .bar { min-height: 58px; padding: 0 28px; background: #0a1810; border-bottom: 1px solid rgba(156,255,87,.24); }
-.wm-lobby.variant-terminal .bar .wm-mark { font-family: inherit; font-size: 18px; letter-spacing: .18em; }
-.wm-lobby.variant-terminal .callsign label, .wm-lobby.variant-terminal .eyebrow, .wm-lobby.variant-terminal .strip { color: var(--lab-dim); }
-.wm-lobby.variant-terminal .callsign input { width: 160px; border: 0; border-bottom: 1px solid var(--lab-dim); border-radius: 0; background: transparent; padding: 6px 2px; color: var(--lab-ink); }
-.wm-lobby.variant-terminal .callsign input:focus { border-color: var(--lab-accent); }
-.wm-lobby.variant-terminal .body { grid-template-columns: minmax(0, 1fr) 360px; max-width: 1240px; padding: 64px 28px 46px; gap: 44px; align-items: start; }
-.wm-lobby.variant-terminal .hero .wm-mark { font-family: inherit; font-size: clamp(42px, 7vw, 88px); letter-spacing: -.08em; color: var(--lab-accent); margin: 18px 0 26px; text-shadow: 0 0 24px rgba(156,255,87,.26); }
-.wm-lobby.variant-terminal .wm-mark .t::after, .wm-lobby.variant-terminal .wm-mark .t::before { background: var(--lab-accent); }
-.wm-lobby.variant-terminal .lede { color: var(--lab-soft); font-size: 14px; max-width: 55ch; }
-.wm-lobby.variant-terminal .lede b, .wm-lobby.variant-terminal .mapcard .nm { color: var(--lab-ink); }
-.wm-lobby.variant-terminal .mapcards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: rgba(156,255,87,.23); border: 1px solid rgba(156,255,87,.23); }
-.wm-lobby.variant-terminal .mapcard { max-width: none; min-height: 112px; border: 0; border-radius: 0; background: #0a1810; padding: 14px; }
-.wm-lobby.variant-terminal .mapcard:hover:not(:disabled), .wm-lobby.variant-terminal .mapcard[aria-pressed="true"] { background: #112619; }
-.wm-lobby.variant-terminal .mapcard[aria-pressed="true"] { box-shadow: inset 3px 0 var(--lab-accent); }
-.wm-lobby.variant-terminal .mapcard .nm { font-family: inherit; font-size: 15px; letter-spacing: .02em; }
-.wm-lobby.variant-terminal .mapcard .sub { color: var(--lab-accent); font-size: 10px; }
-.wm-lobby.variant-terminal .mapcard .bl, .wm-lobby.variant-terminal .mapcard .sz, .wm-lobby.variant-terminal .note { color: var(--lab-soft); }
-.wm-lobby.variant-terminal .chip { border-radius: 0; border-color: rgba(156,255,87,.22); background: transparent; color: var(--lab-soft); }
-.wm-lobby.variant-terminal .chip[aria-pressed="true"] { color: #07110c; background: var(--lab-accent); border-color: var(--lab-accent); }
-.wm-lobby.variant-terminal .btn { border-radius: 0; font-family: inherit; }
-.wm-lobby.variant-terminal .btn-primary { background: var(--lab-accent); color: #07110c; font-size: 15px; padding: 16px; }
-.wm-lobby.variant-terminal .btn-ghost { border-color: rgba(156,255,87,.38); color: var(--lab-ink); font-size: 14px; }
-.wm-lobby.variant-terminal .panel { border-radius: 0; border-color: rgba(156,255,87,.28); background: rgba(7,17,12,.8); box-shadow: none; }
-.wm-lobby.variant-terminal .panel-hd, .wm-lobby.variant-terminal .row + .row, .wm-lobby.variant-terminal .panel-ft { border-color: rgba(156,255,87,.18); }
-.wm-lobby.variant-terminal .h-sec, .wm-lobby.variant-terminal .code { font-family: inherit; font-size: 15px; color: var(--lab-accent); }
-.wm-lobby.variant-terminal .strip { background: #0a1810; border-color: rgba(156,255,87,.24); }
-
-.wm-lobby.variant-field {
-  --lab-ink: #17211e; --lab-soft: #4c5a53; --lab-dim: #768078; --lab-accent: #cb4e2c;
-  color: var(--lab-ink); font-family: Georgia, 'Times New Roman', serif;
-  background: linear-gradient(115deg, rgba(239,231,211,.96), rgba(214,218,200,.9));
-}
-.wm-lobby.variant-field .bar { min-height: 78px; padding: 0 42px; background: rgba(245,239,224,.78); border-color: rgba(23,33,30,.18); }
-.wm-lobby.variant-field .bar .wm-mark { color: var(--lab-ink); font-family: Georgia, serif; font-size: 24px; letter-spacing: .12em; }
-.wm-lobby.variant-field .callsign label, .wm-lobby.variant-field .eyebrow { color: var(--lab-accent); font-family: Inter, system-ui, sans-serif; }
-.wm-lobby.variant-field .callsign input { width: 150px; color: var(--lab-ink); background: transparent; border: 0; border-bottom: 1px solid rgba(23,33,30,.4); border-radius: 0; }
-.wm-lobby.variant-field .body { grid-template-columns: minmax(0, 1fr) 350px; max-width: 1280px; padding: 72px 42px 54px; gap: 52px; align-items: start; }
-.wm-lobby.variant-field .hero .wm-mark { color: var(--lab-ink); font-family: Georgia, serif; font-size: clamp(62px, 9vw, 132px); font-weight: 700; letter-spacing: -.1em; line-height: .8; margin: 18px 0 30px; }
-.wm-lobby.variant-field .wm-mark .t::after, .wm-lobby.variant-field .wm-mark .t::before { background: var(--lab-accent); }
-.wm-lobby.variant-field .lede { color: var(--lab-soft); font-size: 18px; line-height: 1.5; max-width: 35ch; }
-.wm-lobby.variant-field .lede b { color: var(--lab-ink); }
-.wm-lobby.variant-field .mapcards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.wm-lobby.variant-field .mapcard { max-width: none; min-height: 136px; padding: 16px; border: 1px solid rgba(23,33,30,.24); border-radius: 2px; background: rgba(250,246,235,.46); }
-.wm-lobby.variant-field .mapcard:hover:not(:disabled) { border-color: var(--lab-accent); }
-.wm-lobby.variant-field .mapcard[aria-pressed="true"] { border: 2px solid var(--lab-accent); background: rgba(250,246,235,.8); }
-.wm-lobby.variant-field .mapcard .nm { color: var(--lab-ink); font-family: Georgia, serif; font-size: 21px; font-weight: 700; letter-spacing: 0; }
-.wm-lobby.variant-field .mapcard .sub { color: var(--lab-accent); font-family: Inter, system-ui, sans-serif; font-size: 10px; }
-.wm-lobby.variant-field .mapcard .bl, .wm-lobby.variant-field .mapcard .sz, .wm-lobby.variant-field .note { color: var(--lab-soft); }
-.wm-lobby.variant-field .chip { border-radius: 2px; border-color: rgba(23,33,30,.28); background: transparent; color: var(--lab-soft); }
-.wm-lobby.variant-field .chip[aria-pressed="true"] { color: #fff7e7; background: var(--lab-accent); border-color: var(--lab-accent); }
-.wm-lobby.variant-field .btn { border-radius: 2px; font-family: Inter, system-ui, sans-serif; }
-.wm-lobby.variant-field .btn-primary { background: var(--lab-ink); color: #fff7e7; font-size: 15px; padding: 17px; }
-.wm-lobby.variant-field .btn-primary:hover:not(:disabled) { background: var(--lab-accent); }
-.wm-lobby.variant-field .btn-ghost { color: var(--lab-ink); border-color: rgba(23,33,30,.55); font-size: 14px; }
-.wm-lobby.variant-field .panel { border-radius: 2px; border-color: rgba(23,33,30,.28); background: rgba(250,246,235,.62); box-shadow: 8px 8px 0 rgba(23,33,30,.1); }
-.wm-lobby.variant-field .panel-hd, .wm-lobby.variant-field .row + .row, .wm-lobby.variant-field .panel-ft { border-color: rgba(23,33,30,.16); }
-.wm-lobby.variant-field .h-sec, .wm-lobby.variant-field .code { color: var(--lab-ink); font-family: Georgia, serif; }
-.wm-lobby.variant-field .strip { background: rgba(245,239,224,.8); border-color: rgba(23,33,30,.18); color: var(--lab-soft); }
-
-.wm-lobby.variant-spreadsheet {
-  --sheet-ink: #f3f6f3; --sheet-soft: #c1f0c8; --sheet-muted: #9ca89f;
-  --sheet-lime: #83e28e; --sheet-green: #47d359; --sheet-mid: #12501a;
-  --sheet-deep: #0d3512; --sheet-line: rgba(193,240,200,.2);
-  color: var(--sheet-ink); font-family: Inter, system-ui, sans-serif;
-  background: var(--sheet-deep);
-  background-image: linear-gradient(rgba(193,240,200,.055) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(193,240,200,.055) 1px, transparent 1px),
-    linear-gradient(120deg, rgba(71,211,89,.14), transparent 38%);
-  background-size: 28px 28px, 28px 28px, auto;
-}
-.wm-lobby.variant-spreadsheet .bar { min-height: 64px; padding: 0 30px; background: rgba(13,53,18,.95); border-color: var(--sheet-line); }
-.wm-lobby.variant-spreadsheet .bar .wm-mark { color: var(--sheet-ink); font-family: Inter, system-ui, sans-serif; font-size: 22px; font-weight: 800; letter-spacing: .08em; }
-.wm-lobby.variant-spreadsheet .wm-mark .t::after, .wm-lobby.variant-spreadsheet .wm-mark .t::before { background: var(--sheet-green); }
-.wm-lobby.variant-spreadsheet .callsign label, .wm-lobby.variant-spreadsheet .eyebrow { color: var(--sheet-muted); font-family: Inter, system-ui, sans-serif; }
-.wm-lobby.variant-spreadsheet .callsign input { width: 154px; color: var(--sheet-ink); background: rgba(7,27,11,.62); border-color: var(--sheet-line); border-radius: 2px; }
-.wm-lobby.variant-spreadsheet .callsign input:focus { border-color: var(--sheet-green); }
-.wm-lobby.variant-spreadsheet .body { grid-template-columns: minmax(0, 1fr) 338px; max-width: 1260px; padding: 60px 30px 46px; gap: 42px; align-items: start; }
-.wm-lobby.variant-spreadsheet .hero .eyebrow { letter-spacing: .16em; }
-.wm-lobby.variant-spreadsheet .hero .wm-mark { color: var(--sheet-ink); font-family: Inter, system-ui, sans-serif; font-size: clamp(54px, 8vw, 116px); font-weight: 800; letter-spacing: -.09em; line-height: .84; margin: 18px 0 26px; }
-.wm-lobby.variant-spreadsheet .lede { color: var(--sheet-soft); max-width: 48ch; font-size: 16px; line-height: 1.5; }
-.wm-lobby.variant-spreadsheet .lede b { color: var(--sheet-ink); }
-.wm-lobby.variant-spreadsheet .maps, .wm-lobby.variant-spreadsheet .opts { margin-bottom: 24px; }
-.wm-lobby.variant-spreadsheet .maps .hd { border-bottom: 1px solid var(--sheet-line); padding-bottom: 8px; }
-.wm-lobby.variant-spreadsheet .maps .hd .note { color: var(--sheet-muted); }
-.wm-lobby.variant-spreadsheet .mapcards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--sheet-line); border: 1px solid var(--sheet-line); }
-.wm-lobby.variant-spreadsheet .mapcard { max-width: none; min-height: 126px; padding: 15px; border: 0; border-radius: 0; background: rgba(13,53,18,.88); }
-.wm-lobby.variant-spreadsheet .mapcard:hover:not(:disabled) { background: rgba(18,80,26,.92); }
-.wm-lobby.variant-spreadsheet .mapcard[aria-pressed="true"] { background: var(--sheet-mid); box-shadow: inset 4px 0 var(--sheet-green); }
-.wm-lobby.variant-spreadsheet .mapcard .nm { color: var(--sheet-ink); font-family: Inter, system-ui, sans-serif; font-size: 17px; font-weight: 700; letter-spacing: .02em; }
-.wm-lobby.variant-spreadsheet .mapcard .sub { color: var(--sheet-lime); font-family: Inter, system-ui, sans-serif; font-size: 10px; }
-.wm-lobby.variant-spreadsheet .mapcard .bl, .wm-lobby.variant-spreadsheet .mapcard .sz, .wm-lobby.variant-spreadsheet .note { color: var(--sheet-muted); }
-.wm-lobby.variant-spreadsheet .opts .eyebrow { color: var(--sheet-muted); }
-.wm-lobby.variant-spreadsheet .chip { border-radius: 2px; border-color: var(--sheet-line); background: rgba(7,27,11,.55); color: var(--sheet-soft); }
-.wm-lobby.variant-spreadsheet .chip:hover { border-color: var(--sheet-lime); }
-.wm-lobby.variant-spreadsheet .chip[aria-pressed="true"] { color: #071b0b; background: var(--sheet-lime); border-color: var(--sheet-lime); }
-.wm-lobby.variant-spreadsheet .cta { max-width: none; }
-.wm-lobby.variant-spreadsheet .btn { border-radius: 2px; font-family: Inter, system-ui, sans-serif; }
-.wm-lobby.variant-spreadsheet .btn-primary { background: var(--sheet-green); color: #071b0b; font-size: 16px; font-weight: 800; padding: 17px 24px; }
-.wm-lobby.variant-spreadsheet .btn-primary:hover:not(:disabled) { background: var(--sheet-lime); }
-.wm-lobby.variant-spreadsheet .btn-ghost { border-color: var(--sheet-line); color: var(--sheet-ink); font-size: 14px; }
-.wm-lobby.variant-spreadsheet .btn-ghost:hover:not(:disabled) { border-color: var(--sheet-green); color: var(--sheet-soft); }
-.wm-lobby.variant-spreadsheet .panel { border-radius: 2px; border-color: var(--sheet-line); background: rgba(7,27,11,.84); box-shadow: 0 14px 35px rgba(0,0,0,.22); }
-.wm-lobby.variant-spreadsheet .panel-hd { padding: 17px 18px; border-color: var(--sheet-line); }
-.wm-lobby.variant-spreadsheet .h-sec, .wm-lobby.variant-spreadsheet .code { color: var(--sheet-ink); font-family: Inter, system-ui, sans-serif; font-weight: 800; letter-spacing: .02em; }
-.wm-lobby.variant-spreadsheet .row + .row, .wm-lobby.variant-spreadsheet .panel-ft { border-color: rgba(193,240,200,.14); }
-.wm-lobby.variant-spreadsheet .row.ready .dot { background: var(--sheet-green); }
-.wm-lobby.variant-spreadsheet .row.ready .st { color: var(--sheet-lime); }
-.wm-lobby.variant-spreadsheet .strip { padding: 12px 30px; background: rgba(13,53,18,.96); border-color: var(--sheet-line); color: var(--sheet-muted); }
-.wm-lobby.variant-spreadsheet .strip b { color: var(--sheet-soft); }
-
-/* ── linear canvas exploration ────────────────────────────────────────────
-   Deep canvas, a stepped charcoal surface ladder, one lavender-blue accent,
-   and product-like tiles carrying the information density. No shadows or
-   atmospheric treatment: hierarchy comes from surfaces and hairlines. */
-.wm-lobby.variant-linear {
-  --linear-canvas: #010102; --linear-surface-1: #0b0c0f; --linear-surface-2: #111318;
-  --linear-surface-3: #181a20; --linear-surface-4: #20232a;
-  --linear-ink: #f7f8f8; --linear-muted: #d0d6e0; --linear-subtle: #8a8f98;
-  --linear-tertiary: #62666d; --linear-hairline: #23252a; --linear-strong: #353943;
-  --linear-primary: #5e6ad2; --linear-hover: #828fff; --linear-focus: #5e69d1;
-  color: var(--linear-ink); font-family: Inter, -apple-system, system-ui, sans-serif;
-  background: var(--linear-canvas);
-}
-.wm-lobby.variant-linear .bar { min-height: 56px; padding: 0 30px; background: var(--linear-canvas); border-color: var(--linear-hairline); }
-.wm-lobby.variant-linear .bar .wm-mark { color: var(--linear-ink); font-family: Inter, -apple-system, system-ui, sans-serif; font-size: 19px; font-weight: 700; letter-spacing: -.04em; }
-.wm-lobby.variant-linear .wm-mark .t::after, .wm-lobby.variant-linear .wm-mark .t::before { background: var(--linear-primary); }
-.wm-lobby.variant-linear .callsign label, .wm-lobby.variant-linear .eyebrow { color: var(--linear-subtle); font-family: Inter, -apple-system, system-ui, sans-serif; }
-.wm-lobby.variant-linear .callsign input { width: 150px; color: var(--linear-ink); background: var(--linear-surface-1); border-color: var(--linear-hairline); border-radius: 8px; }
-.wm-lobby.variant-linear .callsign input:focus { border-color: var(--linear-strong); outline: 2px solid rgba(94,105,209,.5); outline-offset: 1px; }
-.wm-lobby.variant-linear .icon-btn { border-color: var(--linear-hairline); border-radius: 8px; color: var(--linear-subtle); }
-.wm-lobby.variant-linear .icon-btn:hover { color: var(--linear-ink); border-color: var(--linear-strong); }
-.wm-lobby.variant-linear .body { grid-template-columns: minmax(0, 1fr) 352px; max-width: 1280px; padding: 78px 30px 64px; gap: 32px; align-items: start; }
-.wm-lobby.variant-linear .hero { padding-top: 8px; }
-.wm-lobby.variant-linear .hero .eyebrow { color: var(--linear-primary); letter-spacing: .03em; text-transform: none; }
-.wm-lobby.variant-linear .hero .wm-mark { color: var(--linear-ink); font-family: Inter, -apple-system, system-ui, sans-serif; font-size: clamp(62px, 8vw, 112px); font-weight: 600; letter-spacing: -.075em; line-height: 1.02; margin: 20px 0 24px; }
-.wm-lobby.variant-linear .lede { color: var(--linear-muted); max-width: 48ch; font-size: 18px; line-height: 1.5; letter-spacing: -.01em; }
-.wm-lobby.variant-linear .lede b { color: var(--linear-ink); font-weight: 500; }
-.wm-lobby.variant-linear .maps, .wm-lobby.variant-linear .opts { margin-bottom: 32px; }
-.wm-lobby.variant-linear .maps .hd { margin-bottom: 12px; }
-.wm-lobby.variant-linear .maps .hd .note, .wm-lobby.variant-linear .note { color: var(--linear-subtle); }
-.wm-lobby.variant-linear .mapcards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.wm-lobby.variant-linear .mapcard { max-width: none; min-height: 142px; padding: 20px; border: 1px solid var(--linear-hairline); border-radius: 12px; background: var(--linear-surface-1); }
-.wm-lobby.variant-linear .mapcard::before { content: ''; display: block; height: 1px; margin: -20px -20px 18px; background: rgba(247,248,248,.08); }
-.wm-lobby.variant-linear .mapcard:hover:not(:disabled) { border-color: var(--linear-strong); background: var(--linear-surface-2); }
-.wm-lobby.variant-linear .mapcard[aria-pressed="true"] { border-color: var(--linear-primary); background: var(--linear-surface-2); box-shadow: 0 0 0 1px rgba(94,106,210,.16); }
-.wm-lobby.variant-linear .mapcard .nm { color: var(--linear-ink); font-family: Inter, -apple-system, system-ui, sans-serif; font-size: 18px; font-weight: 500; letter-spacing: -.03em; }
-.wm-lobby.variant-linear .mapcard .sub { color: var(--linear-muted); font-size: 11px; font-weight: 400; letter-spacing: 0; text-transform: none; }
-.wm-lobby.variant-linear .mapcard .bl, .wm-lobby.variant-linear .mapcard .sz { color: var(--linear-subtle); }
-.wm-lobby.variant-linear .chip { border-color: var(--linear-hairline); border-radius: 999px; background: var(--linear-canvas); color: var(--linear-subtle); }
-.wm-lobby.variant-linear .chip:hover { border-color: var(--linear-strong); color: var(--linear-muted); }
-.wm-lobby.variant-linear .chip[aria-pressed="true"] { color: var(--linear-ink); background: var(--linear-surface-2); border-color: var(--linear-strong); }
-.wm-lobby.variant-linear .cta { max-width: none; gap: 8px; }
-.wm-lobby.variant-linear .btn { border-radius: 8px; font-family: Inter, -apple-system, system-ui, sans-serif; font-size: 14px; font-weight: 500; letter-spacing: 0; }
-.wm-lobby.variant-linear .btn-primary { background: var(--linear-primary); color: #fff; padding: 12px 18px; }
-.wm-lobby.variant-linear .btn-primary:hover:not(:disabled) { background: var(--linear-hover); }
-.wm-lobby.variant-linear .btn-primary:focus-visible, .wm-lobby.variant-linear .btn-ghost:focus-visible { outline: 2px solid rgba(94,105,209,.5); outline-offset: 2px; }
-.wm-lobby.variant-linear .btn-ghost { background: var(--linear-surface-1); color: var(--linear-ink); border-color: var(--linear-hairline); padding: 12px 18px; }
-.wm-lobby.variant-linear .btn-ghost:hover:not(:disabled) { background: var(--linear-surface-2); border-color: var(--linear-strong); }
-.wm-lobby.variant-linear .panel { border-radius: 16px; border-color: var(--linear-hairline); background: var(--linear-surface-1); box-shadow: none; }
-.wm-lobby.variant-linear .panel-hd { padding: 20px 22px; border-color: var(--linear-hairline); }
-.wm-lobby.variant-linear .h-sec, .wm-lobby.variant-linear .code { color: var(--linear-ink); font-family: Inter, -apple-system, system-ui, sans-serif; font-weight: 600; letter-spacing: -.03em; }
-.wm-lobby.variant-linear .code { color: var(--linear-muted); font-family: ui-monospace, SFMono-Regular, monospace; font-size: 17px; letter-spacing: .08em; }
-.wm-lobby.variant-linear .btn-sm { border-color: var(--linear-hairline); border-radius: 6px; background: var(--linear-surface-2); color: var(--linear-muted); }
-.wm-lobby.variant-linear .row + .row, .wm-lobby.variant-linear .panel-ft { border-color: var(--linear-hairline); }
-.wm-lobby.variant-linear .row:hover { background: var(--linear-surface-2); }
-.wm-lobby.variant-linear .row.ready .dot { background: var(--linear-primary); }
-.wm-lobby.variant-linear .row.ready .st { color: var(--linear-muted); }
-.wm-lobby.variant-linear .strip { padding: 12px 30px; background: var(--linear-canvas); border-color: var(--linear-hairline); color: var(--linear-subtle); }
-.wm-lobby.variant-linear .strip b { color: var(--linear-muted); }
-.wm-lobby.variant-linear .style-picker .label, .wm-lobby.variant-linear .style-picker button { color: var(--linear-subtle); border-color: var(--linear-hairline); }
-.wm-lobby.variant-linear .style-picker button[aria-pressed="true"] { color: var(--linear-primary); }
-.wm-lobby.variant-ledger .style-picker .label, .wm-lobby.variant-ledger .style-picker button { color: var(--ledger-muted); border-color: var(--ledger-line); }
-.wm-lobby.variant-ledger .style-picker button[aria-pressed="true"] { color: var(--ledger-purple); }
-
-/* ── ledger / editor dashboard -------------------------------------------
-   A monochrome operations surface inspired by dark code editors and terminal
-   dashboards. The existing lobby model stays intact; the hierarchy comes from
-   rules, compact monospace labels, and syntax-like colour used only for state.
-*/
-.wm-lobby.variant-ledger {
-  --ledger-bg: #121212; --ledger-surface: #161616; --ledger-raised: #1e1e1e;
-  --ledger-line: #383838; --ledger-muted: #777; --ledger-ink: #adadad;
-  --ledger-bright: #d8d8d8; --ledger-purple: #a875e8;
-  --ledger-cyan: #4cc9c2; --ledger-green: #00c55c; --ledger-yellow: #e6cf61;
-  --ledger-blue: #6499d8; --ledger-orange: #d98a62;
-  color: var(--ledger-ink); font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
-  /* Let the live arena show through the dashboard canvas without sacrificing
-     the near-black editor posture. Elevated controls remain opaque below. */
-  background: rgb(18 18 18 / .78);
-  background-image: linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px);
-  background-size: 100% 28px;
-}
-.wm-lobby.variant-ledger .shell { min-height: 100%; }
-.wm-lobby.variant-ledger .bar { min-height: 68px; padding: 0 44px; background: var(--ledger-bg); border-bottom: 1px solid var(--ledger-line); }
-.wm-lobby.variant-ledger .bar::after { content: '● ONLINE  //  BUILD 1.4.7'; margin-left: 10px; color: var(--ledger-green); font-size: 10px; letter-spacing: .08em; }
-.wm-lobby.variant-ledger .bar .wm-mark { color: var(--ledger-bright); font-family: inherit; font-size: 20px; letter-spacing: .12em; }
-.wm-lobby.variant-ledger .wm-mark .t::after, .wm-lobby.variant-ledger .wm-mark .t::before { background: var(--ledger-purple); }
-.wm-lobby.variant-ledger .callsign label, .wm-lobby.variant-ledger .eyebrow { color: var(--ledger-muted); font-family: inherit; }
-.wm-lobby.variant-ledger .callsign label::after { content: ':'; color: var(--ledger-purple); }
-.wm-lobby.variant-ledger .callsign input { width: 154px; color: var(--ledger-bright); background: var(--ledger-surface); border-color: var(--ledger-line); border-radius: 0; font-family: inherit; }
-.wm-lobby.variant-ledger .callsign input:focus { border-color: var(--ledger-purple); }
-.wm-lobby.variant-ledger .style-picker .label, .wm-lobby.variant-ledger .style-picker button { color: var(--ledger-muted); border-color: var(--ledger-line); border-radius: 0; font-family: inherit; }
-.wm-lobby.variant-ledger .style-picker button[aria-pressed="true"] { color: var(--ledger-purple); border-color: var(--ledger-purple); }
-.wm-lobby.variant-ledger .icon-btn { border-color: var(--ledger-line); border-radius: 0; color: var(--ledger-muted); }
-.wm-lobby.variant-ledger .icon-btn:hover { color: var(--ledger-bright); border-color: var(--ledger-cyan); }
-.wm-lobby.variant-ledger .body { grid-template-columns: minmax(0, 1fr) 390px; max-width: 1420px; padding: 52px 44px 42px; gap: 44px; align-items: start; }
-.wm-lobby.variant-ledger .hero { padding: 0; }
-.wm-lobby.variant-ledger .hero::before { content: 'PROTOCOL CONTROL DASHBOARD'; display: block; color: var(--ledger-muted); font-size: 11px; letter-spacing: .16em; border-bottom: 1px dashed var(--ledger-line); padding-bottom: 12px; }
-.wm-lobby.variant-ledger .hero .eyebrow { margin: 18px 0 12px; color: var(--ledger-purple); letter-spacing: .14em; }
-.wm-lobby.variant-ledger .hero .wm-mark { color: var(--ledger-bright); font-family: inherit; font-size: clamp(48px, 8vw, 116px); letter-spacing: -.08em; line-height: .8; margin: 0 0 24px; }
-.wm-lobby.variant-ledger .lede { color: var(--ledger-muted); max-width: 64ch; font-size: 13px; line-height: 1.65; }
-.wm-lobby.variant-ledger .lede b { color: var(--ledger-cyan); font-weight: 400; }
-.wm-lobby.variant-ledger .maps, .wm-lobby.variant-ledger .opts { margin-bottom: 26px; }
-.wm-lobby.variant-ledger .maps .hd { padding-bottom: 9px; border-bottom: 1px dashed var(--ledger-line); }
-.wm-lobby.variant-ledger .maps .hd .eyebrow { color: var(--ledger-purple); margin: 0; }
-.wm-lobby.variant-ledger .maps .hd .note, .wm-lobby.variant-ledger .note { color: var(--ledger-muted); }
-.wm-lobby.variant-ledger .mapcards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--ledger-line); border: 1px solid var(--ledger-line); }
-.wm-lobby.variant-ledger .mapcard { max-width: none; min-height: 104px; padding: 14px; border: 0; border-radius: 0; background: var(--ledger-surface); }
-.wm-lobby.variant-ledger .mapcard:hover:not(:disabled) { background: var(--ledger-raised); }
-.wm-lobby.variant-ledger .mapcard[aria-pressed="true"] { background: #242020; box-shadow: inset 3px 0 var(--ledger-purple); }
-.wm-lobby.variant-ledger .mapcard .nm { color: var(--ledger-bright); font-family: inherit; font-size: 14px; letter-spacing: .02em; }
-.wm-lobby.variant-ledger .mapcard .sub { color: var(--ledger-blue); font-family: inherit; font-size: 10px; }
-.wm-lobby.variant-ledger .mapcard .bl, .wm-lobby.variant-ledger .mapcard .sz { color: var(--ledger-muted); }
-.wm-lobby.variant-ledger .chip { border-color: var(--ledger-line); border-radius: 0; background: var(--ledger-surface); color: var(--ledger-muted); font-family: inherit; }
-.wm-lobby.variant-ledger .chip:hover { color: var(--ledger-bright); border-color: var(--ledger-purple); }
-.wm-lobby.variant-ledger .chip[aria-pressed="true"] { color: var(--ledger-bg); background: var(--ledger-green); border-color: var(--ledger-green); }
-.wm-lobby.variant-ledger .cta { max-width: none; gap: 1px; background: var(--ledger-line); }
-.wm-lobby.variant-ledger .btn { border-radius: 0; font-family: inherit; font-size: 13px; }
-.wm-lobby.variant-ledger .btn-primary { background: var(--ledger-purple); color: #17121e; padding: 15px 20px; }
-.wm-lobby.variant-ledger .btn-primary:hover:not(:disabled) { background: #ff7ab5; }
-.wm-lobby.variant-ledger .btn-ghost { background: var(--ledger-surface); border-color: transparent; color: var(--ledger-bright); padding: 15px 20px; }
-.wm-lobby.variant-ledger .btn-ghost:hover:not(:disabled) { border-color: var(--ledger-cyan); color: var(--ledger-cyan); }
-.wm-lobby.variant-ledger .alt { color: var(--ledger-muted); border-color: var(--ledger-line); font-family: inherit; }
-.wm-lobby.variant-ledger .alt:hover { color: var(--ledger-yellow); border-color: var(--ledger-yellow); }
-.wm-lobby.variant-ledger .panel { border-color: var(--ledger-line); border-radius: 0; background: var(--ledger-surface); box-shadow: none; }
-.wm-lobby.variant-ledger .panel-hd { padding: 15px 18px; border-color: var(--ledger-line); }
-.wm-lobby.variant-ledger .h-sec { color: var(--ledger-bright); font-family: inherit; font-size: 14px; letter-spacing: .06em; }
-.wm-lobby.variant-ledger .code { color: var(--ledger-purple); font-family: inherit; font-size: 15px; letter-spacing: .1em; }
-.wm-lobby.variant-ledger .btn-sm { border-color: var(--ledger-line); border-radius: 0; background: transparent; color: var(--ledger-muted); font-family: inherit; }
-.wm-lobby.variant-ledger .btn-sm:hover { color: var(--ledger-cyan); border-color: var(--ledger-cyan); }
-.wm-lobby.variant-ledger .row + .row, .wm-lobby.variant-ledger .panel-ft { border-color: var(--ledger-line); }
-.wm-lobby.variant-ledger .row:hover { background: var(--ledger-raised); }
-.wm-lobby.variant-ledger .row .who { color: var(--ledger-ink); font-family: inherit; font-size: 12px; }
-.wm-lobby.variant-ledger .row.me .who { color: var(--ledger-bright); }
-.wm-lobby.variant-ledger .row .st { color: var(--ledger-muted); font-family: inherit; }
-.wm-lobby.variant-ledger .row.ready .dot, .wm-lobby.variant-ledger .row.ready .st { color: var(--ledger-green); background-color: var(--ledger-green); }
-.wm-lobby.variant-ledger .row.ready .st { background: transparent; }
-.wm-lobby.variant-ledger .row.warm .dot, .wm-lobby.variant-ledger .row.warm .st { color: var(--ledger-yellow); background-color: var(--ledger-yellow); }
-.wm-lobby.variant-ledger .row.warm .st { background: transparent; }
-.wm-lobby.variant-ledger .status { color: var(--ledger-muted); font-family: inherit; }
-.wm-lobby.variant-ledger .status b { color: var(--ledger-cyan); }
-.wm-lobby.variant-ledger .strip { padding: 11px 44px; background: var(--ledger-bg); border-color: var(--ledger-line); color: var(--ledger-muted); font-family: inherit; }
-.wm-lobby.variant-ledger .strip b { color: var(--ledger-ink); }
-.wm-lobby.variant-ledger .strip .key { border-color: var(--ledger-line); border-radius: 0; color: var(--ledger-purple); }
-.wm-lobby.variant-ledger .count .n { color: var(--ledger-purple); font-family: inherit; }
-.wm-lobby.variant-ledger .count .lbl { color: var(--ledger-bright); font-family: inherit; }
-.wm-lobby.variant-ledger .count .sub { color: var(--ledger-muted); }
-
 /* ── map carousel --------------------------------------------------------- */
 .wm-lobby .map-carousel { display: grid; grid-template-columns: 34px minmax(0, 1fr) 34px; gap: 8px; align-items: stretch; }
 .wm-lobby .mapcards { position: relative; display: block; min-width: 0; height: 168px; overflow: hidden; }
@@ -698,9 +391,6 @@ const CSS = `
 .wm-lobby .map-nav:hover:not(:disabled) { color: var(--wm-fg); border-color: var(--wm-accent); background: var(--wm-hover); }
 .wm-lobby .map-nav:disabled { opacity: .35; cursor: not-allowed; }
 .wm-lobby .map-position { min-height: 16px; margin-top: 7px; text-align: center; color: var(--wm-muted-fg); font: 600 10px/1 var(--wm-body); letter-spacing: .12em; }
-.wm-lobby.variant-ledger .map-nav { border-color: var(--ledger-line); background: var(--ledger-surface); color: var(--ledger-purple); font-family: inherit; }
-.wm-lobby.variant-ledger .map-nav:hover:not(:disabled) { color: var(--ledger-bright); border-color: var(--ledger-cyan); background: var(--ledger-raised); }
-.wm-lobby.variant-ledger .map-position { color: var(--ledger-muted); font-family: inherit; }
 
 /* ── map layout explorations (?debug=true) ────────────────────────────────────
    Five ways to present the same six maps, over ONE model and ONE set of
@@ -851,14 +541,14 @@ const CSS = `
 
 /* 5 — COMMAND CENTRE. Three full-height rails: brief and deploy on the left,
    the selected map's plan alone on a lit stage in the middle, every choice
-   (map, garrison, callsign, style) stacked on the right. The screen stops
+   (map, garrison, callsign) stacked on the right. The screen stops
    being a page that scrolls and becomes a console that fits.
 
    This is the ONE layout that cannot be pure CSS over the shipped tree, and
    the reason is worth writing down: the other four re-shape a band that is
    already one subtree, whereas three bordered columns need three boxes, and
-   the things that belong in them (the room panel, the callsign, the style
-   picker, the key strip) live under three different parents. So setMapLayout
+   the things that belong in them (the room panel, the callsign, the key
+   strip) live under three different parents. So setMapLayout
    re-parents the EXISTING elements into three rails and puts them back when
    the layout is dropped — see _setCommandRails(). Nothing is rebuilt and no
    listener is re-bound, which is what keeps the "one model, one set of
@@ -991,8 +681,6 @@ const CSS = `
 }
 .wm-lobby.cmd .cmd-right .callsign label { grid-column: 1 / -1; }
 .wm-lobby.cmd .cmd-right .callsign input { width: 100%; }
-.wm-lobby.cmd .cmd-right .style-picker { margin: 0; flex-wrap: wrap; gap: 5px; }
-.wm-lobby.cmd .cmd-right .style-picker .label { flex: 1 0 100%; margin: 0 0 2px; }
 
 /* Under ~1180px the three rails stop being three rails. The stage is the one
    that can go: the plan is already on every tile in the right rail. */
@@ -1006,9 +694,9 @@ const CSS = `
   .wm-lobby .cmd-shell { grid-template-columns: minmax(0, 1fr); }
 }
 
-/* The debug-only layout picker. Deliberately a plain <select> rather than the
-   chip row the style picker uses: it is developer furniture, not part of the
-   brand surface, and it should not read as a thing a player is meant to touch. */
+/* The debug-only layout picker. Deliberately a plain <select> rather than a
+   brand control: it is developer furniture, not part of the brand surface, and
+   it should not read as a thing a player is meant to touch. */
 .wm-lobby .layout-picker { display: flex; align-items: center; gap: 7px; margin-right: 12px; }
 .wm-lobby .layout-picker .label {
   color: var(--wm-muted-fg); font: 600 10px/1 var(--wm-body); letter-spacing: .12em; text-transform: uppercase;
@@ -1019,28 +707,6 @@ const CSS = `
 }
 .wm-lobby .layout-picker select:focus { outline: none; border-color: var(--wm-accent); }
 
-/* style picker shared by all directions */
-.wm-lobby .style-picker { display: flex; align-items: center; gap: 5px; margin-right: 8px; }
-.wm-lobby .style-picker .label { margin-right: 3px; color: var(--wm-muted-fg); font: 600 10px/1 Inter, system-ui, sans-serif; letter-spacing: .12em; text-transform: uppercase; }
-.wm-lobby .style-picker button { border: 1px solid var(--wm-border); border-radius: 999px; background: transparent; color: var(--wm-muted-fg); padding: 6px 9px; cursor: pointer; font: 600 10px/1 Inter, system-ui, sans-serif; letter-spacing: .06em; text-transform: uppercase; }
-.wm-lobby .style-picker button:hover, .wm-lobby .style-picker button[aria-pressed="true"] { color: var(--wm-fg); border-color: currentColor; }
-.wm-lobby.variant-signal .style-picker .label, .wm-lobby.variant-signal .style-picker button { color: var(--lab-soft); border-color: var(--lab-line); }
-.wm-lobby.variant-signal .style-picker button[aria-pressed="true"] { color: var(--lab-accent); }
-.wm-lobby.variant-terminal .style-picker .label, .wm-lobby.variant-terminal .style-picker button { color: var(--lab-dim); border-color: rgba(156,255,87,.24); }
-.wm-lobby.variant-terminal .style-picker button[aria-pressed="true"] { color: var(--lab-accent); }
-.wm-lobby.variant-field .style-picker .label, .wm-lobby.variant-field .style-picker button { color: var(--lab-soft); border-color: rgba(23,33,30,.25); }
-.wm-lobby.variant-field .style-picker button[aria-pressed="true"] { color: var(--lab-accent); }
-.wm-lobby.variant-spreadsheet .style-picker .label, .wm-lobby.variant-spreadsheet .style-picker button { color: var(--sheet-muted); border-color: var(--sheet-line); }
-.wm-lobby.variant-spreadsheet .style-picker button[aria-pressed="true"] { color: var(--sheet-lime); }
-@media (max-width: 1080px) {
-  .wm-lobby.variant-signal .body, .wm-lobby.variant-terminal .body, .wm-lobby.variant-field .body, .wm-lobby.variant-spreadsheet .body, .wm-lobby.variant-linear .body, .wm-lobby.variant-ledger .body { grid-template-columns: minmax(0, 1fr); }
-}
-@media (max-width: 720px) {
-  .wm-lobby .style-picker { order: 3; width: 100%; margin: 3px 0 0; }
-  .wm-lobby.variant-signal .bar, .wm-lobby.variant-field .bar { padding: 12px 16px; }
-  .wm-lobby.variant-signal .body, .wm-lobby.variant-terminal .body, .wm-lobby.variant-field .body, .wm-lobby.variant-linear .body, .wm-lobby.variant-ledger .body { padding: 38px 16px; }
-  .wm-lobby.variant-signal .mapcards, .wm-lobby.variant-terminal .mapcards, .wm-lobby.variant-field .mapcards, .wm-lobby.variant-spreadsheet .mapcards, .wm-lobby.variant-linear .mapcards, .wm-lobby.variant-ledger .mapcards { grid-template-columns: minmax(0, 1fr); }
-}
 `;
 
 /** Sizes offered for the bot garrison; `squads` × `perSquad` hostiles. */
@@ -1077,8 +743,7 @@ const GEAR_SVG = `<svg width="15" height="15" viewBox="0 0 20 20" fill="none" st
  * One cell is one filled rect, at 2x so the blocks stay crisp on a HiDPI panel
  * without the browser resampling a bitmap. The fill is read off the live
  * computed style rather than written literally, so the plan re-colours with the
- * lobby's own tokens — including under each `variant-*` lab, where the palette
- * is not the brand one.
+ * lobby's own tokens rather than pinning a hex the brand does not own.
  *
  * Called once per map when the list arrives, never per frame.
  */
@@ -1157,16 +822,6 @@ export class MatchStartUI {
             <span class="label">Map layout</span>
             <select data-map-layout-select></select>
           </label>
-          <div class="style-picker" role="group" aria-label="Visual style">
-            <span class="label">Style</span>
-            <button type="button" data-style="base" aria-pressed="true">Brand</button>
-            <button type="button" data-style="signal" aria-pressed="false">Signal</button>
-            <button type="button" data-style="terminal" aria-pressed="false">Terminal</button>
-            <button type="button" data-style="field" aria-pressed="false">Field notes</button>
-            <button type="button" data-style="spreadsheet" aria-pressed="false">Spreadsheet</button>
-            <button type="button" data-style="linear" aria-pressed="false">Linear</button>
-            <button type="button" data-style="ledger" aria-pressed="false">Ledger</button>
-          </div>
           <span class="callsign">
             <label for="wm-callsign">Callsign</label>
             <input id="wm-callsign" data-name maxlength="20" spellcheck="false" autocomplete="off" />
@@ -1271,15 +926,10 @@ export class MatchStartUI {
     this.stripRoom = q('[data-strip-room]');
     this.stripNet = q('[data-strip-net]');
     this.stripPrimary = q('[data-strip-primary]');
-    this.styleButtons = [...this.root.querySelectorAll('[data-style]')];
-    // 'base' is the shipped default: the WORKMELT brand system as documented in
-    // DESIGN.md, with no lab class applied. A stored preference still wins, so
-    // anyone who picked an exploration keeps it.
-    let savedStyle = 'base';
-    try { savedStyle = localStorage.getItem('workmelt-lobby-style') || savedStyle; } catch {}
-    this.style = 'base';
-    this.styleButtons.forEach((b) => b.addEventListener('click', () => this.setStyle(b.dataset.style)));
-    this.setStyle(savedStyle);
+    // The lobby has exactly one visual treatment: the WORKMELT brand system as
+    // documented in DESIGN.md. A browser that still carries the old lab
+    // preference is cleared rather than honoured — there is nothing to restore.
+    try { localStorage.removeItem('workmelt-lobby-style'); } catch {}
 
     this.chipEls = new Map();
     for (const p of BOT_PRESETS) {
@@ -1388,23 +1038,6 @@ export class MatchStartUI {
     this._altMode = null;
     /** How many are ready, for the "start now with the N who are" label. */
     this._altForce = 0;
-  }
-
-  /**
-   * Switch the visual exploration without replacing the lobby model or callbacks.
-   *
-   * 'base' is not a variant: it is the absence of one, which leaves the lobby on
-   * the brand stylesheet this file already ships (DESIGN.md). Every other value
-   * layers a lab on top of it. An unrecognised style falls back to 'base' rather
-   * than to a lab, so the documented system is what a broken value lands on.
-   */
-  setStyle(style = 'base') {
-    const next = ['base', 'signal', 'terminal', 'field', 'spreadsheet', 'linear', 'ledger'].includes(style) ? style : 'base';
-    this.style = next;
-    this.root.classList.remove('variant-signal', 'variant-terminal', 'variant-field', 'variant-spreadsheet', 'variant-linear', 'variant-ledger');
-    if (next !== 'base') this.root.classList.add(`variant-${next}`);
-    for (const b of this.styleButtons) b.setAttribute('aria-pressed', String(b.dataset.style === next));
-    try { localStorage.setItem('workmelt-lobby-style', next); } catch {}
   }
 
   /** 'solo' | 'ready' | 'unready' | 'deploy' — what a primary click means now. */
@@ -1586,7 +1219,7 @@ export class MatchStartUI {
     const plan = [
       [rails.left, [this.eyebrowEl, q('.hero .wm-mark'), q('.lede'), this.roomPanel, q('.cta'), this.altBtn, q('.strip')]],
       [rails.stage, [q('[data-layout-picker]'), this.mapDetailEl]],
-      [rails.right, [q('.maps .hd'), this.mapGridEl, q('.opts'), q('.callsign'), q('.style-picker')]],
+      [rails.right, [q('.maps .hd'), this.mapGridEl, q('.opts'), q('.callsign')]],
       // The gear is the exception: it joins the callsign's own row rather than
       // the rail, because the two are one block ("this client's settings").
       [q('.callsign'), [q('[data-settings]')]],

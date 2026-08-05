@@ -10,7 +10,7 @@
  *
  * WHAT STILL WORKS   the whole lobby DOM: map cards (a click repaints the
  *                    selection and saves the preference, exactly the solo
- *                    path), garrison chips, the style/layout explorations,
+ *                    path), garrison chips, the layout explorations,
  *                    copy-link, and keyboard focus.
  * WHAT IS INERT      anything that needs the engine or the wire — Play,
  *                    warm-up, settings — logs a `[uionly]` note instead.
