@@ -165,3 +165,20 @@ skill (`.claude/skills/visual-check/`). It carries the capture recipes, the
 GPU-less-sandbox costs and levers, the goal-gate scoping, and the rule that a
 `.png` nobody read is not a visual check. Do not capture from memory: a skipped
 render reported as a pass is much worse than a skipped render.
+
+**Write throwaway probe scripts to `scratch/`, never `/tmp`.** A one-off script
+that imports anything from `node_modules` — `playwright` above all — must live
+inside the repo tree. Node resolves a bare ESM specifier by walking up from the
+*importing file's own directory*, not from `cwd`, so a script under `/tmp` (or
+under an agent's session scratchpad, which is where the tooling nudges you) walks
+`/tmp` → `/` and never reaches `node_modules`. It dies with:
+
+```
+Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'playwright'
+```
+
+which reads exactly like a missing install and is not one. Re-running it from the
+repo root does not help — `cd` moves `cwd`, not the resolution base — and
+`NODE_PATH` is honoured by the CommonJS resolver only, so it does nothing here.
+`scratch/` is gitignored and one level below the root, so it just works. Promote
+anything worth keeping to `tools/` with an npm alias.
