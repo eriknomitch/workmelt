@@ -2196,21 +2196,47 @@ export function buildMiniReflex(asm, o) {
   const z = o.z ?? 0;
   const matBody = o.matBody ?? 'alu';
   const glassTilt = o.tilt ?? 0.16; // rear-canted window, like the real thing
+  /**
+   * PRIMARY-OPTIC VARIANT. The default proportions were authored for the
+   * pistol, whose eye sits 340 mm back: at that distance the wall peaks read as
+   * protective wings, the hood as a brow, and the emitter block as a black band
+   * under the glass. At a shouldered weapon's ~105 mm the same geometry IS the
+   * sight picture: the wall peaks are towers looming over the window, the hood
+   * is a bar across the glass, and the emitter fills its lower half. `primary`
+   * strips the ADS frame down to the one thing an aiming eye should see — a
+   * thin arched outline around empty glass: no hood, no exterior adjustment
+   * screws, walls held under the bezel line, the emitter dropped below the
+   * frame's bottom edge, and a taller, rounder window.
+   */
+  const primary = !!o.primary;
+  // Window plate: centre height, height fraction and corner radius. The primary
+  // window is taller and heavily rounded — the arch is the silhouette.
+  const cy = primary ? 0.58 : 0.56;
+  const glassW = w - 0.007;
+  const glassH = h * (primary ? 0.78 : 0.72);
+  const rWin = primary ? 0.0045 : 0.0015;
+  const segWin = primary ? 5 : 3;
 
   // Base plate.
   const base = extrude(roundRect(w, len, 0.003, 3), 0.0042, { bevel: 0.0007 });
   asm.add(base, matBody, { y: y + 0.002, z, rx: Math.PI / 2 });
   base.dispose();
 
-  // Two side walls that taper toward the front, joined by the hood.
+  // Two side walls that taper toward the front, joined by the hood. On the
+  // primary variant they stop at the window's mid-height, as shoulders rather
+  // than a cage: the walls sit OUTSIDE the frame's footprint and nearer the
+  // eye, so from ADS any wall taller than the glass midline projects past the
+  // frame's arch and squares its corners off — measured at both 0.88h and
+  // 0.74h before landing here.
+  const wTop = primary ? 0.55 : 1;
   const wall = extrude(
     [
       [-len * 0.5, 0],
       [len * 0.42, 0],
-      [len * 0.46, h * 0.52],
-      [len * 0.3, h * 0.86],
-      [-len * 0.42, h],
-      [-len * 0.5, h * 0.92],
+      [len * 0.46, h * (primary ? 0.42 : 0.52)],
+      [len * 0.3, h * (primary ? 0.48 : 0.86)],
+      [-len * 0.42, h * wTop],
+      [-len * 0.5, h * wTop * 0.92],
     ],
     0.0036,
     { bevel: 0.0007 }
@@ -2220,12 +2246,17 @@ export function buildMiniReflex(asm, o) {
   }
   wall.dispose();
 
-  // Hood over the front, and the emitter housing at the front floor.
-  const hood = box(w, 0.0035, 0.011, 0.0008, 1);
-  asm.add(hood, matBody, { y: y + h * 0.98, z: z - len * 0.36 });
-  hood.dispose();
-  const emitter = blob(w - 0.007, 0.0075, 0.012, 0.0016, 2);
-  asm.add(emitter, matBody, { y: y + 0.0075, z: z - len * 0.3 });
+  // Hood over the front, and the emitter housing at the front floor. The
+  // primary variant has no hood — above the arch it is a tower, below it a bar
+  // across the glass; there is nowhere for it to be — and its emitter sits low
+  // enough that the frame's bottom bezel occludes it from the ADS eye.
+  if (!primary) {
+    const hood = box(w, 0.0035, 0.011, 0.0008, 1);
+    asm.add(hood, matBody, { y: y + h * 0.98, z: z - len * 0.36 });
+    hood.dispose();
+  }
+  const emitter = blob(w - 0.007, primary ? 0.004 : 0.0075, 0.012, 0.0016, 2);
+  asm.add(emitter, primary ? 'polymer' : matBody, { y: y + (primary ? 0.002 : 0.0075), z: z - len * 0.3 });
   emitter.dispose();
   const led = latheZ(
     [
@@ -2236,29 +2267,35 @@ export function buildMiniReflex(asm, o) {
     ],
     10
   );
-  asm.add(led, 'steel_bright', { y: y + 0.0105, z: z - len * 0.28, rx: -0.5 });
+  asm.add(led, 'steel_bright', { y: y + (primary ? 0.0035 : 0.0105), z: z - len * 0.28, rx: -0.5 });
   led.dispose();
 
-  // Battery tray + adjustment screws.
+  // Battery tray + adjustment screws. A screw extends inward from its anchor
+  // (see geometry.js screw: head at the anchor, shank along -axis), so each one
+  // is anchored ON a surface — anchored inside the window opening they float in
+  // mid-air, and at a carbine-length eye relief that puts a bright steel post
+  // dead in the middle of the sight picture. The primary variant keeps only the
+  // flush battery screw on the base; its windage/elevation adjusters are
+  // recessed, not modelled — nothing may break the window outline.
   addScrew(asm, 'steel', 0, y + 0.004, z + len * 0.4, 0.0026, 'y', 0.008);
-  addScrew(asm, 'steel', w * 0.5 - 0.002, y + h * 0.5, z + len * 0.28, 0.0022, 'x', 0.006);
-  addScrew(asm, 'steel', 0, y + h * 0.86, z + len * 0.1, 0.0022, 'y', 0.006);
+  if (!primary) {
+    addScrew(asm, 'steel', w * 0.5, y + h * 0.5, z + len * 0.28, 0.0022, 'x', 0.003);
+    addScrew(asm, 'steel', 0, y + h * 0.98 + 0.0018, z - len * 0.36, 0.0022, 'y', 0.006);
+  }
 
   // The window: a real pane, canted back, in a bevelled frame.
-  const glassW = w - 0.007;
-  const glassH = h * 0.72;
-  const pane = extrude(roundRect(glassW, glassH, 0.0015, 3), 0.0012, { bevel: 0.0003 });
-  asm.add(pane, 'glass', { y: y + h * 0.56, z: z + len * 0.14, rx: glassTilt });
+  const pane = extrude(roundRect(glassW, glassH, rWin, segWin), 0.0012, { bevel: 0.0003 });
+  asm.add(pane, 'glass', { y: y + h * cy, z: z + len * 0.14, rx: glassTilt });
   pane.dispose();
-  const frame = extrude(roundRect(glassW + 0.0028, glassH + 0.0028, 0.0018, 3), 0.0022, {
+  const frame = extrude(roundRect(glassW + 0.0028, glassH + 0.0028, rWin + 0.0004, segWin), 0.0022, {
     bevel: 0.0005,
-    holes: [roundRect(glassW - 0.0002, glassH - 0.0002, 0.0014, 3)],
+    holes: [roundRect(glassW - 0.0002, glassH - 0.0002, rWin, segWin)],
   });
-  asm.add(frame, matBody, { y: y + h * 0.56, z: z + len * 0.14, rx: glassTilt });
+  asm.add(frame, matBody, { y: y + h * cy, z: z + len * 0.14, rx: glassTilt });
   frame.dispose();
 
   return {
-    center: [0, y + h * 0.56, z + len * 0.14],
+    center: [0, y + h * cy, z + len * 0.14],
     lensZ: z + len * 0.14,
     apertureR: Math.min(glassW, glassH) * 0.46,
     windowW: glassW * 0.46,

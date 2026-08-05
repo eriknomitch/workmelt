@@ -1171,7 +1171,16 @@ export class Viewmodel {
      * with the halo at 1.6x and the segmented ring at 3.2x, both scaled off the
      * same number so the reticle never changes shape.
      */
-    const coreR = s * lerp(0.00385, 0.00655, ads);
+    /**
+     * PLAIN DOT (optic.plainDot): the bare emitter without the segmented 65 MOA
+     * ring. The ring exists to keep an 8 px dot from reading as a dead subpixel
+     * (see the reticle build above), so losing it has to be paid for in core
+     * size: 1.35x holds the plain dot at ~11 px in hipfire and ~21 px in ADS —
+     * unmistakably an emitter on its own.
+     */
+    const plain = optic.plainDot === true;
+    this.dotRing.visible = !plain;
+    const coreR = s * lerp(0.00385, 0.00655, ads) * (plain ? 1.35 : 1);
     this.dotCore.scale.setScalar(coreR);
     this.dotRim.scale.setScalar(coreR);
     this.dotHalo.scale.setScalar(coreR);

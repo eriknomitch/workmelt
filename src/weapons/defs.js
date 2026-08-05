@@ -263,9 +263,11 @@ export const WEAPON_DEFS = {
     hipPos: [0.111, -0.163, -0.288],
     hipRot: [-0.05, 0.072, -0.131],
     adsCant: [0, 0, 0.005],
-    /* Same aperture-budget derivation as the rifle (see there): the 27.6 mm tube's
-     * outer rim wants to land near 165 px of radius and the 44 mm bore wants the
-     * eye far enough back that the objective is not the stop. */
+    /* An open reflex window has no aperture budget to solve (see parts.js
+     * buildMiniReflex — the sight picture is the scene, not a cone through a
+     * tube), so relief only decides how much of the frame the housing eats.
+     * 104 mm is an ordinary cheek weld and lands the 18.7 mm window at ~42 %
+     * of ADS frame height: a clear picture with the frame still readable. */
     eyeRelief: 0.104,
     sprintPos: [0.088, -0.24, -0.262],
     sprintRot: [-0.38, 0.58, 0.19],

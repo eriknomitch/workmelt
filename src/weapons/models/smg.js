@@ -5,15 +5,13 @@ import {
   addHandguard,
   addRail,
   addPistolGrip,
-  addFrontSight,
-  addRearSight,
   addQdSocket,
   addSlingLoop,
   addPin,
   addScrew,
   addForeGrip,
   buildMagazine,
-  buildOptic,
+  buildMiniReflex,
   selectorPart,
   triggerPart,
   cartridge,
@@ -24,7 +22,7 @@ import {
  * The submachine gun — an MPX/MP5-flavoured 9 mm roller: slim tubular
  * receiver, side-mounted non-reciprocating charging handle in a cocking tube,
  * short M-LOK handguard with a vertical foregrip, tri-lug flash hider, folding
- * skeleton stock and a low-mounted compact red dot.
+ * skeleton stock and a rail-mounted mini reflex sight.
  *
  * A submachine gun is *smaller* than a carbine in every dimension, and that is
  * the whole point of building it separately: 9 mm ammunition means a 26 mm
@@ -43,7 +41,6 @@ export function buildSmg() {
   const hgZ1 = -0.268;
   const hgR = 0.019;
   const zBarrelEnd = -0.3;
-  const opticY = bore + 0.055;
   const opticZ = -0.008;
 
   const body = new Assembly('smg-body');
@@ -217,23 +214,37 @@ export function buildSmg() {
   addSlingLoop(body, 'steel', 0.0165, bore - 0.022, zRecRear + 0.026, 0.007, { ry: Math.PI / 2 });
 
   /* ---- sights -------------------------------------------------------- */
-  const optic = buildOptic(body, {
-    rTube: 0.0138,
-    // Same aperture-budget argument as the rifle (see buildOptic): a shorter tube
-    // is what makes the sight picture fill the housing in ADS.
-    len: 0.044,
-    hood: 0.006,
-    y: opticY,
+  // Mini reflex on a low riser over the receiver rail, where the tube red dot
+  // used to sit. An open window has no aperture budget to solve (see
+  // buildOptic) — the sight picture IS the scene, so the only sizing question
+  // is how much of the frame the housing may eat in ADS. The 6 mm riser is not
+  // cosmetic: it lifts the sight line far enough over the bore that neither
+  // the muzzle device 300 mm downrange nor the near end of the handguard's top
+  // rail crests the window's bottom edge — at 6 mm the rail teeth still poked
+  // through the glass; 8 mm clears them by a millimetre of margin at the
+  // rail's closest point.
+  const riserH = 0.008;
+  const riser = box(0.026, riserH, 0.046, 0.0012, 2);
+  body.add(riser, 'alu', { y: railTop + riserH * 0.5, z: opticZ });
+  riser.dispose();
+  const optic = buildMiniReflex(body, {
+    w: 0.03,
+    h: 0.024,
+    len: 0.05,
+    y: railTop + riserH,
     z: opticZ,
-    railTop,
     matBody: 'alu_fine',
-    matSteel: 'steel',
+    primary: true,
   });
-  addFrontSight(body, 'polymer', 'alu', 0, railTop, -0.248, false);
-  // Same ADS composition fix as the rifle (see there): a folded BUIS at the back
-  // of the receiver sits inside the eye's near field and fills the bottom of the
-  // sight frame with a pale slab.
-  addRearSight(body, 'polymer', 'alu', 0, railTop, -0.09, false);
+  // A plain emitter dot, no circle-dot ring: the window is the aiming frame at
+  // this eye relief, and the segmented ring on top of it is just clutter.
+  optic.plainDot = true;
+  // NO folded BUIS, front or rear. Under the old tube optic (centred 30 mm
+  // above the rail) they tucked below the glass and filled the frame's lower
+  // edge; an open reflex window starts 5 mm off the rail, which puts anything
+  // rail-mounted ahead of it — a rear leaf five centimetres from the eye, a
+  // front post seen through the glass — dead in the middle of the sight
+  // picture. The ADS contract here is a thin outline and the dot, nothing else.
 
   /* ---- moving parts -------------------------------------------------- */
   const magazine = new Assembly('smg-mag');
@@ -322,9 +333,8 @@ export function buildSmg() {
       chamber: [0, bore, portZ],
       eject: [rRec + 0.006, bore + 0.002, portZ],
       ejectDir: [0.9, 0.4, 0.18],
-      sight: [0, opticY, optic.lensZ],
+      sight: optic.center,
       sightAxis: [0, 0, -1],
-      ironSight: [0, railTop + 0.024, 0.042],
       // Wrist targets, derived the same way as the rifle's (see models/rifle.js):
       // knuckle/grip contact point minus the palm offset along the hand axis.
       gripR: {
