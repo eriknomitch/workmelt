@@ -6,6 +6,13 @@ The browser client lives in `src/`. Features are divided into subsystem director
 
 ## Build, Test, and Development Commands
 
+Where a check has both an npm alias and a path, the two are the same command and
+either works: `test:quality` = `src/core/selftest.mjs`, `test:graphics` =
+`src/core/graphics.selftest.mjs`, `test:input` = `src/core/input.selftest.mjs`,
+`test:viewport` = `src/core/viewport.selftest.mjs` + `src/render/resolution.selftest.mjs`,
+`test:metrics` = `tools/lib/selftest.mjs`, `test:audio` = `src/audio/probe.mjs`,
+`shot` = `tools/capture.mjs`, `playtest:lobby` = `tools/lobby-playtest.mjs`.
+
 - `./scripts/setup.sh` bootstraps a fresh machine or cloud sandbox: dependencies, the Chromium build playwright expects, and a headless WebGL2 check.
 - `npm install` installs the pinned dependencies.
 - `npm run dev` starts the Vite client at `http://127.0.0.1:5273`. `strictPort` is on, so set `OW_PORT` if that port is taken; the capture harnesses read the same variable. Start it once and leave it running before a batch of `playtest:*`/`shot`/`goal`/`visibility`/`cost` runs — they all attach to whatever is already listening on `OW_PORT` instead of booting their own Vite, so a whole suite pays the ~20-40s dev-server-plus-shader-warmup cost once instead of per script. The dev-only subsystem preview probes under `src/**/*.mjs` (`shoot.mjs`, `preview.mjs`, `probe.mjs`, `feeltest.mjs`) deliberately keep their own fixed ports instead — that is what lets several of those run side by side without colliding.
@@ -14,7 +21,12 @@ The browser client lives in `src/`. Features are divided into subsystem director
 - `npm run dev:mp` starts both the client and local multiplayer relay.
 - `npm run build` creates the production bundle in `dist/`.
 - `npm run preview` serves the built client for local verification.
-- `npm run serve` builds, then serves the client and Node relay.
+- `npm run serve` builds, then serves the client and Node relay. `npm run server`
+  (alias `start`) runs the relay alone against an existing `dist/`.
+- `npm run cf:dev` runs the Worker + Durable Object locally under wrangler;
+  `npm run cf:deploy` builds and deploys it. See `CLOUDFLARE.md`.
+- `npm run sfx:fetch` downloads the sound sources, `npm run sfx` encodes them.
+  Neither is part of a normal change — the runtime synthesises its own audio.
 - `node src/physics/selftest.js` and `node src/ai/selftest.mjs` run subsystem checks.
 - `node src/weapons/throwables.selftest.mjs` checks the equipment inventory contract (a pulled pin is never refunded), the cook-off, and which event each throwable detonates with.
 - `node src/weapons/balance.selftest.mjs` checks the weapon balance contract: the
@@ -112,6 +124,11 @@ Read on demand, not loaded at session start:
 - `CLOUDFLARE.md` — Worker + Durable Object deploy path for `worker/`.
 - `TEXTURE-PERF.md` — where texture memory, per-pixel fetches and character draw
   calls actually go, and why a shipped texture pack is the wrong tool for it.
+- `BLUEPRINT.md` — the tactical-blueprint visual system for maps and gameplay
+  assets: the scope and plan behind how levels are authored. Read it before
+  building or reworking a map.
+- `goals/*.md` — the open goals `npm run goal` scores, with their criteria.
+  Read the relevant one before doing quality-tier or performance work.
 - `LIBRARIES.md` — what `three@0.180` already ships that we don't use, which
   platform APIs replace a dependency, and the one third-party runtime library
   worth a rule change. Read before proposing any new dependency.
@@ -126,12 +143,26 @@ shared CPU cores. `harness.mjs`'s `resolveGpuMode()` already detects this and
 returns `'swiftshader'`; the numbers below are what that costs.
 
 **Default to not rendering.** The Node-only self-tests listed above
-carry most of the real coverage and are effectively free here — all fifteen of
+carry most of the real coverage and are effectively free here — all seventeen of
 them (`physics`, `ai`, `ai/lod`, `ai/footstep`, `weapons/balance`,
 `weapons/throwables`, `weapons/loadout`, `audio/attenuation`, `core` × 4,
-`render/resolution`, `world/maps`, `world/spawns`) run in **~10 s combined**,
-and `world/maps.selftest.mjs` builds every map headlessly without a browser at
-all. Run those plus `npm run build` and stop there unless the change is
+`render/resolution`, `render/dof`, `world/maps`, `world/collision`,
+`world/spawns`) run in **~10 s combined**, and `world/maps.selftest.mjs` builds
+every map headlessly without a browser at all. That list drifts as suites are
+added, so enumerate rather than trust it:
+
+```
+find src server \( -name 'selftest.*' -o -name '*.selftest.*' \) | sort
+```
+
+Note both halves of that pattern — four suites are a bare `selftest.js`/`.mjs`
+(`physics`, `ai`, `core`, `audio`) and `-name '*.selftest.*'` alone silently
+misses them. It returns 21 files; the seventeen above are the free ones. The
+other four are not: `server/{lobby,map,skin}.selftest.mjs` each stand up a real
+relay on a real socket, and `src/audio/selftest.js` is a library the audio probe
+drives from a page — run directly it exits 0 having asserted nothing.
+
+Run the seventeen plus `npm run build` and stop there unless the change is
 genuinely a function of the image. Reach for a capture only when you have
 changed shading, post-processing, materials, lighting or layout and cannot
 otherwise tell whether the picture is right. State plainly that you skipped the
