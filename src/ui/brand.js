@@ -3,8 +3,8 @@
  * WORKMELT brand tokens — the one source of truth for every menu surface
  * ===========================================================================
  *
- * Implements `DESIGN.md` (v0.1). Three surfaces consume this stylesheet and
- * nothing else defines a colour of its own:
+ * Implements `DESIGN.md` (v0.3 — Console Black). Three surfaces consume this
+ * stylesheet and nothing else defines a colour of its own:
  *
  *   src/match/ui.js   the lobby / Match Start screen
  *   src/ui/menu.js    the Escape → settings menu (styled in src/ui/style.js)
@@ -15,52 +15,54 @@
  * high-contrast treatment. See the header of src/ui/style.js.
  *
  * ---------------------------------------------------------------------------
- * WHY THE DERIVED COLOURS ARE HARD-CODED
+ * THE v0.3 DIRECTION — CONSOLE BLACK
  * ---------------------------------------------------------------------------
- * The design export writes them as `color-mix(in srgb, …)` / `oklch(from …)`.
- * Both are recent-Chromium-only, and this stylesheet has to render identically
- * in the capture harness, in Firefox and in whatever the person at work has
- * open. Every derived value below is therefore the resolved sRGB hex, with the
- * expression it came from kept in the comment so the derivation stays checkable.
+ * True black canvas, hairline-bordered panels a few points above it, Ice White
+ * type, and a single Signal Blue accent for selection, live status and the
+ * primary action's border. Type is Geist (Vercel's face) everywhere, with
+ * Geist Mono carrying the small tracked-out uppercase labels. Corners are
+ * near-square, shadows are gone — depth is a 1px hairline or it is nothing.
  *
  * ---------------------------------------------------------------------------
- * THE RATIO RULE (DESIGN.md → Layout → Posture rules)
+ * WHY THE DERIVED COLOURS ARE HARD-CODED
  * ---------------------------------------------------------------------------
- * 65% Dark Slate · 20% Gunmetal · 10% whites · 4% Melt Green · 1% accent.
- * Melt Green is never a background wash. In practice that means: exactly one
- * Melt Green element per screen (the wordmark drip), plus hover borders and
- * ready/online dots. Primary buttons are an Ice White fill with Graphite text —
- * green text on green fill measures 2.27:1 and fails AA.
+ * The design source writes them as `color-mix(in srgb, …)`. That is
+ * recent-Chromium-only, and this stylesheet has to render identically in the
+ * capture harness, in Firefox and in whatever the person at work has open.
+ * Every derived value below is therefore the resolved sRGB hex, with the
+ * expression it came from kept in the comment so the derivation stays checkable.
  */
 
 /** Registered palette. Hex values are copied from DESIGN.md's front matter. */
 export const BRAND = {
-  bg: '#28303d', // Dark Slate — the canvas
-  surface: '#343a49', // Gunmetal — panels
-  fg: '#f0f0f0', // Ice White — 11.66:1 on Dark Slate
-  accent: '#42b66b', // Melt Green — capped at ~4% of a composition
-  muted: '#888a92', // Steel — 3.86:1, so 16px+ and icons only
-  border: '#3c434f', // Hairline — Ice White @10% resolved over Dark Slate
-  ok: '#49c873', // Success — 6.20:1
+  bg: '#000000', // Void — the canvas is true black
+  surface: '#0a0c11', // Console — panels, a few points above the void
+  fg: '#ededed', // Ice White — 18.1:1 on the void
+  accent: '#5f7cf9', // Signal Blue — selection, live status, the primary border
+  muted: '#62666e', // Steel — large text and icons only
+  border: '#23262e', // Hairline — Ice White @14% resolved over the void
+  ok: '#49c873', // Success
   warn: '#f2b643', // Warning
-  danger: '#d95c5c', // Danger — 3.57:1, large text and icons only
-  info: '#4d8ef7', // Information
+  danger: '#d95c5c', // Danger — large text and icons only
+  info: '#5f7cf9', // Information — same signal as the accent
   // World palette (environment geometry, used here only for the void and paper)
-  graphite: '#181c28',
+  graphite: '#05060a',
   cloud: '#d0d2d7',
   concrete: '#656f72',
   storageOrange: '#c46d2e',
 };
 
 export const FONT_DISPLAY_BRAND =
-  "'Bebas Neue',Oswald,Teko,'DIN Condensed',Haettenschweiler,Impact,sans-serif-condensed,sans-serif";
+  "'Geist','Inter',system-ui,-apple-system,'Segoe UI','Helvetica Neue',Arial,sans-serif";
 export const FONT_BODY_BRAND =
-  "'Inter','IBM Plex Sans',Manrope,system-ui,-apple-system,'Segoe UI','Helvetica Neue',Arial,sans-serif";
+  "'Geist','Inter',system-ui,-apple-system,'Segoe UI','Helvetica Neue',Arial,sans-serif";
+export const FONT_MONO_BRAND =
+  "'Geist Mono',ui-monospace,'SFMono-Regular',Menlo,Consolas,'Liberation Mono',monospace";
 
 const STYLE_ID = 'wm-brand-tokens';
 const FONT_ID = 'wm-brand-font';
 const FONT_HREF =
-  'https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&display=swap';
+  'https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap';
 
 const CSS = `
 :root {
@@ -79,59 +81,58 @@ const CSS = `
   --wm-void: ${BRAND.graphite};
   --wm-cloud: ${BRAND.cloud};
 
-  /* Channel forms of the four colours that ever appear at partial alpha. A
-     surface scrim over the live scene needs the palette AND an opacity, and
-     rgba() cannot take a hex custom property — so the channels are the token
-     and rgb(var(--x) / a) is how every translucent WORKMELT surface is built. */
-  --wm-bg-rgb: 40 48 61;
-  --wm-surface-rgb: 52 58 73;
-  --wm-void-rgb: 24 28 40;
-  --wm-fg-rgb: 240 240 240;
+  /* Channel forms of the colours that ever appear at partial alpha. A surface
+     scrim over the live scene needs the palette AND an opacity, and rgba()
+     cannot take a hex custom property — so the channels are the token and
+     rgb(var(--x) / a) is how every translucent WORKMELT surface is built. */
+  --wm-bg-rgb: 0 0 0;
+  --wm-surface-rgb: 10 12 17;
+  --wm-void-rgb: 5 6 10;
+  --wm-fg-rgb: 237 237 237;
+  --wm-accent-rgb: 95 124 249;
 
-  /* Panels are Gunmetal at 85-90% opacity OVER the canvas, so they stay
-     translucent against the live scene instead of flattening it. */
-  --wm-panel: rgb(var(--wm-surface-rgb) / .88);
-  /* color-mix(in srgb, Gunmetal 60%, Dark Slate) — inset wells, chips, tracks */
-  --wm-panel-2: #2f3644;
-  /* color-mix(in srgb, Gunmetal 70%, Ice White 8%) — row hover */
-  --wm-hover: #474d5a;
-  /* color-mix(in srgb, Ice White 72%, Dark Slate) — body copy, 7.1:1 */
-  --wm-fg-dim: #b8babe;
-  /* color-mix(in srgb, Ice White 88%, Melt Green) — the hover state of a
-     primary button. Warming the fill toward the accent is the only way to give
-     the CTA a green hover: filling it WITH Melt Green would leave Ice White
-     text at 2.27:1, which fails AA outright (DESIGN.md, Layout → Buttons). */
-  --wm-fg-warm: #dbe9e0;
-  /* color-mix(in srgb, Steel 58%, Ice White) — Steel measures 3.86:1 and is
-     large-text-only, so every string under 16px uses this lift instead. */
-  --wm-muted-fg: #b4b5ba;
+  /* Panels sit on the void at near-full opacity — Console Black is a console,
+     not a window; the live scene shows only where a surface chooses to open. */
+  --wm-panel: rgb(var(--wm-surface-rgb) / .92);
+  /* color-mix(in srgb, Console 55%, Ice White 4%) — inset wells, chips, tracks */
+  --wm-panel-2: #12141a;
+  /* color-mix(in srgb, Console 80%, Ice White 8%) — row hover */
+  --wm-hover: #191c23;
+  /* color-mix(in srgb, Ice White 74%, Void) — body copy, 10.0:1 */
+  --wm-fg-dim: #b0b0b0;
+  /* color-mix(in srgb, Ice White 88%, Signal Blue) — the hover state of a
+     filled primary button, warming the fill toward the accent without ever
+     putting light text on a blue fill. */
+  --wm-fg-warm: #dce1fb;
+  /* color-mix(in srgb, Steel 55%, Ice White) — every string under 16px that
+     wants to read as secondary uses this lift instead of Steel. 7.0:1. */
+  --wm-muted-fg: #9ca0a8;
 
-  --wm-r: 8px;
-  --wm-r-sm: 4px;
+  /* Console Black is near-square: hairline rectangles, softened one step. */
+  --wm-r: 2px;
+  --wm-r-sm: 2px;
   --wm-display: ${FONT_DISPLAY_BRAND};
   --wm-body: ${FONT_BODY_BRAND};
+  --wm-mono: ${FONT_MONO_BRAND};
   /* 120-180ms, swift out / linear in. Panels may overshoot subtly; nothing else. */
   --wm-t: 150ms cubic-bezier(.2,.85,.3,1);
   --wm-t-slow: 180ms cubic-bezier(.2,.85,.3,1);
-  /* Very soft, large spread, no directional lighting. */
-  --wm-shadow: 0 0 48px rgb(var(--wm-void-rgb) / .7);
-  --wm-shadow-lift: 0 0 64px rgb(var(--wm-void-rgb) / .82);
+  /* Depth is a hairline, not a shadow — kept only as a faint seat for the one
+     or two surfaces that float over a live scene. Zero offset, always. */
+  --wm-shadow: 0 0 48px rgb(var(--wm-void-rgb) / .6);
+  --wm-shadow-lift: 0 0 64px rgb(var(--wm-void-rgb) / .75);
 }
 
 /* ---------------------------------------------------------------- wordmark */
-/* WORKMEL<T> with the Melt Green drip hanging off the T stem.
-   The precise offsets are tuned to Bebas Neue's baseline sitting ~.31em above
-   the line box bottom — they only make sense if Bebas actually rendered. Until
-   .wm-display-ready says so (see _watchDisplayFont below) the mark falls
-   back to a plain hanging bar centred on the glyph box, which reads correctly
-   in Oswald / Impact / whatever the machine happens to have. The detached
-   droplet is Bebas-only: in a wide fallback face it reads as an exclamation
-   mark rather than a drip. */
+/* WORKMEL<T> with the Signal Blue drip hanging off the T stem. Geist renders
+   the mark tracked out and medium-weight; the drip is a plain hanging bar
+   centred on the T's stem, which reads correctly in Geist and in every
+   fallback grotesk — nothing here is metric-tuned to one face. */
 .wm-mark {
   font-family: var(--wm-display);
-  font-weight: 400;
+  font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: .06em;
+  letter-spacing: .18em;
   line-height: 1;
   color: var(--wm-fg);
   display: inline-block;
@@ -141,16 +142,9 @@ const CSS = `
 }
 .wm-mark .t { position: relative; }
 .wm-mark .t::after {
-  content: ""; position: absolute; left: 50%; transform: translateX(-50%);
-  bottom: -.02em; width: .075em; height: .2em;
+  content: ""; position: absolute; left: 38%; transform: translateX(-50%);
+  bottom: -.14em; width: .09em; height: .22em;
   background: var(--wm-accent); border-radius: 0 0 .04em .04em;
-}
-.wm-display-ready .wm-mark .t::after {
-  left: 46%; bottom: .06em; width: .085em; height: .28em;
-}
-.wm-display-ready .wm-mark .t::before {
-  content: ""; position: absolute; left: 46%; transform: translateX(-50%);
-  bottom: -.02em; width: .055em; height: .055em; background: var(--wm-accent);
 }
 
 /* ------------------------------------------------------------ scroll gutter */
@@ -177,11 +171,11 @@ export function installBrand({ webfont = true } = {}) {
   s.textContent = CSS;
   // Prepended so a surface stylesheet loaded later always wins on ties.
   document.head.prepend(s);
-  _watchDisplayFont();
 }
 
 /**
- * Request Bebas Neue + Inter, without ever blocking anything.
+ * Request Geist + Geist Mono (Vercel's typeface pair, served from Google
+ * Fonts), without ever blocking anything.
  *
  * `media="print"` keeps the stylesheet out of the render-blocking set; the
  * onload handler promotes it to `all` the moment it arrives. The whole UI is
@@ -206,60 +200,6 @@ export function installBrandFont() {
     link.media = 'all';
   });
   document.head.appendChild(link);
-}
-
-/**
- * Flag the document once Bebas Neue has actually rendered.
- *
- * The webfont is a progressive enhancement — a blocked request, an offline
- * machine or a corporate proxy all land on the fallback stack, and the logo
- * drip's offsets are metric-tuned to Bebas specifically. Rather than ship a
- * drip that floats off a substitute glyph, the precise version is gated on this
- * class and the fallback keeps a simpler bar. No Font Loading API (or a failed
- * load) simply means the fallback stays.
- */
-function _watchDisplayFont() {
-  const settle = () => {
-    if (_faceRenders('Bebas Neue')) document.documentElement.classList.add('wm-display-ready');
-  };
-  try {
-    if (_faceRenders('Bebas Neue')) return settle();
-    if (!document.fonts?.load) return;
-    // `load()` both kicks the request off and tells us when it has resolved one
-    // way or the other; `ready` covers the case where the sheet was still
-    // parsing when we got here. Both end at the same width probe.
-    document.fonts.load('400 16px "Bebas Neue"').then(settle, settle);
-    document.fonts.ready?.then?.(settle, () => {});
-  } catch {
-    /* Font Loading API missing or throwing: the fallback drip stays */
-  }
-}
-
-/**
- * Is `family` actually rendering, or is the browser silently substituting?
- *
- * `document.fonts.check()` is not the answer: it returns TRUE for a family the
- * document has never heard of, on the grounds that it might be installed
- * locally — so it says yes for "Bebas Neue" on a machine that has never seen
- * it. Measuring a string against two different generic fallbacks is the test
- * that actually distinguishes the two: if the family exists, at least one of
- * the measurements moves.
- */
-function _faceRenders(family) {
-  try {
-    const cx = document.createElement('canvas').getContext('2d');
-    if (!cx) return false;
-    const text = 'WORKMELT 0123456789';
-    for (const generic of ['monospace', 'serif']) {
-      cx.font = `72px ${generic}`;
-      const base = cx.measureText(text).width;
-      cx.font = `72px "${family}", ${generic}`;
-      if (Math.abs(cx.measureText(text).width - base) > 1) return true;
-    }
-    return false;
-  } catch {
-    return false;
-  }
 }
 
 /**
