@@ -702,6 +702,166 @@ const CSS = `
 .wm-lobby.variant-ledger .map-nav:hover:not(:disabled) { color: var(--ledger-bright); border-color: var(--ledger-cyan); background: var(--ledger-raised); }
 .wm-lobby.variant-ledger .map-position { color: var(--ledger-muted); font-family: inherit; }
 
+/* ── map layout explorations (?debug=true) ────────────────────────────────────
+   Five ways to present the same six maps, over ONE model and ONE set of
+   callbacks. "[data-map-layout]" on ".maps" is the only switch; every layout
+   below is CSS over the same two renderings the view always builds:
+
+     .map-carousel  the shipped pager — one card, ghosts either side
+     .map-grid      a tile per map, each with an "isOpen" floorplan thumbnail
+     .map-detail    the selected map, written out long
+
+   So a layout never rebuilds the DOM, and a click means the same thing in all
+   five. Only the shipped "carousel" is reachable without the debug flag. */
+/* "display: contents" so the band is inert in the four layouts that do not use
+   it — ".maps" and ".opts" stay direct flex children of ".hero", exactly as
+   they were before the wrapper existed. Only "board" gives it a box. */
+.wm-lobby .board-band { display: contents; }
+.wm-lobby .map-body { display: grid; min-width: 0; }
+.wm-lobby .map-grid { display: none; min-width: 0; }
+.wm-lobby .map-detail { display: none; min-width: 0; }
+
+.wm-lobby .maptile {
+  display: grid; gap: 7px; padding: 9px; text-align: left; cursor: pointer;
+  background: var(--wm-panel-2); border: 1px solid var(--wm-border);
+  border-radius: var(--wm-r-sm); color: inherit; min-width: 0;
+  transition: border-color var(--wm-t), background var(--wm-t), opacity var(--wm-t);
+}
+.wm-lobby .maptile:hover:not(:disabled) { border-color: var(--wm-muted-fg); background: var(--wm-hover); }
+.wm-lobby .maptile[aria-pressed="true"] { border-color: var(--wm-accent); background: var(--wm-hover); }
+.wm-lobby .maptile:disabled { opacity: .45; cursor: not-allowed; }
+/* The plan is orientation, not artwork — it is the 10% accent in the 65/20/10
+   ratio, not the 65. Cap the height so a tile stays a tile, and centre the
+   short-axis maps rather than stretching them off their true proportions. */
+.wm-lobby .maptile canvas {
+  display: block; width: auto; max-width: 100%; max-height: 74px; height: auto;
+  margin: 0 auto; border-radius: var(--wm-r-sm); opacity: .5;
+  background: rgb(var(--wm-void-rgb) / .55); transition: opacity var(--wm-t);
+}
+.wm-lobby .maptile:hover:not(:disabled) canvas { opacity: .72; }
+.wm-lobby .maptile[aria-pressed="true"] canvas { opacity: 1; }
+.wm-lobby .maptile .tnm {
+  font: 400 13px/1 var(--wm-display); letter-spacing: .04em; text-transform: uppercase; color: var(--wm-fg);
+}
+.wm-lobby .maptile .tmeta { display: grid; gap: 3px; min-width: 0; }
+.wm-lobby .maptile .tsub {
+  font: 400 11px/1.3 var(--wm-body); color: var(--wm-muted-fg);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.wm-lobby .maptile .tsz { font: 600 10px/1 var(--wm-body); letter-spacing: .1em; color: var(--wm-muted-fg); }
+.wm-lobby .maptile[aria-pressed="true"] .tsz { color: var(--wm-accent); }
+
+.wm-lobby .map-detail .dtext { display: grid; gap: 5px; align-content: start; min-width: 0; }
+.wm-lobby .map-detail .dnm { font: 400 22px/1 var(--wm-display); letter-spacing: .04em; text-transform: uppercase; }
+.wm-lobby .map-detail .dsub {
+  font: 600 11px/1.3 var(--wm-body); letter-spacing: .09em; text-transform: uppercase; color: var(--wm-muted-fg);
+}
+.wm-lobby .map-detail .dbl { font: 400 13px/1.5 var(--wm-body); color: var(--wm-fg-dim); }
+.wm-lobby .map-detail .dsz { font: 600 10px/1 var(--wm-body); letter-spacing: .1em; color: var(--wm-muted-fg); }
+.wm-lobby .map-detail canvas {
+  display: block; width: 100%; height: auto; border-radius: var(--wm-r-sm);
+  background: rgb(var(--wm-void-rgb) / .55); border: 1px solid var(--wm-border);
+}
+
+/* 1 — FLOORPLAN GRID. 3x2 at six maps: the whole roster, no paging, in the
+   band the carousel spent on two arrows and two blurred ghosts. */
+.wm-lobby .maps[data-map-layout="grid"] .map-carousel,
+.wm-lobby .maps[data-map-layout="grid"] .map-position { display: none; }
+.wm-lobby .maps[data-map-layout="grid"] .map-grid {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px;
+}
+.wm-lobby .maps[data-map-layout="grid"] .map-detail { display: grid; gap: 3px; margin-top: 11px; }
+.wm-lobby .maps[data-map-layout="grid"] .map-detail canvas,
+.wm-lobby .maps[data-map-layout="grid"] .map-detail .dsz { display: none; }
+.wm-lobby .maps[data-map-layout="grid"] .map-detail .dnm { font-size: 13px; }
+
+/* 2 — SPLIT RAIL. List left, one large plan right. The only layout that does
+   not change shape when a seventh map lands — the rail just scrolls. */
+.wm-lobby .maps[data-map-layout="rail"] .map-carousel,
+.wm-lobby .maps[data-map-layout="rail"] .map-position { display: none; }
+.wm-lobby .maps[data-map-layout="rail"] .map-body {
+  display: grid; grid-template-columns: minmax(0, 210px) minmax(0, 1fr); gap: 14px; align-items: start;
+}
+/* Sized so all six rows fit without a scrollbar — a rail that clips its last
+   map is the carousel's problem wearing a different shape. It still scrolls,
+   which is the point of the layout: map seven costs nothing. */
+.wm-lobby .maps[data-map-layout="rail"] .map-grid {
+  display: grid; gap: 4px; align-content: start; max-height: 364px; overflow-y: auto;
+}
+.wm-lobby .maps[data-map-layout="rail"] .maptile {
+  grid-template-columns: 34px minmax(0, 1fr); align-items: center; gap: 9px; padding: 6px 8px;
+}
+.wm-lobby .maps[data-map-layout="rail"] .maptile .tmeta { display: grid; gap: 2px; min-width: 0; }
+.wm-lobby .maps[data-map-layout="rail"] .maptile .tnm { font-size: 13px; }
+.wm-lobby .maps[data-map-layout="rail"] .map-detail {
+  display: grid; gap: 7px; padding: 12px; background: var(--wm-panel-2);
+  border: 1px solid var(--wm-border); border-radius: var(--wm-r-sm);
+}
+.wm-lobby .maps[data-map-layout="rail"] .map-detail canvas { max-height: 168px; width: auto; margin: 0 auto; }
+
+/* 3 — FILMSTRIP HERO. The shipped hero weight, but the other five stop being
+   invisible. Smallest diff from what ships today. */
+.wm-lobby .maps[data-map-layout="strip"] .map-carousel,
+.wm-lobby .maps[data-map-layout="strip"] .map-position { display: none; }
+/* The hero reads before the strip, so it must paint before it — the DOM keeps
+   tiles first because that is the reading order every other layout wants. */
+.wm-lobby .maps[data-map-layout="strip"] .map-detail { order: -1; }
+.wm-lobby .maps[data-map-layout="strip"] .map-detail {
+  display: grid; grid-template-columns: minmax(0, 1fr) 190px; gap: 16px; align-items: center;
+  padding: 14px 16px; background: var(--wm-panel-2); border: 1px solid var(--wm-border);
+  border-radius: var(--wm-r-sm); margin-bottom: 9px;
+}
+/* DOM order is canvas-then-text everywhere; the hero wants it the other way, so
+   place by column rather than reordering the element for one layout. */
+.wm-lobby .maps[data-map-layout="strip"] .map-detail .dtext { grid-column: 1; grid-row: 1; gap: 6px; }
+.wm-lobby .maps[data-map-layout="strip"] .map-detail canvas {
+  grid-column: 2; grid-row: 1; max-height: 132px; width: auto; margin-left: auto;
+}
+.wm-lobby .maps[data-map-layout="strip"] .map-grid {
+  display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px;
+}
+.wm-lobby .maps[data-map-layout="strip"] .maptile { padding: 5px; gap: 4px; }
+.wm-lobby .maps[data-map-layout="strip"] .maptile .tnm { font-size: 11px; }
+.wm-lobby .maps[data-map-layout="strip"] .maptile .tsz { display: none; }
+
+/* 4 — DEPLOY BOARD. Map and garrison become columns of one briefing band, so
+   the eye sweeps left-to-right and lands on the primary. */
+.wm-lobby .maps[data-map-layout="board"] .map-carousel,
+.wm-lobby .maps[data-map-layout="board"] .map-position { display: none; }
+.wm-lobby .maps[data-map-layout="board"] .map-grid { display: grid; gap: 3px; }
+.wm-lobby .maps[data-map-layout="board"] .maptile {
+  grid-template-columns: 26px minmax(0, 1fr) auto; align-items: center; gap: 9px;
+  padding: 5px 8px; background: none; border-color: transparent;
+}
+.wm-lobby .maps[data-map-layout="board"] .maptile:hover:not(:disabled) { background: var(--wm-hover); }
+.wm-lobby .maps[data-map-layout="board"] .maptile[aria-pressed="true"] { border-color: var(--wm-accent); background: var(--wm-hover); }
+.wm-lobby .maps[data-map-layout="board"] .maptile .tmeta { min-width: 0; }
+.wm-lobby .maps[data-map-layout="board"] .maptile .tnm { font-size: 13px; }
+.wm-lobby .maps[data-map-layout="board"] .maptile .tsub { display: none; }
+.wm-lobby.board .hero .maps { grid-column: 1; }
+.wm-lobby.board .hero .opts { grid-column: 2; }
+.wm-lobby.board .hero .board-band {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 340px); gap: 26px;
+  align-items: start; margin: 0 0 18px;
+}
+/* The garrison chips are one row or they are not a row. 340px is what four of
+   them measure; below that "Heavy" wraps and the band stops reading as columns. */
+.wm-lobby.board .hero .board-band .opts .chips { flex-wrap: nowrap; }
+.wm-lobby.board .hero .board-band .maps, .wm-lobby.board .hero .board-band .opts { margin: 0; }
+
+/* The debug-only layout picker. Deliberately a plain <select> rather than the
+   chip row the style picker uses: it is developer furniture, not part of the
+   brand surface, and it should not read as a thing a player is meant to touch. */
+.wm-lobby .layout-picker { display: flex; align-items: center; gap: 7px; margin-right: 12px; }
+.wm-lobby .layout-picker .label {
+  color: var(--wm-muted-fg); font: 600 10px/1 var(--wm-body); letter-spacing: .12em; text-transform: uppercase;
+}
+.wm-lobby .layout-picker select {
+  background: var(--wm-panel-2); border: 1px solid var(--wm-border); border-radius: var(--wm-r-sm);
+  color: var(--wm-fg); padding: 6px 8px; font: 600 11px/1 var(--wm-body); cursor: pointer;
+}
+.wm-lobby .layout-picker select:focus { outline: none; border-color: var(--wm-accent); }
+
 /* style picker shared by all directions */
 .wm-lobby .style-picker { display: flex; align-items: center; gap: 5px; margin-right: 8px; }
 .wm-lobby .style-picker .label { margin-right: 3px; color: var(--wm-muted-fg); font: 600 10px/1 Inter, system-ui, sans-serif; letter-spacing: .12em; text-transform: uppercase; }
@@ -734,9 +894,58 @@ export const BOT_PRESETS = [
   { key: 'heavy', label: 'Heavy', squads: 3, perSquad: 4, note: 'Three squads of 4. Contact almost everywhere.' },
 ];
 
+/**
+ * The map-selection explorations, in the order the picker offers them.
+ *
+ * `carousel` is what ships and is the only one a player without `?debug=true`
+ * can ever see. The rest are design candidates rendered over the same model —
+ * see the `[data-map-layout]` CSS block for the argument each one makes.
+ */
+export const MAP_LAYOUTS = [
+  { key: 'carousel', label: 'Carousel', note: 'Shipped — one card, ghosts either side' },
+  { key: 'grid', label: 'Floorplan grid', note: 'All six at once, no paging' },
+  { key: 'rail', label: 'Split rail', note: 'List left, large plan right' },
+  { key: 'strip', label: 'Filmstrip hero', note: 'One hero over a thumbnail strip' },
+  { key: 'board', label: 'Deploy board', note: 'Map and garrison as one briefing band' },
+];
+
 const GEAR_SVG = `<svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor"
   stroke-width="1.5" aria-hidden="true"><path d="M3 6h14M3 10h14M3 14h14"/>
   <circle cx="7" cy="6" r="1.8"/><circle cx="13" cy="10" r="1.8"/><circle cx="8" cy="14" r="1.8"/></svg>`;
+
+/**
+ * Draw a `mapPlan` floorplan into a fresh canvas.
+ *
+ * One cell is one filled rect, at 2x so the blocks stay crisp on a HiDPI panel
+ * without the browser resampling a bitmap. The fill is read off the live
+ * computed style rather than written literally, so the plan re-colours with the
+ * lobby's own tokens — including under each `variant-*` lab, where the palette
+ * is not the brand one.
+ *
+ * Called once per map when the list arrives, never per frame.
+ */
+function paintPlan(plan, { scale = 2, colorVar = '--wm-fg-dim' } = {}) {
+  const c = document.createElement('canvas');
+  if (!plan || !plan.cols) return c;
+  const { cols, rows, cells } = plan;
+  c.width = cols * scale;
+  c.height = rows * scale;
+  c.style.aspectRatio = `${cols} / ${rows}`;
+  const g = c.getContext('2d');
+  if (!g) return c;
+  // `installBrand()` has run by construction, so the token resolves. If it ever
+  // does not, leave the canvas empty rather than inventing a colour here — a
+  // literal hex on a menu surface is exactly what DESIGN.md forbids.
+  const probe = getComputedStyle(document.documentElement).getPropertyValue(colorVar).trim();
+  if (!probe) return c;
+  g.fillStyle = probe;
+  for (let j = 0; j < rows; j++) {
+    for (let i = 0; i < cols; i++) {
+      if (cells[j * cols + i]) g.fillRect(i * scale, j * scale, scale, scale);
+    }
+  }
+  return c;
+}
 
 export class MatchStartUI {
   constructor({ multiplayer = true, invited = false } = {}) {
@@ -786,6 +995,10 @@ export class MatchStartUI {
         <header class="bar">
           <span class="wm-mark">${WORDMARK_HTML}</span>
           <span class="spacer"></span>
+          <label class="layout-picker hide" data-layout-picker>
+            <span class="label">Map layout</span>
+            <select data-map-layout-select></select>
+          </label>
           <div class="style-picker" role="group" aria-label="Visual style">
             <span class="label">Style</span>
             <button type="button" data-style="base" aria-pressed="true">Brand</button>
@@ -810,7 +1023,8 @@ export class MatchStartUI {
             <span class="wm-mark">${WORDMARK_HTML}</span>
             <p class="lede">A tactical arena built out of the floor you already work on.
               <b>Browser-first</b>, no install — send a link and your co-workers are in.</p>
-            <div class="maps" data-maps>
+            <div class="board-band" data-board-band>
+            <div class="maps" data-maps data-map-layout="carousel">
               <div class="hd">
                 <span class="eyebrow">Map</span>
                 <span class="note" data-map-note></span>
@@ -821,11 +1035,16 @@ export class MatchStartUI {
                 <button type="button" class="map-nav" data-map-next aria-label="Next map">›</button>
               </div>
               <div class="map-position" data-map-position aria-live="polite"></div>
+              <div class="map-body">
+                <div class="map-grid" data-mapgrid role="group" aria-label="Map"></div>
+                <div class="map-detail" data-mapdetail></div>
+              </div>
             </div>
             <div class="opts">
               <span class="eyebrow">Garrison</span>
               <div class="chips" data-bots role="group" aria-label="Garrison size"></div>
               <p class="note" data-bot-note></p>
+            </div>
             </div>
             <div class="cta">
               <button type="button" class="btn btn-primary" data-primary>Play</button>
@@ -873,6 +1092,8 @@ export class MatchStartUI {
     this.mapNext = q('[data-map-next]');
     this.mapPosition = q('[data-map-position]');
     this.mapNoteEl = q('[data-map-note]');
+    this.mapGridEl = q('[data-mapgrid]');
+    this.mapDetailEl = q('[data-mapdetail]');
     this.eyebrowEl = q('[data-eyebrow]');
     this.botChips = q('[data-bots]');
     this.botNote = q('[data-bot-note]');
@@ -957,6 +1178,9 @@ export class MatchStartUI {
 
     /** id -> card element, filled by setMaps(). */
     this.mapBtns = new Map();
+    /** id -> tile element and id -> summary, for the layout explorations. */
+    this.mapTiles = new Map();
+    this.mapById = new Map();
     this.mapOrder = [];
     this.mapId = null;
     /** A level rebuild is in flight — nothing may be started against half a map. */
@@ -967,6 +1191,35 @@ export class MatchStartUI {
 
     this.mapPrev.addEventListener('click', () => this._stepMap(-1));
     this.mapNext.addEventListener('click', () => this._stepMap(1));
+
+    /**
+     * Map-layout explorations. The picker only exists under `?debug=true`, and
+     * without it the lobby is pinned to the shipped carousel — a stored
+     * preference must not be able to hand a player an unshipped layout.
+     */
+    this.mapLayout = 'carousel';
+    this.layoutButtons = [];
+    let debug = false;
+    try { debug = new URLSearchParams(location.search).get('debug') === 'true'; } catch {}
+    const picker = q('[data-layout-picker]');
+    const select = q('[data-map-layout-select]');
+    if (debug) {
+      picker.classList.remove('hide');
+      for (const l of MAP_LAYOUTS) {
+        const o = document.createElement('option');
+        o.value = l.key;
+        o.textContent = `${l.label} — ${l.note}`;
+        select.appendChild(o);
+      }
+      select.addEventListener('change', () => this.setMapLayout(select.value));
+      this.layoutButtons = [select];
+      let savedLayout = 'carousel';
+      try { savedLayout = localStorage.getItem('workmelt-map-layout') || savedLayout; } catch {}
+      this.setMapLayout(savedLayout);
+      select.value = this.mapLayout;
+    } else {
+      picker.remove();
+    }
 
     /** What the primary button currently does; render() keeps it honest. */
     this._mode = 'solo';
@@ -1019,8 +1272,31 @@ export class MatchStartUI {
    */
   setMaps(list = []) {
     this.mapCardsEl.textContent = '';
+    this.mapGridEl.textContent = '';
     this.mapBtns.clear();
+    this.mapTiles.clear();
+    this.mapById = new Map(list.map((m) => [m.id, m]));
     this.mapOrder = list.map((m) => m.id);
+    for (const m of list) {
+      const t = document.createElement('button');
+      t.type = 'button';
+      t.className = 'maptile';
+      t.setAttribute('aria-pressed', 'false');
+      t.appendChild(paintPlan(m.plan));
+      const meta = document.createElement('span');
+      meta.className = 'tmeta';
+      for (const [cls, text] of [['tnm', m.name], ['tsub', m.description], ['tsz', m.size]]) {
+        if (!text) continue;
+        const s = document.createElement('span');
+        s.className = cls;
+        s.textContent = text;
+        meta.appendChild(s);
+      }
+      t.appendChild(meta);
+      t.addEventListener('click', () => this.onMap?.(m.id));
+      this.mapGridEl.appendChild(t);
+      this.mapTiles.set(m.id, t);
+    }
     for (const m of list) {
       const b = document.createElement('button');
       b.type = 'button';
@@ -1062,10 +1338,50 @@ export class MatchStartUI {
       else if (this.mapOrder.length > 2 && index === (visible + 1) % this.mapOrder.length) state = 'next';
       b.setAttribute('data-carousel-state', state);
     }
+    for (const [k, t] of this.mapTiles) t.setAttribute('aria-pressed', String(k === id));
+    this._paintMapDetail(this.mapById.get(id) ?? this.mapById.get(this.mapOrder[visible]));
     this.mapPosition.textContent = this.mapOrder.length > 1
       ? `${visible + 1} / ${this.mapOrder.length}`
       : '';
     this._syncMap();
+  }
+
+  /**
+   * The selected map, written out long. Every layout that is not the shipped
+   * carousel shows some part of this element; CSS decides which part, so the
+   * content is built once and never per layout.
+   */
+  _paintMapDetail(m) {
+    const el = this.mapDetailEl;
+    if (!el) return;
+    el.textContent = '';
+    if (!m) return;
+    el.appendChild(paintPlan(m.plan));
+    const text = document.createElement('div');
+    text.className = 'dtext';
+    for (const [cls, val] of [['dnm', m.name], ['dsub', m.description], ['dbl', m.blurb], ['dsz', m.size]]) {
+      if (!val) continue;
+      const s = document.createElement('span');
+      s.className = cls;
+      s.textContent = val;
+      text.appendChild(s);
+    }
+    el.appendChild(text);
+  }
+
+  /**
+   * Switch which map-selection exploration is on screen. Debug-only: the
+   * shipped lobby is always `carousel`, and `?debug=true` is what puts the
+   * picker in the bar. One model, one set of callbacks, five presentations —
+   * see the CSS block for what each one is arguing.
+   */
+  setMapLayout(layout = 'carousel') {
+    const next = MAP_LAYOUTS.some((l) => l.key === layout) ? layout : 'carousel';
+    this.mapLayout = next;
+    this.mapsEl.setAttribute('data-map-layout', next);
+    this.root.classList.toggle('board', next === 'board');
+    for (const sel of this.layoutButtons) sel.value = next;
+    try { localStorage.setItem('workmelt-map-layout', next); } catch {}
   }
 
   _stepMap(delta) {
@@ -1104,6 +1420,7 @@ export class MatchStartUI {
   _syncMap() {
     const off = this.mapBusy || this.mapLocked;
     for (const b of this.mapBtns.values()) b.disabled = off;
+    for (const t of this.mapTiles.values()) t.disabled = off;
     this.mapPrev.disabled = off || this.mapOrder.length < 2;
     this.mapNext.disabled = off || this.mapOrder.length < 2;
     this.mapNoteEl.textContent = this.mapBusy

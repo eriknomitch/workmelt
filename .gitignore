@@ -51,3 +51,6 @@ scratch/
 # node_modules, so these two have to be tracked or every session starts broken.
 !.claude/settings.json
 !.claude/hooks/
+
+# Local design-iteration screenshots (chrome-devtools)
+.shots/
