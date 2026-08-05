@@ -571,7 +571,10 @@ export class AiSystem {
       new THREE.Box3(new THREE.Vector3(-70, -4, -70), new THREE.Vector3(70, 24, 70));
     bounds.expandByScalar(2);
     const t0 = performance.now();
-    this.grid = new NavGrid(phys, { bounds, cell: 0.8, radius: 0.36, height: 1.78 });
+    // Clearance for the tallest/widest variant (capsule is 1.78 × scale, radius
+    // 0.34 × scale in Agent) so a breacher never paths somewhere it cannot fit.
+    const s = Math.max(...Object.values(VARIANTS).map((v) => v.scale ?? 1));
+    this.grid = new NavGrid(phys, { bounds, cell: 0.8, radius: 0.36 * s, height: 1.78 * s });
     this.grid.build();
     this.cover = new CoverMap(this.grid, phys);
     this.cover.build({ step: 1, reach: 1.3 });

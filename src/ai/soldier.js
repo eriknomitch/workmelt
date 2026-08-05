@@ -61,6 +61,20 @@ const GEAR = {
 };
 
 /**
+ * Global stature multiplier applied on top of each variant's relative scale.
+ *
+ * The rig is authored at a realistic 1.80 m, but the levels are authored the
+ * way shooters author them — 2.2–2.8 m doors, 3.2 m storeys — so a true-scale
+ * human reads short against every threshold in frame. Bumping the whole figure
+ * to ~2.0 m (the register CoD/Halo characters occupy) restores the read
+ * without touching a map. Everything that must agree with the silhouette —
+ * physics capsule, hitboxes, ragdoll, eye height, mass, the net PvP hit
+ * capsule — derives from the same per-variant `scale`, so this is the single
+ * knob for character stature.
+ */
+export const STATURE = 1.12;
+
+/**
  * Visual variants. Each is a different SILHOUETTE, never a recolour: helmet vs
  * wrapped head, full plate vs chest rig, carbine vs long rifle. Colour is the
  * livery's job and a variant must not touch it — two players who happen to draw
@@ -82,7 +96,7 @@ export const VARIANTS = {
     fullCarrier: true,
     weapon: 'carbine',
     bulk: 1.0,
-    scale: 1.0,
+    scale: 1.0 * STATURE,
   },
   irregular: {
     helmet: false,
@@ -96,7 +110,7 @@ export const VARIANTS = {
     fullCarrier: false,
     weapon: 'ak',
     bulk: 0.94,
-    scale: 0.985,
+    scale: 0.985 * STATURE,
   },
   breacher: {
     helmet: true,
@@ -112,7 +126,7 @@ export const VARIANTS = {
     fullCarrier: true,
     weapon: 'carbine',
     bulk: 1.06,
-    scale: 1.025,
+    scale: 1.025 * STATURE,
   },
 };
 
