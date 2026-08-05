@@ -203,3 +203,38 @@ export class AmmoPanel {
     this.root.remove();
   }
 }
+
+/**
+ * Centre-screen reload nudge — a keycap and verb pinned just under the sight
+ * line, so a low magazine registers without looking away from the fight. Same
+ * threshold as the panel's amber state (<= 34% of the magazine, empty
+ * included), gated on having reserve to load, and it stays until the reload
+ * actually starts. Reload is a fixed bind (input.js ACTIONS), so the keycap
+ * can say R outright, matching the panel's PRESS R TO RELOAD.
+ */
+export class ReloadHint {
+  constructor(parent) {
+    this.root = el('div', 'ow-reload-hint', parent);
+    this.key = el('div', 'ow-key', this.root, 'R');
+    this.txt = el('div', 'ow-reload-hint-txt', this.root, 'RELOAD');
+    this.shown = 0;
+    setStyle(this.root, 'display', 'none');
+  }
+
+  update(dt, s) {
+    const ammo = Math.max(0, s.ammo | 0);
+    const magSize = Math.max(1, s.magSize | 0 || 30);
+    const want = !s.reloading && ammo / magSize <= 0.34 && (s.reserve | 0) > 0;
+    this.shown = damp(this.shown, want ? 1 : 0, 14, dt);
+    const vis = this.shown;
+    setStyle(this.root, 'display', vis < 0.005 ? 'none' : '');
+    if (vis < 0.005) return;
+    setStyle(this.root, 'opacity', vis.toFixed(3));
+    const y = (1 - ease.outCubic(vis)) * 6;
+    setStyle(this.root, 'transform', `translate(-50%,calc(-50% + ${y.toFixed(2)}px))`);
+  }
+
+  dispose() {
+    this.root.remove();
+  }
+}

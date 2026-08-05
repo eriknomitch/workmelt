@@ -574,6 +574,21 @@ const CSS = `
 .ow-prompt-sub { font-size: calc(9.5px * var(--k)); letter-spacing:.2em; color:var(--ink-2); }
 .ow-prompt-arc { position:absolute; left:calc(-6px * var(--k)); top:50%; }
 
+/* =========================================================== reload hint */
+/* Low-magazine nudge under the sight line: keycap + verb, amber like every
+   other ammunition warning. Sits below the interaction prompt (58%) and above
+   the health bar, roughly on the weapon's receiver. */
+.ow-reload-hint {
+  position:absolute; left:50%; top:67%;
+  transform: translate(-50%,-50%);
+  display:flex; align-items:center; gap: calc(var(--u) * 1.6);
+  will-change: opacity, transform;
+}
+.ow-reload-hint-txt {
+  font-size: calc(12px * var(--k)); letter-spacing:.24em;
+  color: var(--amber); text-shadow: var(--sh);
+}
+
 /* ================================================================ banner */
 .ow-banner {
   position:absolute; left:50%; top:31%;
