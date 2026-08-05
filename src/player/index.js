@@ -55,6 +55,7 @@
  *   p.health  p.maxHealth  p.healthFraction  p.lowHealth  p.dead
  *   p.suppression  p.damageIndicators
  *   p.applyDamage(amount, fromVector3, opts)   p.heal(a)   p.addSuppression(a)
+ *   p.onNearMiss(missMetres)      a round passed close without connecting
  *
  * CONTROL
  *   p.setControlEnabled(bool)     shot harness / cutscenes
@@ -647,6 +648,18 @@ export class PlayerSystem {
   }
   addSuppression(a) {
     this.health.addSuppression(a);
+  }
+  /**
+   * A round passed within arm's reach without connecting — `ai` calls this from
+   * its player-capsule test. Suppression (sway + shake via health) plus a small
+   * flinch proportional to how close it came; the crack itself belongs to
+   * `audio` and the visible streak to `fx`, both keyed off `bullet:tracer`.
+   */
+  onNearMiss(miss) {
+    if (this.health.dead) return;
+    const close = clamp01(1 - (miss ?? 1.6) / 1.6);
+    this.health.addSuppression(HEALTH.suppression.perNearMiss * (0.4 + 0.6 * close));
+    this.rig.addTrauma(0.12 * close);
   }
 
   setControlEnabled(on) {

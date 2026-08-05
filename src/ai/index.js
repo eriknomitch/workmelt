@@ -1080,26 +1080,39 @@ export class AiSystem {
     // physics has no player collider, so test the player capsule ourselves.
     // Staged agents shoot for the camera, not for blood: a capture must not be
     // graded through the player's low-health filter.
-    if (!agent.staged?.noDamage) this._testPlayerHit(agent, origin, dir, end);
+    let missBy = null;
+    if (!agent.staged?.noDamage) missBy = this._testPlayerHit(agent, origin, dir, end);
 
     this._tracerFrom.copy(origin);
     if (end) this._tracerTo.copy(end);
     else this._tracerTo.copy(origin).addScaledVector(dir, 120);
-    if ((agent.id + agent.ammo) % 3 === 0) ctx.events.emit('bullet:tracer', this._tracerEvent);
+    // Every third round carries a visible tracer — except a round that passes
+    // close to the player, which ALWAYS does. The streak past your head and the
+    // whip-crack `audio` keys off the same event are the only tell that someone
+    // out of view is shooting at you, so a near miss is never allowed to be
+    // silent and invisible.
+    if ((missBy !== null && missBy < 4) || (agent.id + agent.ammo) % 3 === 0) {
+      ctx.events.emit('bullet:tracer', this._tracerEvent);
+    }
   }
 
+  /**
+   * @returns {number|null} the round's closest approach to the player in
+   *   metres, or null if it never crossed the player's span (blocked short,
+   *   fired away, or no player).
+   */
   _testPlayerHit(agent, origin, dir, end) {
     const p = this.playerPosition(this._v);
-    if (!p) return;
+    if (!p) return null;
     const maxT = end ? origin.distanceTo(end) : 200;
     const px = p.x - origin.x, py = p.y - origin.y, pz = p.z - origin.z;
     const t = px * dir.x + py * dir.y + pz * dir.z;
-    if (t < 0.5 || t > maxT) return;
+    if (t < 0.5 || t > maxT) return null;
     const miss = Math.hypot(px - dir.x * t, py - dir.y * t, pz - dir.z * t);
     const player = this.ctx.peek('player');
     if (miss > 0.42) {
       if (miss < 1.6) player?.onNearMiss?.(miss); // whip-crack past the ear
-      return;
+      return miss;
     }
     const amount = agent.weaponDamage * (miss < 0.16 ? 1.25 : 1);
     this._v2.copy(origin);
@@ -1115,6 +1128,7 @@ export class AiSystem {
       from: this._v2,
       source: agent,
     });
+    return miss;
   }
 
   emitReload(agent) {
