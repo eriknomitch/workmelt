@@ -613,23 +613,15 @@ neutrals rather than Dark Slate and Gunmetal. `brand-canvas.css` re-binds the
 neutral ramp to the registered palette; `:root` is the dark canvas and
 `.brand-light` is the opt-in inversion.
 
-**Open exploration — the lobby theme labs.** `src/match/ui.js` currently ships
-six alternate lobby treatments (`variant-signal`, `variant-terminal`,
+**The lobby theme labs are closed.** `src/match/ui.js` used to carry six
+alternate lobby treatments (`variant-signal`, `variant-terminal`,
 `variant-field`, `variant-spreadsheet`, `variant-linear`, `variant-ledger`), each
-with its own `--lab-*` / `--sheet-*` token set, switchable at runtime and
-persisted to `localStorage` under `workmelt-lobby-style`. Each departs from this
-system substantially — `variant-signal` alone swaps the accent to `#ff6b35`, the
-wordmark to Inter 800 at `-.075em`, the radius to `0`, and the ambient shadow to
-a hard `16px 16px 0` offset.
+with its own `--lab-*` / `--sheet-*` token set, switchable from a Style picker in
+the lobby bar and persisted to `localStorage` under `workmelt-lobby-style`. All
+six, their token sets and the picker are gone: the brand system documented here
+is the lobby's only treatment, there is no runtime switch, and a browser holding
+the old preference key has it cleared on the next lobby boot.
 
-The lobby therefore ships a seventh option, **`base`**, labelled *Brand* in the
-picker. It is not a variant but the absence of one: it applies no `variant-*`
-class and leaves the lobby on the system documented here. `base` is the default
-for a fresh browser and the fallback for an unrecognised style, so a lab is only
-ever seen because someone chose it.
-
-**These labs are an exploration, not the design system.** This document remains
-canon. Nothing outside the lobby's `variant-*` blocks may adopt a lab token, and
-if a direction is eventually chosen it gets promoted into `brand.js` and this
-file gets rewritten. The labs are not a second, parallel system to design against
-in the meantime.
+Nothing may reintroduce a `variant-*` block or a `--lab-*` / `--sheet-*` token.
+A new direction is a change to `brand.js` and to this document, not a second
+system living beside it.

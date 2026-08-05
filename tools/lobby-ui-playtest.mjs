@@ -4,9 +4,9 @@
  *
  * `tools/lobby-playtest.mjs` proves the join flow with two full engine boots,
  * which on a software rasteriser costs minutes each. Until `?renderGame=false`
- * existed there was no cheap check of the screen itself, so a broken map card,
- * a dead style button or a wrong primary label in solo mode had no test short
- * of those boots. This one loads the lobby UI-only (src/dev/uionly.js) —
+ * existed there was no cheap check of the screen itself, so a broken map card or
+ * a wrong primary label in solo mode had no test short of those boots. This one
+ * loads the lobby UI-only (src/dev/uionly.js) —
  * seconds, even on SwiftShader, because no engine is fetched at all — and
  * checks everything about the surface that does not need a game behind it:
  *
@@ -15,8 +15,8 @@
  *   • every enabled map in the registry gets a card, and clicking one repaints
  *     the selection and persists the preference (the solo path);
  *   • every garrison chip repaints the primary CTA with its real bot count;
- *   • every style exploration applies its variant class, and 'base' removes
- *     them all;
+ *   • the lobby ships one visual treatment — the brand system — with no
+ *     selector and no variant class on the root;
  *   • the `?debug=true` layout picker exists exactly when asked for;
  *   • Enter reaches the (inert) primary and C flashes the copy button;
  *   • `?mp=0` collapses the room panel.
@@ -118,18 +118,15 @@ try {
     );
   }
 
-  /* ---- style explorations: each applies its class, base clears them ----- */
-  const styles = await page.evaluate(() =>
-    [...document.querySelectorAll('[data-style]')].map((b) => b.dataset.style)
-  );
-  check('the style row offers the explorations', styles.length > 1, JSON.stringify(styles));
-  for (const s of styles) {
-    await page.evaluate((st) => window.__UIONLY__.setStyle(st), s);
-    const cls = await page.evaluate(() => document.querySelector('.wm-lobby').className);
-    const want = s === 'base' ? !/variant-/.test(cls) : cls.includes(`variant-${s}`);
-    check(`style '${s}' lands on the root`, want, cls);
-  }
-  await page.evaluate(() => window.__UIONLY__.setStyle('base'));
+  /* ---- one style, and no way to leave it -------------------------------- */
+  eq('no style selector is rendered', await page.evaluate(
+    () => document.querySelectorAll('.wm-lobby .style-picker, .wm-lobby [data-style]').length
+  ), 0);
+  // The lab treatments are gone from the stylesheet, so a stale class would
+  // only strip the brand rather than swap it. Nothing may put one back.
+  eq('the lobby wears the brand system alone', await page.evaluate(
+    () => /variant-/.test(document.querySelector('.wm-lobby').className)
+  ), false);
 
   /* ---- debug layout picker ---------------------------------------------- */
   eq('?debug=true shows the layout picker', await page.evaluate(

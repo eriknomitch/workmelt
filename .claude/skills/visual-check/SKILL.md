@@ -136,7 +136,7 @@ anywhere — including the GPU-less container, where `npm run playtest:ads` pass
 - `npm run playtest:lobby` — the whole join flow in two real browsers against a
   real relay.
 - `npm run playtest:lobby-ui` — the lobby SURFACE alone: map cards, garrison
-  chips, style explorations, keyboard shortcuts, `?mp=0`. Rides
+  chips, keyboard shortcuts, `?mp=0`. Rides
   `?renderGame=false`, so no engine boots and it finishes in ~2 s even here.
 
 They are a minute or more each under SwiftShader — except `playtest:lobby-ui`,
