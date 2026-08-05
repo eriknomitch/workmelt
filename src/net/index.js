@@ -489,12 +489,15 @@ export class NetSystem {
       if (!p.puppet || p.dead || p.hp <= 0) continue;
       const feet = p.puppet.position;
       const crouch = p.puppet.crouch;
-      const top = crouch ? 1.2 : 1.75;
+      // Everything below is in the puppet's own stature: the body it has to
+      // agree with is the drawn one, and that is variant scale × STATURE tall.
+      const s = p.puppet.scale ?? 1;
+      const top = (crouch ? 1.2 : 1.75) * s;
       // capsule segment from ankles to the neck; head handled by the top slab
-      const r = 0.34;
+      const r = 0.34 * s;
       const res = rayCapsule(
         this._origin, this._dir,
-        feet.x, feet.y + 0.2, feet.z,
+        feet.x, feet.y + 0.2 * s, feet.z,
         feet.x, feet.y + top, feet.z,
         r + 0.06, 200
       );
@@ -508,8 +511,9 @@ export class NetSystem {
        * A puppet carries no ACTOR colliders — `net` raycasts one capsule — so
        * the zone has to come out of where along the segment the round landed.
        * Three bands against the same multipliers every bot uses (see
-       * `WeaponSystem.damageAt`): the top 180 mm is the head, everything below
-       * 45 % of standing height is legs, and the rest is torso.
+       * `WeaponSystem.damageAt`): the top 180 mm (at the puppet's stature) is
+       * the head, everything below 45 % of standing height is legs, and the
+       * rest is torso.
        *
        * Before this there were two bands and a flat x2 head multiplier, so the
        * SAME weapon killed a bot in four torso hits and a player in four, but
@@ -519,7 +523,7 @@ export class NetSystem {
        */
       const headY = feet.y + top;
       const legY = feet.y + top * 0.45;
-      const zone = res.py > headY - 0.18 ? 'head' : res.py < legY ? 'limb' : 'torso';
+      const zone = res.py > headY - 0.18 * s ? 'head' : res.py < legY ? 'limb' : 'torso';
       bestT = res.t;
       best = { p, zone, dist: res.t };
     }
