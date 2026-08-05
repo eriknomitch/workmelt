@@ -166,6 +166,28 @@ GPU-less-sandbox costs and levers, the goal-gate scoping, and the rule that a
 `.png` nobody read is not a visual check. Do not capture from memory: a skipped
 render reported as a pass is much worse than a skipped render.
 
+**Write every ad-hoc screenshot to `.shots/`, then look at it.** Any one-off
+image — a `tools/capture.mjs --out=`, a chrome-devtools or playwright screenshot,
+a crop, a before/after pair — goes in `.shots/`, which is gitignored. Do not
+scatter PNGs across `/tmp`, the session scratchpad, or the repo root: an image
+outside `.shots/` is one nobody will find again, and one in the working tree is
+one that ends up in a commit.
+
+Capturing is only half of it. **Read the file back with the Read tool so the
+image is actually displayed**, and say what you saw in the frame. A `.png`
+nobody read is not a visual check — a skipped render reported as a pass is much
+worse than a skipped render. Cite the path (`.shots/hero-before.png`) so the
+reader can open the same file.
+
+Name for a stranger, not for yourself: `.shots/<subject>-<variant>.png`, e.g.
+`.shots/lobby-cards-after.png`. `.shots/` is scratch — overwrite it freely and
+never treat it as an archive.
+
+The one exception is the baseline pipeline. `tools/capture.mjs` defaults to
+`shots/`, and `tools/baseline.mjs` and `tools/imagediff.mjs` compare against
+those paths, so leave committed baselines where they are; `.shots/` is for the
+throwaway captures you take while iterating.
+
 **Write throwaway probe scripts to `scratch/`, never `/tmp`.** A one-off script
 that imports anything from `node_modules` — `playwright` above all — must live
 inside the repo tree. Node resolves a bare ESM specifier by walking up from the
