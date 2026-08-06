@@ -48,25 +48,37 @@
  *   and calls `net.setReady()` / `net.deploy()`. With `?mp=0` there is no `net`
  *   at all and only the bots path is offered.
  *
+ * WHEN A MATCH ENDS. Every match is a bounded free-for-all — first to the
+ *   kill target, or the leader at full time (see ./bounds.js). The relay
+ *   referees a room match, because the relay owns the score; this system
+ *   referees a bots match, because nobody else can see it. Either way the end
+ *   lands here, in the CEREMONY: the winner's name in their livery, the final
+ *   standings, and a timed walk back to the lobby — which is where the
+ *   existing rematch flow was already waiting.
+ *
  * EVENTS EMITTED
  *   match:start { bots, squads, perSquad, mode }   the match is live
  *   match:countdown { seconds }                    a countdown tick landed
  *   match:end { reason }                           back out to the lobby
+ *                                                  ('complete' = it was won)
  */
 
 import * as THREE from 'three';
 import { MatchStartUI, BOT_PRESETS } from './ui.js';
+import { SCORE_LIMIT, MATCH_MS, BotMatchTally } from './bounds.js';
 
 const DEFAULT_BOTS = 'standard';
 /** Time on your back before you are put back in. Matches `net`'s own timer. */
 const RESPAWN_MS = 3200;
+/** How long the ceremony holds the screen before walking back to the lobby. */
+const CEREMONY_MS = 10_000;
 
 export class MatchSystem {
   static id = 'match';
   static deps = ['player', 'ui', 'ai', 'world'];
 
   constructor(opts = {}) {
-    /** 'setup' | 'countdown' | 'live' */
+    /** 'setup' | 'countdown' | 'live' | 'ceremony' */
     this.state = 'setup';
     /**
      * How we went live: 'bots' is a warm-up (private, interruptible, and the
@@ -87,6 +99,10 @@ export class MatchSystem {
     this._lastAttackValid = false;
     /** A level rebuild is in flight; nothing may start until it lands. */
     this._mapBusy = false;
+    /** Scorekeeper for a bots match (see ./bounds.js). Null in a room match. */
+    this._tally = null;
+    /** When the ceremony walks itself back to the lobby. 0 outside it. */
+    this._ceremonyUntil = 0;
   }
 
   async init(ctx) {
@@ -124,16 +140,22 @@ export class MatchSystem {
     }
 
     const on = (t, fn) => this._off.push(ctx.events.on(t, fn));
-    on('player:death', () => this._onPlayerDeath());
+    on('player:death', () => {
+      this._onPlayerDeath();
+      this._onTallyDeath();
+    });
     on('damage:taken', (e) => {
       if (e?.from) this._lastAttack.copy(e.from);
       this._lastAttackValid = !!e?.from;
     });
+    on('damage:dealt', (e) => this._onDamageDealt(e));
     on('net:lobby', (e) => this._onLobby(e));
     on('net:name', (e) => this.ui.setName(e?.name ?? ''));
     on('net:countdown', (e) => this._onCountdown(e));
+    on('net:matchend', (e) => this._onNetMatchEnd(e));
     on('net:join', (e) => this._onPresence('join', e));
     on('net:leave', (e) => this._onPresence('leave', e));
+    this.ui.onCeremonyDone = () => this._ceremonyDone();
 
     this._enterSetup();
     if (typeof window !== 'undefined') window.__MATCH__ = this;
@@ -146,6 +168,9 @@ export class MatchSystem {
   _enterSetup() {
     this.state = 'setup';
     this.mode = null;
+    this._tally = null;
+    this._ceremonyUntil = 0;
+    this.ui.showCeremony(false);
     // Gameplay input off: the mousedown handler in core/input.js grabs pointer
     // lock on any click, which would swallow the cursor the menu needs.
     this.ctx.input.enabled = false;
@@ -327,6 +352,13 @@ export class MatchSystem {
       // used to require every player to leave their match by hand first.
       this._leaveWarmup();
       pulled = true;
+    } else if (this.state === 'ceremony') {
+      // The room is starting while the result is still on screen — a bounded
+      // warm-up that ended while friends readied up. The match outranks the
+      // ceremony; the countdown takes the screen (showCountdown hides it).
+      this._ceremonyUntil = 0;
+      this._respawnAt = 0;
+      pulled = this.mode === 'bots';
     }
     this.state = 'countdown';
     this._countCopy = pulled
@@ -366,6 +398,7 @@ export class MatchSystem {
 
   update() {
     this._updateRespawn();
+    this._updateBounds();
     if (this.state !== 'countdown') return;
     const left = this._countdownEnd - performance.now();
     const n = Math.max(0, Math.ceil(left / 1000));
@@ -395,6 +428,9 @@ export class MatchSystem {
     if (this._mapBusy) return;
     this.state = 'live';
     this.mode = mode;
+    // A bots match is scored here — nobody else can see it. A room match is
+    // scored by the relay, whose `match_end` arrives as `net:matchend`.
+    this._tally = mode === 'bots' ? new BotMatchTally({ now: performance.now() }) : null;
     const preset = BOT_PRESETS.find((p) => p.key === bots) ?? BOT_PRESETS[0];
 
     // Deploy the player FIRST, then the garrison: the bots' anchors are scored
@@ -489,6 +525,172 @@ export class MatchSystem {
     });
     this.player.setControlEnabled(true);
     this._lastAttackValid = false;
+  }
+
+  /* ==================================================================== */
+  /* bounded match + ceremony                                             */
+  /* ==================================================================== */
+
+  /**
+   * A body dropped and it was our round that did it. `damage:dealt` means
+   * damage TO `target`, so the local player must be filtered out — an enemy
+   * round connecting with us arrives on this event too (same rule the HUD's
+   * hitmarker applies).
+   */
+  _onDamageDealt(e) {
+    if (!e?.killed || !this._tally || this.state !== 'live') return;
+    const t = e.target;
+    if (t === 'player' || t === this.player || t?.isPlayer === true) return;
+    if (this._tally.noteKill() === 'score') this._endBots('score');
+  }
+
+  /** The garrison scored on us. Only a bots match counts it here. */
+  _onTallyDeath() {
+    if (!this._tally || this.state !== 'live') return;
+    if (this._tally.noteDeath() === 'score') this._endBots('score');
+  }
+
+  /**
+   * Per-frame half of the contract: the bots clock, the ceremony's walk back
+   * to the lobby, and the HUD scoreline (kills toward the target, the leader,
+   * time remaining) whichever referee owns the match.
+   */
+  _updateBounds() {
+    const now = performance.now();
+    if (this.state === 'ceremony') {
+      if (this._ceremonyUntil) {
+        this.ui.setCeremonyReturn((this._ceremonyUntil - now) / 1000);
+        if (now >= this._ceremonyUntil) this._ceremonyDone();
+      }
+      return;
+    }
+    if (this.state !== 'live') return;
+
+    if (this._tally) {
+      if (this._tally.checkTime(now) === 'time') {
+        this._endBots('time');
+        return;
+      }
+      this.uiSys.setMatch?.({
+        scoreUs: this._tally.kills,
+        scoreThem: this._tally.deaths,
+        timeLeft: this._tally.remaining(now) / 1000,
+        mode: 'FFA',
+      });
+    } else if (this.net) {
+      // The relay referees; this is only the scoreboard. My row and the best
+      // other row come from the roster the relay already broadcasts per kill.
+      let mine = 0;
+      let best = 0;
+      for (const r of this.net.roster ?? []) {
+        if (r.id === this.net.myId) mine = r.kills ?? 0;
+        else best = Math.max(best, r.kills ?? 0);
+      }
+      this.uiSys.setMatch?.({
+        scoreUs: mine,
+        scoreThem: best,
+        timeLeft: this.net.matchEndsAt ? Math.max(0, this.net.matchEndsAt - now) / 1000 : 0,
+        mode: 'FFA',
+      });
+    }
+  }
+
+  /** '5:00' from ms — the ceremony's reason line. */
+  _fmtClock(ms) {
+    const s = Math.round(ms / 1000);
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  }
+
+  /** A bots match ended — this client is the referee, so it calls it here. */
+  _endBots(reason) {
+    const t = this._tally;
+    if (!t || this.state !== 'live') return;
+    const winner = t.winner();
+    const myName = this.net?.name ?? 'You';
+    const myColour = this._liveryCss(this.net?.livery ?? 0);
+    this._enterCeremony({
+      eyebrow: this.mode === 'bots' && this.net?.connected ? 'Warm-up complete' : 'Match complete',
+      verdict: winner === 'you' ? 'Victory' : winner === 'garrison' ? 'Defeat' : 'Draw',
+      colour: winner === 'you' ? 'var(--wm-ok)' : winner === 'garrison' ? 'var(--wm-danger)' : null,
+      how:
+        reason === 'score'
+          ? `First to ${t.limit}`
+          : `Full time — ${this._fmtClock(t.ms)} played`,
+      rows: [
+        { name: myName, kills: t.kills, deaths: t.deaths, colour: myColour, me: true, win: winner === 'you' },
+        { name: 'Garrison', kills: t.deaths, deaths: t.kills, colour: null, me: false, win: winner === 'garrison' },
+      ].sort((a, b) => b.kills - a.kills),
+    });
+  }
+
+  /**
+   * The relay ended the room's match. It has already stepped everyone out
+   * (the room is no longer live), so all that is left is to say who won.
+   * A player who was not in that match — warming up, or sitting in the
+   * lobby — has nothing to be shown; the lobby frame already told them.
+   */
+  _onNetMatchEnd(e) {
+    if (this.state !== 'live' || this.mode === 'bots') return;
+    const rows = e?.standings ?? [];
+    const winner = rows.find((r) => r.id === e?.winner) ?? null;
+    for (const r of rows) r.win = !!winner && r.id === winner.id;
+    this._enterCeremony({
+      eyebrow: 'Match complete',
+      verdict: e?.mine ? 'Victory' : winner ? `${winner.name} wins` : 'Draw',
+      colour: winner?.colour ?? null,
+      how: e?.reason === 'time' ? 'Full time — the leader takes it' : `First to ${e?.limit || SCORE_LIMIT}`,
+      rows,
+    });
+  }
+
+  /**
+   * Hold the result on screen: control off, HUD down, the standings up, and a
+   * timed walk back to the lobby (or one click / Enter). The garrison goes now
+   * rather than at the lobby — bots hunting a player who cannot move are not a
+   * backdrop, they are a soft-lock.
+   */
+  _enterCeremony(view) {
+    if (this.state === 'ceremony') return;
+    this.state = 'ceremony';
+    this._respawnAt = 0;
+    this._tally = null;
+    try {
+      this.ai.clearGarrison?.();
+    } catch (err) {
+      console.warn('[match] garrison teardown failed', err);
+    }
+    this.ctx.input.enabled = false;
+    document.exitPointerLock?.();
+    this.player.setControlEnabled(false);
+    this.uiSys.setHudVisible(false);
+    this.net?.setOverlayVisible(false);
+    this.ui.setCeremony(view);
+    this.ui.setVisible(true);
+    this.ui.showCeremony(true);
+    this._ceremonyUntil = performance.now() + CEREMONY_MS;
+    this.ui.setCeremonyReturn(CEREMONY_MS / 1000);
+    this._sfx('matchstart', 0.9);
+    this.ctx.events.emit('match:end', { reason: 'complete' });
+    console.info(`[match] ceremony: ${view.verdict}`);
+  }
+
+  /** Leave the ceremony for the lobby — the button, Enter, or the timer. */
+  _ceremonyDone() {
+    if (this.state !== 'ceremony') return;
+    // Say we are out even though the relay already undeployed us: it clears
+    // this client's own deployed/warm flags for the next reconnect, and for a
+    // bounded warm-up it is the message the relay is still waiting on.
+    this.net?.undeploy();
+    this._enterSetup();
+  }
+
+  /** The livery palette lives with `ai`; the ceremony only needs a CSS colour. */
+  _liveryCss(slot) {
+    try {
+      return this.ai?.livery?.(slot)?.css ?? null;
+    } catch {
+      return null;
+    }
   }
 
   /* ==================================================================== */

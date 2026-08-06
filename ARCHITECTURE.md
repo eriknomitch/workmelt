@@ -118,8 +118,10 @@ Emit and listen via `ctx.events`. Payloads are plain objects. The canonical set:
 | `net:join` / `net:leave` | `{ id, name, colour, count }` — somebody else entered or left the room. `colour` is their livery as a CSS colour (null until the relay has assigned a slot) and `count` is how many are in the room afterwards, so a listener can raise the presence card (`src/ui/presence.js`) without reaching into `net`'s peer table | net |
 | `net:countdown` | `{ ms }` — the relay fired the pre-match start signal | net |
 | `net:kill` | `{ by, victim, headshot, mine }` — a relay-confirmed PvP kill | net |
+| `net:matchend` | `{ reason: 'score'\|'time', winner, limit, standings, mine }` — the relay ended the room's bounded match (first to the kill target, or the leader at full time). `winner` is a peer id or null for a draw; `standings` is the final sorted board. `match` renders the ceremony off this. | net |
 | `match:start` | `{ bots, squads, perSquad, mode, map }` — the match is live | match |
 | `match:countdown` | `{ seconds }` | match |
+| `match:end` | `{ reason: 'left'\|'pulled-in'\|'complete' }` — the match is over and the lobby owns the screen again. `complete` means it ran its bounds out (ceremony shown); the others are a player-initiated exit. | match |
 | `world:rebuilt` | `{ mapId, map }` — the level was torn down and rebuilt on another map. Anything holding level-derived state (`ai`'s nav grid, the minimap bake) must redo it. Only ever fires before a match goes live. | world |
 
 If you need an event that is not listed, add a row here in the same commit.
