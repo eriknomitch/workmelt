@@ -54,3 +54,5 @@ scratch/
 
 # Local design-iteration screenshots (chrome-devtools)
 .shots/
+
+.dev-server.log
