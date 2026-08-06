@@ -169,6 +169,7 @@ export class NetSystem {
     this._off = [];
     const on = (t, fn) => this._off.push(ctx.events.on(t, fn));
     on('weapon:fire', (e) => this._onLocalFire(e));
+    on('weapon:melee', (e) => this._onLocalMelee(e));
     on('damage:taken', (e) => this._onDamageTaken(e));
     on('player:death', () => this._onLocalDeath());
 
@@ -591,6 +592,78 @@ export class NetSystem {
     });
     // Immediate local feedback (server confirms the kill).
     this.uiSys?.hitmarker?.(headshot ? 'head' : 'hit');
+  }
+
+  /**
+   * A melee swing connected — settle it against the puppets, same
+   * trust-the-shooter model as `_onLocalFire` but at arm's reach.
+   *
+   * A puppet carries no ACTOR colliders, so the ray fan `weapons` traces for
+   * bots cannot see remote players; this listener is the PvP half of the
+   * strike. The capsule is widened to the melee's forgiveness radius (a butt
+   * stroke is not a bullet), the world still vetoes through-cover hits, and
+   * the damage comes from `weapons.melee.damageFor` with the victim's facing
+   * read off their replicated view yaw — one backstab rule for bots and
+   * players alike, kept in `weapons` so the two cannot drift apart (the same
+   * contract `damageAt` carries for gunfire).
+   */
+  _onLocalMelee(e) {
+    if (!this.connected || !e || !e.origin || !e.dir) return;
+    if (this.player.dead) return;
+    const melee = this.weapons?.melee;
+    const reach = e.reach ?? melee?.def?.reach ?? 2.1;
+    this._origin.copy(e.origin);
+    this._dir.copy(e.dir).normalize();
+
+    let best = null;
+    let bestT = Infinity;
+    for (const p of this.peers.values()) {
+      if (!p.puppet || p.dead || p.hp <= 0) continue;
+      const feet = p.puppet.position;
+      const crouch = p.puppet.crouch;
+      const s = p.puppet.scale ?? 1;
+      const top = (crouch ? 1.2 : 1.75) * s;
+      // The bullet capsule plus the melee forgiveness radius — the same slack
+      // the bot-side ray fan gets from tracing a 0.58 m capsule.
+      const r = 0.34 * s + (melee?.def?.radius ?? 0.29);
+      const res = rayCapsule(
+        this._origin, this._dir,
+        feet.x, feet.y + 0.2 * s, feet.z,
+        feet.x, feet.y + top, feet.z,
+        r, reach
+      );
+      if (!res.hit || res.t >= bestT) continue;
+      // occlusion by the world — no stabbing through cover
+      this._v.copy(this._origin).addScaledVector(this._dir, res.t);
+      if (!this.physics.lineOfSight(this._origin, this._v, this.physics.MASK.SIGHT)) continue;
+      bestT = res.t;
+      best = p;
+    }
+    if (!best) return;
+
+    // Backstab off the victim's replicated view yaw: the camera convention is
+    // forward = (-sin yaw, -cos yaw), and the cone test wants the unit vector
+    // from the victim back at the attacker in the ground plane.
+    const feet = best.puppet.position;
+    let dx = this._origin.x - feet.x;
+    let dz = this._origin.z - feet.z;
+    const d = Math.hypot(dx, dz) || 1;
+    dx /= d;
+    dz /= d;
+    const yaw = best.viewYaw ?? 0;
+    const dot = -Math.sin(yaw) * dx - Math.cos(yaw) * dz;
+    const dmg = melee?.damageFor ? melee.damageFor(dot) : dot <= -0.45 ? 100 : 45;
+
+    this._send({
+      t: 'hit',
+      target: best.id,
+      dmg,
+      part: 'body',
+      o: [this._origin.x, this._origin.y, this._origin.z],
+      w: 'melee',
+    });
+    // Immediate local feedback (server confirms the kill).
+    this.uiSys?.hitmarker?.('hit');
   }
 
   /* ==================================================================== */

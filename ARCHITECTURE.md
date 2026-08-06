@@ -95,9 +95,10 @@ Emit and listen via `ctx.events`. Payloads are plain objects. The canonical set:
 | ↳ | `position` is absent for the local player's own reload — that one is head-locked by definition. An emitter that is *not* the local player must supply it: `audio` falls back to a dry, unattenuated voice without one, which would put a bot's magazine clatter in your ears from across the map. | |
 | `weapon:shell` | `{ position, velocity }` | weapons / ai |
 | ↳ | `position` is required, not optional. Brass defaulted to the listener would sit in `attenuation()`'s flat near field and ring at full gain; `audio` drops a payload without one instead. | |
+| `weapon:melee` | `{ origin: Vector3, dir: Vector3, reach, damage }` — the local player's melee strike, fired on the swing's contact beat whether or not it connects. `weapons` settles bot hits itself (a `damage:dealt`, below); `net` listens to this and settles the PvP half against its puppet capsules, reading reach/damage arithmetic off `weapons.melee` so the two damage models agree. | weapons |
 | `bullet:impact` | `{ point, normal, surface, incident, damage }` | physics |
 | `bullet:tracer` | `{ from, to, speed }` | weapons |
-| `damage:dealt` | `{ target, amount, headshot, killed, point, applied? }` | ai / physics |
+| `damage:dealt` | `{ target, amount, headshot, killed, point, applied? }` | ai / physics / weapons |
 | ↳ | means *damage dealt **to** `target`*. `target` is the local player when an enemy round connects (`'player'`, the player system, or anything with `isPlayer === true`) — filter it out before drawing a hitmarker. Damage is applied by the target's own listener, never by the emitter as well. | |
 | ↳ | `applied: true` inverts that one rule: the emitter already applied the damage and the event is purely the report of it, for the hitmarker / announcer / killstreak listeners. `ai` emits these for player-sourced blast damage, which it applies itself inside its `explosion` listener; anything that applies damage off this event must skip a payload carrying the flag. | |
 | `damage:taken` | `{ amount, from: Vector3, health }` | player |

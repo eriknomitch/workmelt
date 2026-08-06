@@ -1,4 +1,5 @@
 import { smootherstep, easeOutBack, easeOutCubic, clamp01, lerp } from './mathx.js';
+import { MELEE } from './melee.js';
 
 /**
  * Procedural animation clips (reload, inspect, draw, holster).
@@ -333,6 +334,34 @@ export function buildClips(nodes, def) {
     events: [{ t: 0.995 * drawT, name: 'end' }],
   });
 
+  /* ------------------------------------------------------------------ melee */
+  // The quick strike on V: a butt-stroke thrown with whatever is in the hands.
+  // One timeline serves every weapon — the wind-up pulls the weapon back and
+  // rolls it off the shoulder, the thrust drives it forward along the bore, and
+  // the `strike` beat (when the weapon system runs the hit test, see melee.js)
+  // lands exactly at the thrust's apex so the damage arrives when the butt
+  // visibly connects. Duration and beat come from MELEE so the self-test can
+  // pin the animation to the recovery window it must fit inside.
+  const mel = MELEE.swing;
+  const melee = new Clip('melee', mel, {
+    weapon: [
+      { t: 0, p: v3(0, 0, 0), r: v3(0, 0, 0) },
+      { t: 0.14 * mel, p: v3(0.035, -0.025, 0.055), r: v3(-0.14, -0.38, -0.3) },
+      { t: MELEE.strikeAt * mel, p: v3(-0.02, 0.012, -0.16), r: v3(0.3, 0.42, 0.38), ease: 'out' },
+      { t: 0.42 * mel, p: v3(-0.006, -0.008, -0.055), r: v3(0.12, 0.2, 0.22) },
+      { t: 1, p: v3(0, 0, 0), r: v3(0, 0, 0), ease: 'out' },
+    ],
+    lhand: [
+      { t: 0, p: hgP, finger: wrapFinger, back: wrapBack, pose: 'wrap' },
+      { t: 1, p: hgP, finger: wrapFinger, back: wrapBack, pose: 'wrap' },
+    ],
+    parts: [{ t: 0, mag: 0, magVisible: 1 }],
+    events: [
+      { t: MELEE.strikeAt * mel, name: 'strike' },
+      { t: 0.995 * mel, name: 'end' },
+    ],
+  });
+
   const holT = def.holsterTime ?? 0.4;
   const holster = new Clip('holster', holT, {
     weapon: [
@@ -348,5 +377,5 @@ export function buildClips(nodes, def) {
     events: [{ t: 0.995 * holT, name: 'end' }],
   });
 
-  return { reloadTac, reloadEmpty, inspect, draw, holster };
+  return { reloadTac, reloadEmpty, inspect, draw, holster, melee };
 }

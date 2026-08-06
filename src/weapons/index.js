@@ -9,6 +9,7 @@ import { buildSmg } from './models/smg.js';
 import { buildPistol } from './models/pistol.js';
 import { buildSniper } from './models/sniper.js';
 import { Throwables } from './throwables.js';
+import { Melee } from './melee.js';
 import { clamp, clamp01, lerp, damp, DEG } from './mathx.js';
 
 /**
@@ -72,6 +73,10 @@ const SLOT_KEYS = ['Digit1', 'Digit2', 'Digit3', 'Digit4'];
  *   wp.debugPose(kind)    'idle' | 'ads' | 'fire'  (the capture harness)
  *   wp.stats              { tris, drawCalls, live, fired }
  *   wp.throwables         equipment: `.counts`, `.cooking`, beginCook/release
+ *   wp.melee              the quick strike on V: `.attack()`, `.ready`,
+ *                         `.damageFor(dot)` — `net` reads the latter so PvP
+ *                         melee damage cannot drift from PvE (see melee.js)
+ *   wp.meleeing           true while the strike clip is playing
  *
  * LOADOUT — 1/2/3/4 select, Tab and the wheel cycle. Every player carries all
  * four; see the `LOADOUT` note below and the balance contract in defs.js.
@@ -80,8 +85,14 @@ const SLOT_KEYS = ['Digit1', 'Digit2', 'Digit3', 'Digit4'];
  * The cook burns the real fuse, so a held frag air-bursts and a held-too-long
  * one kills the thrower. See throwables.js.
  *
+ * MELEE — tap `melee` (V) for a butt-strike with whatever is in the hands:
+ * 2.1 m reach, 45 damage from the front, 100 from inside the victim's rear
+ * cone. See melee.js for the fan, the cover veto and the backstab arithmetic.
+ *
  * EVENTS EMITTED  (all canonical, see ARCHITECTURE.md)
  *   weapon:fire    { weapon, origin, dir, seed }
+ *   weapon:melee   { origin, dir, reach, damage }   every swing, hit or miss
+ *   damage:dealt   melee hits on bots — same payload physics emits for a round
  *   weapon:shell   { position, velocity }
  *   weapon:reload  { weapon, phase: 'start'|'magout'|'magin'|'end', empty }
  *                  No position: this is the player's own reload, and `audio`
@@ -167,6 +178,8 @@ export class WeaponSystem {
 
     /** Lethal / tactical equipment — see throwables.js. */
     this.throwables = null;
+    /** The quick strike on V — see melee.js. */
+    this.melee = null;
   }
 
   /* ====================================================================== */
@@ -224,9 +237,11 @@ export class WeaponSystem {
     // Equipment needs physics resolved, so it initialises after the peeks above.
     // A fresh life restocks it — a cooked grenade must not carry over a respawn.
     this.throwables.init();
+    this.melee = new Melee(ctx, this);
     this._off.push(
       ctx.events.on('player:spawn', () => {
         this.throwables.refill();
+        this.melee.reset();
         this.resetLoadout();
       })
     );
@@ -285,6 +300,10 @@ export class WeaponSystem {
 
   get inspecting() {
     return this.viewmodel?.clipName === 'inspect';
+  }
+
+  get meleeing() {
+    return this.viewmodel?.clipName === 'melee';
   }
 
   get switching() {
@@ -434,7 +453,7 @@ export class WeaponSystem {
 
   reload() {
     const s = this.state;
-    if (!s || this.reloading || this.switching) return false;
+    if (!s || this.reloading || this.switching || this.meleeing) return false;
     if (s.mag >= s.def.magSize || s.reserve <= 0) return false;
     this.viewmodel.stopClip();
     const empty = s.mag === 0 && !s.chambered;
@@ -498,7 +517,7 @@ export class WeaponSystem {
   }
 
   inspect() {
-    if (this.reloading || this.switching || this.inspecting) return false;
+    if (this.reloading || this.switching || this.inspecting || this.meleeing) return false;
     this.viewmodel.play('inspect');
     return true;
   }
@@ -510,7 +529,7 @@ export class WeaponSystem {
   canFire() {
     const s = this.state;
     if (!s) return false;
-    if (this.reloading || this.switching) return false;
+    if (this.reloading || this.switching || this.meleeing) return false;
     if (this._fireTimer > 0) return false;
     return s.chambered;
   }
@@ -519,7 +538,7 @@ export class WeaponSystem {
   tryFire() {
     const s = this.state;
     if (!s) return false;
-    if (this.reloading || this.switching || this._fireTimer > 0) return false;
+    if (this.reloading || this.switching || this.meleeing || this._fireTimer > 0) return false;
     if (!s.chambered) {
       // Dry: lock the bolt back and let the player know by feel.
       this.viewmodel.boltHold = 1;
@@ -643,6 +662,11 @@ export class WeaponSystem {
         break;
       case 'boltrelease':
         this.viewmodel.boltHold = 0;
+        break;
+      case 'strike':
+        // The melee clip's contact beat: the hit test runs the moment the butt
+        // visibly connects, not when the key went down. See melee.js.
+        if (clipName === 'melee') this.melee?.strike();
         break;
       case 'end':
         if (isReload) {
@@ -812,6 +836,7 @@ export class WeaponSystem {
       }
       if (input.pressed('Tab')) this.nextWeapon();
       if (input.wheel) this.nextWeapon();
+      if (input.actionPressed('melee')) this.melee.attack();
       this._runThrowables(input);
       this._runTrigger(dt, input.fire, input.firePressed, def, s);
       st.trigger = input.fire && this.canFire();
@@ -830,6 +855,9 @@ export class WeaponSystem {
     // The cook keeps burning whether or not input is live, and thrown rounds
     // must keep ticking while the player is dead or the menu is open.
     this.throwables.update(dt);
+    // The recovery window runs on the same clock as the swing clip, so it must
+    // tick whenever the viewmodel animates — live input or not.
+    this.melee.update(dt);
     // A cooked grenade occupies the weapon hand: drop to low ready so the
     // viewmodel visibly commits, and hold the trigger closed.
     if (this.throwables.cooking) {
@@ -858,7 +886,7 @@ export class WeaponSystem {
   _runThrowables(input) {
     const t = this.throwables;
     if (!t.cooking) {
-      if (this.reloading || this.switching) return;
+      if (this.reloading || this.switching || this.meleeing) return;
       if (input.actionPressed('grenade')) t.beginCook('lethal');
       else if (input.actionPressed('tactical')) t.beginCook('tactical');
       return;

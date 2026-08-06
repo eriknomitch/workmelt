@@ -33,6 +33,10 @@ either works: `test:quality` = `src/core/selftest.mjs`, `test:graphics` =
   dominated by another, the AX-7's quickscope invariants (including a simulation
   of the spread integrator, which is what makes the technique possible), and that
   recoil patterns stay deterministic.
+- `node src/weapons/melee.selftest.mjs` checks the melee contract: reach, the
+  forgiving ray fan and its cover veto, the 45/100 front/backstab split with the
+  cone boundary pinned at `facing · toAttacker = -0.45`, the 656 ms recovery
+  window, and that the swing clip's strike beat sits on the thrust apex.
 - `node src/audio/attenuation.selftest.mjs` checks which sounds are head-locked and
   which are spatialised — the near field is flat at 1.0 and the dry path has no
   distance law, so the routing decision is what keeps either from running away.
@@ -171,9 +175,10 @@ Read on demand, not loaded at session start:
 ## Verifying a change
 
 **Default to not rendering.** The Node-only self-tests carry most of the real
-coverage and are effectively free — all twenty-two of them (`physics`, `ai`,
+coverage and are effectively free — all twenty-three of them (`physics`, `ai`,
 `ai/lod`, `ai/footstep`, `weapons/balance`, `weapons/throwables`,
-`weapons/loadout`, `weapons/autoreload`, `audio/attenuation`, `audio/reload`,
+`weapons/loadout`, `weapons/autoreload`, `weapons/melee`, `audio/attenuation`,
+`audio/reload`,
 `core` × 4, `render/resolution`, `render/dof`, `ui/touch`, `match/bounds`,
 `match/streaks`, `world/maps`, `world/collision`, `world/spawns`) run in ~10 s
 combined, and `world/maps.selftest.mjs` builds every map headlessly without a
@@ -188,7 +193,7 @@ find src server \( -name 'selftest.*' -o -name '*.selftest.*' \) | sort
 
 Note both halves of that pattern — four suites are a bare `selftest.js`/`.mjs`
 (`physics`, `ai`, `core`, `audio`) and `-name '*.selftest.*'` alone silently
-misses them. It returns 27 files; the twenty-two above are the free ones. The
+misses them. It returns 28 files; the twenty-three above are the free ones. The
 other five are not: `server/{bounds,lobby,map,skin}.selftest.mjs` each stand up
 a real relay on a real socket, and `src/audio/selftest.js` is a library the audio
 probe drives from a page — run directly it exits 0 having asserted nothing.
