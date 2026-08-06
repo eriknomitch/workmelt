@@ -10,19 +10,21 @@
     ],
     "rifle": [
       "shot/rifle_0.opus",
-      "shot/rifle_1.opus"
+      "shot/rifle_1.opus",
+      "shot/rifle_2.opus",
+      "shot/rifle_3.opus"
     ],
     "smg": [
       "shot/smg_0.opus",
       "shot/smg_1.opus",
       "shot/smg_2.opus",
-      "shot/smg_3.opus",
-      "shot/smg_4.opus",
-      "shot/smg_5.opus"
+      "shot/smg_3.opus"
     ],
     "pistol": [
       "shot/pistol_0.opus",
-      "shot/pistol_1.opus"
+      "shot/pistol_1.opus",
+      "shot/pistol_2.opus",
+      "shot/pistol_3.opus"
     ],
     "shotgun": [
       "shot/shotgun_0.opus",
@@ -30,7 +32,9 @@
     ],
     "sniper": [
       "shot/sniper_0.opus",
-      "shot/sniper_1.opus"
+      "shot/sniper_1.opus",
+      "shot/sniper_2.opus",
+      "shot/sniper_3.opus"
     ],
     "lmg": [
       "shot/lmg_0.opus",

@@ -37,24 +37,43 @@ const RELOAD = { whole: true, fade: true, app: 'audio', bitrate: '64k' };
 const fa = (dir, ...files) => files.map((f) => `firearms/${dir}/${f}.wav`);
 const fs = (dir, n) => Array.from({ length: n }, (_, i) => `footsteps/${dir}/${i}.ogg`);
 const kn = (pack, ...files) => files.map((f) => `kenney_${pack}/${f}.ogg`);
+const gs = (stem, n) => Array.from({ length: n }, (_, i) => `shot/${stem}_${i}.wav`);
 
 export const SOURCES = [
   /* ── weapon shots ──────────────────────────────────────────────────────
-   * Mapped onto WEAPON_PROFILES by name. One real firearm per profile keeps
-   * a weapon sounding like itself across its variants; mixing two guns into
-   * one profile reads as an inconsistency, not as variety. */
+   * Mapped onto WEAPON_PROFILES by name. One firearm per profile keeps a
+   * weapon sounding like itself across its variants; mixing two guns into one
+   * profile reads as an inconsistency, not as variety — which is why the
+   * variants below vary only in what the mechanism does after the round
+   * leaves, never in which gun fired it.
+   *
+   * The four profiles a playable gun resolves to (rifle, smg, pistol, sniper)
+   * are authored takes in assets-src/shot/, committed for the same reason
+   * assets-src/vox/ is. The three that only the distant-gunfire ambience ever
+   * reaches (ak, shotgun, lmg) stay on the CC0 pack: nothing draws them, so
+   * they are never heard up close, which is the only place the difference
+   * shows.
+   *
+   * Four variants each, not one. GROUP.shot in samples.js jitters playback
+   * rate by only 0.02 — a detuned gunshot reads as a different, wrong gun —
+   * so the variant pool is the only thing standing between a held trigger and
+   * an audible loop.
+   *
+   * These are peak-normalized on the shared SHOT/SHOT_BIG windows, like every
+   * other key. A generated shot does carry more tail than a real recording, so
+   * it sits denser at the same peak — but the lever for that is the window,
+   * not the gain. Trimming tail cannot cost a gunshot its crack; pulling the
+   * level down does, and did: matching average level instead knocked up to
+   * 14 dB off the transient and every weapon went quiet against the
+   * footsteps. If these ever need taming, shorten `dur` here. */
+  { group: 'shot', key: 'rifle', ...SHOT, src: gs('rifle', 4) },
+  { group: 'shot', key: 'smg', ...SHOT, src: gs('smg', 4) },
+  { group: 'shot', key: 'pistol', ...SHOT, src: gs('pistol', 4) },
+  { group: 'shot', key: 'sniper', ...SHOT_BIG, src: gs('sniper', 4) },
   { group: 'shot', key: 'ak', ...SHOT,
     src: fa('AK-47', 'C_27P', 'C_28P', 'C_29P', 'C_31P', 'C_34P', 'C_36P') },
-  { group: 'shot', key: 'rifle', ...SHOT,
-    src: fa('AR-15', 'D_24P', 'D_32P') },
-  { group: 'shot', key: 'smg', ...SHOT,
-    src: fa('Carl Gustav M45', 'G_20P', 'G_22P', 'G_24P', 'G_31P', 'G_33P', 'G_35P') },
-  { group: 'shot', key: 'pistol', ...SHOT,
-    src: fa('Walther PPQ', 'X_31P', 'X_39P') },
   { group: 'shot', key: 'shotgun', ...SHOT_BIG,
     src: fa('Mossberg', 'N_26P', 'N_30P') },
-  { group: 'shot', key: 'sniper', ...SHOT_BIG,
-    src: fa('Mosin Nagant', 'M_21P', 'M_26P') },
   { group: 'shot', key: 'lmg', ...SHOT,
     src: fa('SKS', 'U_14P', 'U_19P') },
   // `suppressed` stays procedural on purpose — no CC0 source exists, and a
@@ -159,7 +178,7 @@ export const CREDITS = [
     authors: 'Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney',
     license: 'CC0 1.0 (public domain)',
     url: 'https://opengameart.org/content/the-free-firearm-sound-library',
-    used: 'all weapon shots',
+    used: 'the ak, shotgun and lmg shot profiles (distant gunfire ambience)',
   },
   {
     pack: 'Footsteps on different surfaces',
@@ -196,5 +215,12 @@ export const CREDITS = [
     license: 'no third-party rights — masters in assets-src/reload/',
     url: 'assets-src/reload/',
     used: 'reload phases for the M4A1, MPX-9, P-19 and AX-7',
+  },
+  {
+    pack: 'Firing takes (text-to-sound)',
+    authors: 'generated for this project',
+    license: 'no third-party rights — masters in assets-src/shot/',
+    url: 'assets-src/shot/',
+    used: 'the rifle, smg, pistol and sniper shot profiles',
   },
 ];

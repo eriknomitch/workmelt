@@ -25,6 +25,13 @@
  *  3. TAIL TRIM + FADE. mixer.js runs its own convolution reverb driven by the
  *     space probe. Baked-in room tail would double-verb every shot, so we keep
  *     only the near field and let the game supply the room.
+ *
+ * One trap: libopus here is NOT byte-deterministic. Encoding the same master
+ * twice with identical settings produces two different files. `--force`
+ * therefore rewrites every `.opus` it touches whether or not anything about it
+ * changed, and `git status` will show the whole group as modified. Re-encode
+ * only the groups you actually changed, and `git checkout --` the rest before
+ * committing — otherwise the diff claims edits nobody made.
  */
 
 import { execFile } from 'node:child_process';
@@ -136,6 +143,14 @@ async function encodeOne(file, dest, { lead, dur, bitrate, whole = false, app, f
 
   // Peak-normalize in a second pass: we now know the trimmed clip's true peak,
   // which the first pass could not (it only saw the untrimmed file).
+  //
+  // Peak, deliberately, and not average level. An earlier pass here matched
+  // mean instead, on the theory that a generated shot's denser tail makes it
+  // sit hotter than a real recording at the same peak. It does — but a
+  // gunshot is heard by its transient, so pulling the peak down to fix the
+  // tail cost up to 14 dB of crack and every weapon went quiet against the
+  // footsteps. If a generated clip is too dense, the fix is its tail, not its
+  // gain.
   const gain = await normalizeGain(dest);
   if (Math.abs(gain) > 0.5) {
     const tmp = `${dest}.tmp.opus`;
