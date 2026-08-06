@@ -6,6 +6,7 @@ import { FISHERS_MAP } from './fishers.js';
 import { NUKETOWN_MAP } from './nuketown.js';
 import { BLOODGULCH_MAP } from './bloodgulch.js';
 import { DOME_MAP } from './dome.js';
+import { SHIVAM_MAP } from './shivam.js';
 
 /**
  * WORLD — the map list.
@@ -117,6 +118,13 @@ const REGISTRY = [
     enabled: true,
     name: 'Dome',
     description: 'Radar station under a broken radome',
+  },
+  {
+    map: SHIVAM_MAP,
+    order: 39,
+    enabled: true,
+    name: 'Shivam',
+    description: 'Bondi Beach front, Sydney',
   },
   {
     map: MARKET_MAP,
@@ -291,4 +299,4 @@ export function saveMapPreference(id) {
   }
 }
 
-export { MARKET_MAP, RUST_MAP, WILMOT_MAP, LOOP_MAP, FISHERS_MAP, NUKETOWN_MAP, BLOODGULCH_MAP, DOME_MAP };
+export { MARKET_MAP, RUST_MAP, WILMOT_MAP, LOOP_MAP, FISHERS_MAP, NUKETOWN_MAP, BLOODGULCH_MAP, DOME_MAP, SHIVAM_MAP };
