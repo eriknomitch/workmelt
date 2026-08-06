@@ -97,8 +97,9 @@ Emit and listen via `ctx.events`. Payloads are plain objects. The canonical set:
 | ↳ | `position` is required, not optional. Brass defaulted to the listener would sit in `attenuation()`'s flat near field and ring at full gain; `audio` drops a payload without one instead. | |
 | `bullet:impact` | `{ point, normal, surface, incident, damage }` | physics |
 | `bullet:tracer` | `{ from, to, speed }` | weapons |
-| `damage:dealt` | `{ target, amount, headshot, killed, point }` | ai / physics |
+| `damage:dealt` | `{ target, amount, headshot, killed, point, applied? }` | ai / physics |
 | ↳ | means *damage dealt **to** `target`*. `target` is the local player when an enemy round connects (`'player'`, the player system, or anything with `isPlayer === true`) — filter it out before drawing a hitmarker. Damage is applied by the target's own listener, never by the emitter as well. | |
+| ↳ | `applied: true` inverts that one rule: the emitter already applied the damage and the event is purely the report of it, for the hitmarker / announcer / killstreak listeners. `ai` emits these for player-sourced blast damage, which it applies itself inside its `explosion` listener; anything that applies damage off this event must skip a payload carrying the flag. | |
 | `damage:taken` | `{ amount, from: Vector3, health }` | player |
 | `actor:death` | `{ actor, point, impulse }` | ai |
 | `actor:footstep` | `{ actor, position, surface, speed, running, crouched, left }` — a bot or a remote player planted a foot | ai |
@@ -120,6 +121,10 @@ Emit and listen via `ctx.events`. Payloads are plain objects. The canonical set:
 | `net:kill` | `{ by, victim, headshot, mine }` — a relay-confirmed PvP kill | net |
 | `match:start` | `{ bots, squads, perSquad, mode, map }` — the match is live | match |
 | `match:countdown` | `{ seconds }` | match |
+| `streak:kills` | `{ kills }` — the local player's kills-without-dying count moved (a kill, or back to 0 on death / match start). Bot kills are counted off `damage:dealt { killed }`, PvP kills off `net:kill { mine }`; nothing counts outside a live match. | match |
+| `streak:earned` | `{ reward: 'uav'\|'mortar', kills }` — a killstreak tier was reached and BANKED. Rewards survive the death that ends the streak and wait on the activation key (Digit5). | match |
+| `streak:activated` | `{ reward, position? }` — a banked reward fired. `position` is the mortar's aim point; a UAV also emits `streak:uav` in the same frame. | match |
+| `streak:uav` | `{ duration }` — a recon sweep is live for `duration` seconds. `ai` answers by publishing actor blips through `getHudActors()` for the window; outside one that list is empty and the minimap is dark. | match |
 | `world:rebuilt` | `{ mapId, map }` — the level was torn down and rebuilt on another map. Anything holding level-derived state (`ai`'s nav grid, the minimap bake) must redo it. Only ever fires before a match goes live. | world |
 
 If you need an event that is not listed, add a row here in the same commit.

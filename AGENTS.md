@@ -93,6 +93,11 @@ either works: `test:quality` = `src/core/selftest.mjs`, `test:graphics` =
   grenade, an exhausted reserve or the setting turned off each defer or refuse
   gracefully instead of cutting an animation or spamming the reload.
 - `node server/skin.selftest.mjs` does the same for the player-colour slots the relay hands out — no two players in a room may share one.
+- `node src/match/streaks.selftest.mjs` checks the killstreak ladder (`streak:*`
+  events in ARCHITECTURE.md): what counts as a kill, that a banked reward
+  survives the death that ends the streak, the recon-sweep window, and that a
+  mortar volley is announced round by round, lands inside its scatter disc and
+  is deterministic for a given seed.
 - `node src/world/maps.selftest.mjs` builds every map headlessly and checks the map-descriptor contract, spawn tables and layout invariants.
 - `node src/world/collision.selftest.mjs` checks every map, parked ones included,
   for invisible walls: collision proxies with nothing drawn inside them that a
@@ -151,13 +156,14 @@ Read on demand, not loaded at session start:
 ## Verifying a change
 
 **Default to not rendering.** The Node-only self-tests carry most of the real
-coverage and are effectively free — all eighteen of them (`physics`, `ai`,
+coverage and are effectively free — all twenty of them (`physics`, `ai`,
 `ai/lod`, `ai/footstep`, `weapons/balance`, `weapons/throwables`,
-`weapons/loadout`, `audio/attenuation`, `core` × 4, `render/resolution`,
-`render/dof`, `ui/touch`, `world/maps`, `world/collision`, `world/spawns`) run
-in ~10 s combined, and `world/maps.selftest.mjs` builds every map headlessly
-without a browser at all. Run those plus `npm run build` and stop there unless
-the change is genuinely a function of the image.
+`weapons/loadout`, `weapons/autoreload`, `audio/attenuation`, `core` × 4,
+`render/resolution`, `render/dof`, `ui/touch`, `world/maps`, `world/collision`,
+`world/spawns`, `match/streaks`) run in ~10 s combined, and
+`world/maps.selftest.mjs` builds every map headlessly without a browser at all.
+Run those plus `npm run build` and stop there unless the change is genuinely a
+function of the image.
 
 That list drifts as suites are added, so enumerate rather than trust it:
 
@@ -167,7 +173,7 @@ find src server \( -name 'selftest.*' -o -name '*.selftest.*' \) | sort
 
 Note both halves of that pattern — four suites are a bare `selftest.js`/`.mjs`
 (`physics`, `ai`, `core`, `audio`) and `-name '*.selftest.*'` alone silently
-misses them. It returns 22 files; the eighteen above are the free ones. The
+misses them. It returns 24 files; the twenty above are the free ones. The
 other four are not: `server/{lobby,map,skin}.selftest.mjs` each stand up a real
 relay on a real socket, and `src/audio/selftest.js` is a library the audio probe
 drives from a page — run directly it exits 0 having asserted nothing.

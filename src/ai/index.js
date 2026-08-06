@@ -30,6 +30,8 @@
  *   ai.prewarmMaterials()                  await: build + compile every character
  *                                          shader without spawning anything
  *   ai.grid / ai.cover                     navigation + cover queries
+ *   ai.getHudActors()                      minimap blips — empty unless a recon
+ *                                          sweep (`streak:uav`) is live
  *   ai.stats                               { agents, alive, navMs, coverPts,
  *                                            pathsDeferred, lodIrrelevant,
  *                                            lodUnshadowed }
@@ -42,9 +44,11 @@
  * cannot reach a pixel at all takes the cheapest tier of both.
  *
  * EVENTS consumed: weapon:fire, bullet:impact, damage:dealt, explosion,
- *   equipment:flash, player:footstep
+ *   equipment:flash, player:footstep, streak:uav
  * EVENTS emitted: weapon:fire (enemy muzzle), weapon:shell, bullet:tracer,
- *   damage:dealt (enemy hitting the player), actor:death, actor:footstep
+ *   damage:dealt (enemy hitting the player, and — with `applied` — the report
+ *   of blast damage this system applied to its own agents), actor:death,
+ *   actor:footstep
  */
 
 import * as THREE from 'three';
@@ -131,6 +135,10 @@ export class AiSystem {
     this._reinforceTimer = 0;
     this._navPending = true;
     this.stats = { agents: 0, alive: 0, navMs: 0, coverPts: 0, walkable: 0 };
+    /** Recon-sweep window: `getHudActors()` publishes blips until this time. */
+    this._revealUntil = 0;
+    this._hudActors = [];
+    this._hudPool = [];
 
     /* scratch */
     this._v = new THREE.Vector3();
@@ -396,6 +404,10 @@ export class AiSystem {
 
     on('damage:dealt', (e) => {
       if (!e || !e.target || !(e.target instanceof Agent)) return;
+      // `applied` means the emitter already ran applyDamage (the explosion
+      // listener below does) and this event exists for the feedback listeners
+      // — hitmarker, announcer, killstreak. Applying it again would double it.
+      if (e.applied) return;
       const a = e.target;
       if (!a.alive) return;
       const amount = e.amount * this._falloff(e.point);
@@ -415,7 +427,22 @@ export class AiSystem {
         const f = 1 - d / radius;
         this._v.copy(a.position).sub(e.position).normalize();
         a.suppress(1.4 * f);
-        a.applyDamage((e.damage ?? 100) * f * f, 'torso', a.eye, this._v);
+        const amount = (e.damage ?? 100) * f * f;
+        a.applyDamage(amount, 'torso', a.eye, this._v);
+        // Blast damage is applied here, not by the emitter, so nothing else
+        // can report it — without this a frag or mortar kill earned no
+        // hitmarker, no killfeed row and no killstreak credit. `applied`
+        // stops the listener above re-applying what this loop just did.
+        if (e.source === 'player') {
+          ctx.events.emit('damage:dealt', {
+            target: a,
+            amount,
+            headshot: false,
+            killed: !a.alive,
+            point: a.eye,
+            applied: true,
+          });
+        }
       }
     });
 
@@ -448,6 +475,36 @@ export class AiSystem {
       const loud = e.running ? 24 : 11;
       for (const a of this.agents) if (a.alive) a.hear(e.position, loud);
     });
+
+    // A recon sweep (killstreak) went up: publish the garrison to the HUD for
+    // the window. Outside it `getHudActors()` returns an empty list, so the
+    // minimap stays dark by default and captures never see a blip.
+    on('streak:uav', (e) => {
+      this._revealUntil = ctx.time.elapsed + (e?.duration ?? 25);
+    });
+  }
+
+  /**
+   * Actor blips for the HUD (`ui._collectBlips` polls this every frame).
+   * Empty unless a recon sweep is live — position is a live reference to the
+   * agent's own vector and the entries are pooled, so a frame of blips
+   * allocates nothing once the pool has grown to garrison size.
+   */
+  getHudActors() {
+    const out = this._hudActors;
+    out.length = 0;
+    if (this.ctx.time.elapsed >= this._revealUntil) return out;
+    for (const a of this.agents) {
+      if (!a.alive) continue;
+      let b = this._hudPool[out.length];
+      if (!b) b = this._hudPool[out.length] = { position: null, alive: true, friendly: false, heading: 0 };
+      b.position = a.position;
+      // The rig faces +Z with `yaw` in the camera convention, so the facing is
+      // (sin yaw, cos yaw); north-up map heading is the half turn back.
+      b.heading = 180 - (a.yaw * 180) / Math.PI;
+      out.push(b);
+    }
+    return out;
   }
 
   _falloff(point) {

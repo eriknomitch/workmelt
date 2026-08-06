@@ -502,6 +502,41 @@ const CSS = `
   font-size: calc(9.5px * var(--k)); letter-spacing:.2em; color:var(--ink-3); text-shadow:var(--sh);
 }
 
+/* ============================================================ killstreaks */
+/* Above the ammo block, right margin (the perf readout owns the space under
+   the minimap): one pip per kill toward the next reward and a single line of
+   state. Same ink levels as the rest of the chrome; the only colour is the
+   amber of a banked reward waiting on its key. */
+.ow-streak {
+  position:absolute; right:var(--pad);
+  bottom: calc(var(--pad) + 172px * var(--k));
+  line-height:1; text-align:right;
+}
+.ow-streak-pips { display:flex; justify-content:flex-end; gap: calc(2px * var(--k)); }
+.ow-streak-pips b {
+  display:block; width: calc(9px * var(--k)); height: calc(3.5px * var(--k));
+  background: rgba(6,10,13,.62);
+  box-shadow: 0 0 0 1px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,255,255,.07);
+}
+.ow-streak-pips b.gate { margin-right: calc(3.5px * var(--k)); }
+.ow-streak-pips b.on { background: var(--ink); box-shadow: 0 0 0 1px rgba(4,8,11,.75); }
+.ow-streak-line {
+  margin-top: calc(var(--u) * 1.2);
+  display:flex; justify-content:flex-end; align-items:center; gap: calc(var(--u) * 1.2);
+  font-size: calc(9.5px * var(--k)); letter-spacing:.18em;
+  color: var(--ink-3); text-shadow: var(--sh);
+  white-space:nowrap;
+}
+.ow-streak-line.online { color: var(--ink-2); }
+.ow-streak-line.ready { color: var(--amber); }
+.ow-streak-key {
+  min-width: calc(13px * var(--k)); text-align:center;
+  padding: calc(1.5px * var(--k)) calc(3px * var(--k));
+  border:1px solid var(--hair); background: rgba(6,10,13,.34);
+  color: var(--ink-2); letter-spacing:0; text-shadow: var(--sh-hard);
+}
+.ow-streak-line.ready .ow-streak-key { border-color: var(--amber); color: var(--amber); }
+
 /* ========================================================= world markers */
 .ow-mk {
   position:absolute; left:0; top:0;

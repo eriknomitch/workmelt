@@ -11,6 +11,7 @@ import { Compass, MatchBar } from './compass.js';
 import { Minimap } from './minimap.js';
 import { WorldMarkers } from './markers.js';
 import { Prompt, Banner } from './prompts.js';
+import { StreakMeter } from './streaks.js';
 import { PauseMenu } from './menu.js';
 import { CombatDemo } from './demo.js';
 import { PerfHud, PERF_MODES } from './perfhud.js';
@@ -61,7 +62,9 @@ const MAX_BLIPS = 48;
  *   audio.playUi(id, gain) | audio.play(id) — hit ticks, heartbeat, warnings
  *
  * Events consumed: weapon:fire, weapon:reload, damage:dealt, damage:taken,
- * actor:death, player:state, explosion, equipment:flash, resize.
+ * actor:death, player:state, explosion, equipment:flash, resize, and the
+ * killstreak set — streak:kills, streak:earned, streak:activated, streak:uav
+ * (plus match:start / match:end to reset the meter).
  * Events emitted:  ui:pause, ui:quality, ui:sensitivity, ui:fov, ui:setting.
  */
 export class UiSystem {
@@ -89,6 +92,7 @@ export class UiSystem {
     this.hit = new Hitmarkers(this.centreLayer);
     this.reloadHint = new ReloadHint(this.centreLayer);
     this.minimap = new Minimap(this.chromeLayer, this.rng.fork());
+    this.streakMeter = new StreakMeter(this.chromeLayer);
     this.compass = new Compass(this.chromeLayer);
     this.matchBar = new MatchBar(this.chromeLayer);
     this.killfeed = new Killfeed(this.chromeLayer);
@@ -318,6 +322,15 @@ export class UiSystem {
       if (e.sprinting !== undefined) s.sprint = !!e.sprinting;
       if (e.stance !== undefined) s.crouch = e.stance === 'crouch' || e.stance === 'prone';
     });
+
+    // The killstreak ladder (src/match/streaks.js). The meter mirrors what the
+    // tracker reports; it holds no authority of its own.
+    on('streak:kills', (e) => this.streakMeter.setKills(e?.kills ?? 0));
+    on('streak:earned', (e) => e?.reward && this.streakMeter.earned(e.reward));
+    on('streak:activated', (e) => e?.reward && this.streakMeter.activated(e.reward));
+    on('streak:uav', (e) => this.streakMeter.uavOnline(e?.duration ?? 0));
+    on('match:start', () => this.streakMeter.reset());
+    on('match:end', () => this.streakMeter.reset());
 
     this.resize(ctx.canvas.clientWidth || innerWidth, ctx.canvas.clientHeight || innerHeight, ctx);
     this._prevPos.copy(this._playerPos());
@@ -686,6 +699,7 @@ export class UiSystem {
     this.matchBar.update(s);
     this.prompt.update(dt);
     this.banner.update(dt);
+    this.streakMeter.update(dt);
 
     this._buildCompassObjectives(pos);
     this.compass.update(heading, this._compassObjs);
@@ -779,6 +793,7 @@ export class UiSystem {
     this.compass.dispose();
     this.matchBar.dispose();
     this.minimap.dispose();
+    this.streakMeter.dispose();
     this.markers.dispose();
     this.prompt.dispose();
     this.banner.dispose();
