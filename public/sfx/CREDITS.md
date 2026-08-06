@@ -9,7 +9,7 @@ from the packs below — trimmed, normalized, downmixed to mono and encoded to
 - **Author:** Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney
 - **License:** CC0 1.0 (public domain)
 - **Source:** https://opengameart.org/content/the-free-firearm-sound-library
-- **Used for:** all weapon shots
+- **Used for:** the ak, shotgun and lmg shot profiles (distant gunfire ambience)
 
 ## Footsteps on different surfaces
 
@@ -38,6 +38,20 @@ from the packs below — trimmed, normalized, downmixed to mono and encoded to
 - **License:** no third-party rights — masters in assets-src/vox/
 - **Source:** assets-src/vox/
 - **Used for:** announcer: match begin, start, headshot, killstreak, game over
+
+## Reload foley (text-to-sound)
+
+- **Author:** generated for this project
+- **License:** no third-party rights — masters in assets-src/reload/
+- **Source:** assets-src/reload/
+- **Used for:** reload phases for the M4A1, MPX-9, P-19 and AX-7
+
+## Firing takes (text-to-sound)
+
+- **Author:** generated for this project
+- **License:** no third-party rights — masters in assets-src/shot/
+- **Source:** assets-src/shot/
+- **Used for:** the rifle, smg, pistol and sniper shot profiles
 
 ---
 

@@ -25,6 +25,13 @@
  *  3. TAIL TRIM + FADE. mixer.js runs its own convolution reverb driven by the
  *     space probe. Baked-in room tail would double-verb every shot, so we keep
  *     only the near field and let the game supply the room.
+ *
+ * One trap: libopus here is NOT byte-deterministic. Encoding the same master
+ * twice with identical settings produces two different files. `--force`
+ * therefore rewrites every `.opus` it touches whether or not anything about it
+ * changed, and `git status` will show the whole group as modified. Re-encode
+ * only the groups you actually changed, and `git checkout --` the rest before
+ * committing — otherwise the diff claims edits nobody made.
  */
 
 import { execFile } from 'node:child_process';
@@ -83,15 +90,30 @@ async function findPeak(file) {
  *
  * `whole: true` skips the transient window and keeps the file end to end. That
  * is what spoken lines need: their loudest sample is a stressed syllable in the
- * middle, so a peak window would cut the first word off.
+ * middle, so a peak window would cut the first word off. It is also what an
+ * already-tight master wants — the reload foley is authored one phase per file,
+ * so there is no long take to find a transient inside of.
+ *
+ * `app` overrides the libopus profile. It defaults to the right thing for each
+ * mode ('voip' for speech, 'audio' otherwise), but `whole` and "is speech" are
+ * not the same question: voip is tuned for a voice and smears the fast metallic
+ * transients a magazine release is made of.
+ *
+ * `fade` applies the tail fade in `whole` mode too. The windowed path gets one
+ * for free from `atrim`; a whole file ends wherever it ends, and a hard cut on
+ * a decaying clip clicks.
  */
-async function encodeOne(file, dest, { lead, dur, bitrate, whole = false }) {
+async function encodeOne(file, dest, { lead, dur, bitrate, whole = false, app, fade = false }) {
   let start = 0;
   if (!whole) {
     const peak = await findPeak(file);
     if (peak === null) return null;
     start = Math.max(0, peak - lead);
   }
+
+  // Only needed to place a fade at the end of a file whose length we never
+  // chose; the windowed path already knows its own `dur`.
+  const total = whole && fade ? await probeDuration(file) : 0;
 
   // `-ss` before `-i` seeks fast; `atrim` after guarantees an exact length.
   // loudnorm would flatten the dynamics that make a gunshot read as one, so
@@ -102,6 +124,7 @@ async function encodeOne(file, dest, { lead, dur, bitrate, whole = false }) {
       'asetpts=PTS-STARTPTS',
       `afade=t=out:st=${Math.max(0, dur - FADE).toFixed(4)}:d=${FADE}`,
     ]),
+    ...(total > FADE ? [`afade=t=out:st=${(total - FADE).toFixed(4)}:d=${FADE}`] : []),
     // Plain swr: soxr is absent from most Homebrew ffmpeg builds, and the
     // difference is inaudible once libopus has re-encoded at 48 k anyway.
     `aresample=${RATE}`,
@@ -114,12 +137,20 @@ async function encodeOne(file, dest, { lead, dur, bitrate, whole = false }) {
     '-ac', '1',
     '-af', filters,
     '-c:a', 'libopus', '-b:a', bitrate, '-vbr', 'on',
-    '-application', whole ? 'voip' : 'audio',
+    '-application', app ?? (whole ? 'voip' : 'audio'),
     dest,
   ]);
 
   // Peak-normalize in a second pass: we now know the trimmed clip's true peak,
   // which the first pass could not (it only saw the untrimmed file).
+  //
+  // Peak, deliberately, and not average level. An earlier pass here matched
+  // mean instead, on the theory that a generated shot's denser tail makes it
+  // sit hotter than a real recording at the same peak. It does — but a
+  // gunshot is heard by its transient, so pulling the peak down to fix the
+  // tail cost up to 14 dB of crack and every weapon went quiet against the
+  // footsteps. If a generated clip is too dense, the fix is its tail, not its
+  // gain.
   const gain = await normalizeGain(dest);
   if (Math.abs(gain) > 0.5) {
     const tmp = `${dest}.tmp.opus`;
@@ -147,6 +178,19 @@ async function normalizeGain(file) {
   const m = /max_volume:\s*(-?[\d.]+) dB/.exec(stderr);
   if (!m) return 0;
   return PEAK_DB - parseFloat(m[1]);
+}
+
+/**
+ * Source length in seconds, 0 when ffmpeg will not say. Read off ffmpeg rather
+ * than ffprobe so this stays on the one binary `have()` already checked for.
+ */
+async function probeDuration(file) {
+  const { stderr } = await run('ffmpeg', [
+    '-v', 'info', '-i', file, '-f', 'null', '-',
+  ], { encoding: 'utf8' }).catch((e) => ({ stderr: e.stderr ?? '' }));
+  const m = /Duration:\s*(\d+):(\d+):([\d.]+)/.exec(stderr);
+  if (!m) return 0;
+  return (+m[1]) * 3600 + (+m[2]) * 60 + parseFloat(m[3]);
 }
 
 /* ── driver ───────────────────────────────────────────────────────────────── */

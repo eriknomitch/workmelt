@@ -10,19 +10,21 @@
     ],
     "rifle": [
       "shot/rifle_0.opus",
-      "shot/rifle_1.opus"
+      "shot/rifle_1.opus",
+      "shot/rifle_2.opus",
+      "shot/rifle_3.opus"
     ],
     "smg": [
       "shot/smg_0.opus",
       "shot/smg_1.opus",
       "shot/smg_2.opus",
-      "shot/smg_3.opus",
-      "shot/smg_4.opus",
-      "shot/smg_5.opus"
+      "shot/smg_3.opus"
     ],
     "pistol": [
       "shot/pistol_0.opus",
-      "shot/pistol_1.opus"
+      "shot/pistol_1.opus",
+      "shot/pistol_2.opus",
+      "shot/pistol_3.opus"
     ],
     "shotgun": [
       "shot/shotgun_0.opus",
@@ -30,7 +32,9 @@
     ],
     "sniper": [
       "shot/sniper_0.opus",
-      "shot/sniper_1.opus"
+      "shot/sniper_1.opus",
+      "shot/sniper_2.opus",
+      "shot/sniper_3.opus"
     ],
     "lmg": [
       "shot/lmg_0.opus",
@@ -240,6 +244,80 @@
     ],
     "game_over": [
       "vox/game_over_0.opus"
+    ]
+  },
+  "reload": {
+    "rifle_start": [
+      "reload/rifle_start_0.opus"
+    ],
+    "rifle_magin": [
+      "reload/rifle_magin_0.opus"
+    ],
+    "rifle_tac_magout": [
+      "reload/rifle_tac_magout_0.opus"
+    ],
+    "rifle_empty_magout": [
+      "reload/rifle_empty_magout_0.opus"
+    ],
+    "rifle_tac_end": [
+      "reload/rifle_tac_end_0.opus"
+    ],
+    "rifle_empty_end": [
+      "reload/rifle_empty_end_0.opus"
+    ],
+    "smg_start": [
+      "reload/smg_start_0.opus"
+    ],
+    "smg_magin": [
+      "reload/smg_magin_0.opus"
+    ],
+    "smg_tac_magout": [
+      "reload/smg_tac_magout_0.opus"
+    ],
+    "smg_empty_magout": [
+      "reload/smg_empty_magout_0.opus"
+    ],
+    "smg_tac_end": [
+      "reload/smg_tac_end_0.opus"
+    ],
+    "smg_empty_end": [
+      "reload/smg_empty_end_0.opus"
+    ],
+    "pistol_start": [
+      "reload/pistol_start_0.opus"
+    ],
+    "pistol_magin": [
+      "reload/pistol_magin_0.opus"
+    ],
+    "pistol_tac_magout": [
+      "reload/pistol_tac_magout_0.opus"
+    ],
+    "pistol_empty_magout": [
+      "reload/pistol_empty_magout_0.opus"
+    ],
+    "pistol_tac_end": [
+      "reload/pistol_tac_end_0.opus"
+    ],
+    "pistol_empty_end": [
+      "reload/pistol_empty_end_0.opus"
+    ],
+    "sniper_start": [
+      "reload/sniper_start_0.opus"
+    ],
+    "sniper_magin": [
+      "reload/sniper_magin_0.opus"
+    ],
+    "sniper_tac_magout": [
+      "reload/sniper_tac_magout_0.opus"
+    ],
+    "sniper_empty_magout": [
+      "reload/sniper_empty_magout_0.opus"
+    ],
+    "sniper_tac_end": [
+      "reload/sniper_tac_end_0.opus"
+    ],
+    "sniper_empty_end": [
+      "reload/sniper_empty_end_0.opus"
     ]
   }
 }

@@ -16,6 +16,10 @@ shots/
 assets-src/*
 # ...except the announcer lines: ours, tiny, and not fetchable from anywhere.
 !assets-src/vox/
+# ...and the reload foley and the firing takes, for the same reason: generated,
+# not downloaded, so there is no fetch-sfx.sh step that could bring them back.
+!assets-src/reload/
+!assets-src/shot/
 
 # Goal scorecard output — measurements and their PNGs. Regenerate with
 # `node tools/goal.mjs`; the criteria themselves live in tools/lib/criteria.mjs.

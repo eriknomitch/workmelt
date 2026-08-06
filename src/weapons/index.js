@@ -83,9 +83,12 @@ const SLOT_KEYS = ['Digit1', 'Digit2', 'Digit3', 'Digit4'];
  * EVENTS EMITTED  (all canonical, see ARCHITECTURE.md)
  *   weapon:fire    { weapon, origin, dir, seed }
  *   weapon:shell   { position, velocity }
- *   weapon:reload  { weapon, phase: 'start'|'magout'|'magin'|'end' }
+ *   weapon:reload  { weapon, phase: 'start'|'magout'|'magin'|'end', empty }
  *                  No position: this is the player's own reload, and `audio`
  *                  reads a missing position as "head-locked". `ai` must send one.
+ *                  `empty` distinguishes a dry reload from a tactical one; it
+ *                  selects the reload foley for the phases where the two really
+ *                  differ (magout, end) and defaults to false when absent.
  *   bullet:tracer  { from, to, speed }
  *   explosion      { position, radius, damage }   frag detonation
  *   equipment:flash{ position, radius, duration } stun detonation
@@ -124,7 +127,7 @@ export class WeaponSystem {
     this._tmp = new THREE.Vector3();
     this._camDir = new THREE.Vector3();
     this._firePayload = { weapon: null, origin: new THREE.Vector3(), dir: new THREE.Vector3(), seed: 0 };
-    this._reloadPayload = { weapon: null, phase: 'start' };
+    this._reloadPayload = { weapon: null, phase: 'start', empty: false };
     // `weapon:shell` carries the canonical { position, velocity } plus the real
     // case dimensions and a spin, so fx can size and tumble the brass instead of
     // guessing: a 9x19 case is less than half the length of a 5.56x45 one.
@@ -620,21 +623,22 @@ export class WeaponSystem {
 
   _onClipEvent(name, clipName) {
     const s = this.state;
-    const isReload = clipName === 'reloadTac' || clipName === 'reloadEmpty';
+    const empty = clipName === 'reloadEmpty';
+    const isReload = clipName === 'reloadTac' || empty;
     switch (name) {
       case 'start':
-        if (isReload) this._emitReload('start');
+        if (isReload) this._emitReload('start', empty);
         break;
       case 'magout':
-        if (isReload) this._emitReload('magout');
+        if (isReload) this._emitReload('magout', empty);
         break;
       case 'magdrop':
         if (isReload) this._dropMagazine();
         break;
       case 'magin':
         if (isReload) {
-          this._emitReload('magin');
-          this._completeReload(clipName === 'reloadEmpty');
+          this._emitReload('magin', empty);
+          this._completeReload(empty);
         }
         break;
       case 'boltrelease':
@@ -642,7 +646,7 @@ export class WeaponSystem {
         break;
       case 'end':
         if (isReload) {
-          this._emitReload('end');
+          this._emitReload('end', empty);
           this.viewmodel.boltHold = 0;
         }
         if (clipName === 'holster' && this._switchTo) {
@@ -678,9 +682,16 @@ export class WeaponSystem {
     this._shotIndex = 0;
   }
 
-  _emitReload(phase) {
+  /**
+   * `empty` is the tac/empty distinction, which audio needs and the phase name
+   * alone cannot carry: a retained partial magazine never hits the floor, and
+   * only an empty reload has a bolt to release. Consumers that do not care can
+   * keep ignoring it — it is additive.
+   */
+  _emitReload(phase, empty) {
     this._reloadPayload.weapon = this.current;
     this._reloadPayload.phase = phase;
+    this._reloadPayload.empty = !!empty;
     this.ctx.events.emit('weapon:reload', this._reloadPayload);
   }
 

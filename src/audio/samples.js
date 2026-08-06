@@ -41,6 +41,12 @@ const GROUP = {
   // different, wrong announcer) and a touch of room so it is not glued to the
   // inside of the player's head.
   vox: { jitter: 0, send: 0.1 },
+  // Reload phases: one take per phase, so jitter is the only thing keeping four
+  // reloads in a row from being bit-identical. It stays low — these are small
+  // mechanical hits and detuning them audibly changes the size of the hardware.
+  // `send` matches what foley.js reloadPhase() asks for, so swapping a sampled
+  // phase for a synthesized one does not move it in the room.
+  reload: { jitter: 0.03, send: 0.3 },
 };
 
 export class SampleBank {
@@ -143,10 +149,38 @@ export class SampleBank {
     // 'announce' has no synthesized counterpart: it is a recorded line or it is
     // nothing, which is why AudioSystem.announce() checks has() before playing.
     else if (kind === 'announce') { group = 'vox'; key = o.line; }
+    else if (kind === 'reload') return this._lookupReload(o);
     else { group = 'ui'; key = kind; }
     if (!key) return null;
     const set = this.sets.get(group)?.get(key);
     return set ? { set, group } : null;
+  }
+
+  /**
+   * Reload is the one group keyed on three things at once — weapon, tac/empty
+   * variant, and animation phase — so it resolves through a fallback chain
+   * instead of a single key:
+   *
+   *   rifle_empty_magout   the specific take
+   *   rifle_magout         the weapon's shared take, for the phases where a
+   *                        dry reload and a tactical one sound the same
+   *   null                 nothing for this weapon; foley.js synthesizes it
+   *
+   * That last rung is why an unrecognised weapon is not a bug. A new gun with
+   * no recorded foley simply keeps the procedural voice until someone authors
+   * one, and a weapon with only half its phases recorded is a valid state too.
+   */
+  _lookupReload(o) {
+    const phase = o.phase;
+    if (!phase) return null;
+    // Bots carry their own ids ('ai_rifle'); the hardware is the same hardware.
+    const weapon = String(o.weapon ?? '').toLowerCase().replace(/^ai_/, '');
+    if (!weapon) return null;
+    const set = this.sets.get('reload');
+    if (!set) return null;
+    const variant = o.empty ? 'empty' : 'tac';
+    const found = set.get(`${weapon}_${variant}_${phase}`) ?? set.get(`${weapon}_${phase}`);
+    return found ? { set: found, group: 'reload' } : null;
   }
 
   /** Is there a decoded sample for this group/key yet? */
