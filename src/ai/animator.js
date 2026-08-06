@@ -17,8 +17,9 @@
  *   B  look-at  — neck and head lead the aim, clamped to human limits
  *   C  arm      — two-bone solve puts the support hand back on the handguard
  *                 (or on the magazine during a reload) after the spine moved
- *   D  foot     — ground probe per foot, pelvis drops to keep both feet
- *                 planted, two-bone solve per leg, sole aligned to the normal
+ *   D  foot     — ground probe per foot, two-bone solve per leg lifts a foot
+ *                 that would sink into the ground, sole aligned to the normal.
+ *                 The pelvis is never moved by it; see the note in _footIk.
  *
  * Everything is preallocated: `update()` does not allocate.
  */
@@ -476,7 +477,6 @@ export class Animator {
     if (!this.probe) return;
     const s = this.scale;
     const ankleH = 0.088 * s;
-    let drop = 0;
     for (let k = 0; k < 2; k++) {
       const ankle = this._wp(this.legs[k][2], this._v);
       const ok = this.probe(ankle.x, ankle.z, ankle.y + 0.55 * s, this._probeOut);
@@ -485,19 +485,27 @@ export class Animator {
         this._footN[k].set(0, 1, 0);
         continue;
       }
-      const want = this._probeOut.y + ankleH;
-      this._footY[k] = want;
+      this._footY[k] = this._probeOut.y + ankleH;
       this._footN[k].set(this._probeOut.nx, this._probeOut.ny, this._probeOut.nz);
-      const d = want - ankle.y;
-      if (d < drop) drop = d;
     }
-    drop = Math.max(-0.32 * s, drop);
-    if (drop < -0.002) {
-      const b = this.bones[0];
-      b.position.y += drop / s; // hips offset is in the actor's local space
-      b.updateMatrix();
-      b.updateMatrixWorld(true);
-    }
+
+    /* NOTE: there is deliberately no pelvis drop here.
+     *
+     * There used to be one, meant to keep both feet planted over uneven ground.
+     * It compared each ankle against the ground and took the largest *downward*
+     * correction — which is always the SWING foot, the one that is supposed to
+     * be in the air. So it hauled the hips down until the lifted foot reached
+     * the floor and the solve below then welded it there: both ankles pinned at
+     * ground height every frame, the whole body heaving instead of the legs
+     * striding. That was the enemy "bobble" — 10 cm peak-to-peak at a walk and
+     * 21 cm at a run, against 2 cm of authored pelvis bob.
+     *
+     * A correct version would move the hips only when a *planted* foot is out
+     * of the leg's reach, but the solve below never lowers a foot (it clamps to
+     * `max(groundY, ankleY)`), so a planted foot can never be out of reach and
+     * the test can never fire. Per-foot ground contact is the solve's job
+     * alone; if the hips ever need to track terrain, that belongs in the
+     * character controller's capsule, not here. */
     for (let k = 0; k < 2; k++) {
       const leg = this.legs[k];
       const ankle = this._wp(leg[2], this._v);
