@@ -728,10 +728,16 @@ export class AudioSystem {
     const name = typeof w === 'string' ? w : (w?.audio ?? w?.id ?? w?.name);
     const heavy = /lmg|shot|snip|m249|pkm/i.test(String(name ?? '')) ? 1.35 : 1;
     const phase = p?.phase ?? 'end';
+    // `weapon` and `empty` are only read by the sample bank — reloadPhase()
+    // synthesizes from `phase` and `heavy` alone — but they have to travel with
+    // every reload voice, because which of the two paths serves it is decided
+    // later, in _build(), and depends on what has finished decoding.
+    const empty = !!p?.empty;
+    const o = { phase, heavy, weapon: name, empty };
     if (p?.position) {
-      this._playAt('reload', p.position.x, p.position.y, p.position.z, { phase, heavy }, 'foley', 0.6);
+      this._playAt('reload', p.position.x, p.position.y, p.position.z, o, 'foley', 0.6);
     } else {
-      this._playDry('reload', { phase, heavy }, 'foley', 0.22);
+      this._playDry('reload', o, 'foley', 0.22);
     }
   }
 
@@ -1036,7 +1042,16 @@ export class AudioSystem {
     ev.emit('weapon:shell', { position: at(0.3, -0.2, -0.2), velocity: { x: 1, y: 1, z: 0 } });
     // A malformed shell must be dropped, not parked on the listener at full gain.
     ev.emit('weapon:shell', { velocity: { x: 1, y: 1, z: 0 } });
-    for (const ph of ['start', 'magout', 'magin', 'end']) ev.emit('weapon:reload', { weapon: 'rifle', phase: ph });
+    // Both variants: `empty` selects a different take for magout and end, so a
+    // tac-only storm would leave half the reload foley never once decoded.
+    for (const empty of [false, true]) {
+      for (const ph of ['start', 'magout', 'magin', 'end']) {
+        ev.emit('weapon:reload', { weapon: 'rifle', phase: ph, empty });
+      }
+    }
+    // A reload with no weapon at all still has to make a sound — it falls
+    // through to synthesis rather than going silent.
+    ev.emit('weapon:reload', { phase: 'magin' });
     // A bot's reload carries a position, so it attenuates instead of playing dry.
     for (const d of [4, 18, 45]) {
       ev.emit('weapon:reload', { weapon: 'ai_rifle', phase: 'start', position: at(d * 0.7, -0.5, -d * 0.7) });

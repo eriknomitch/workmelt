@@ -39,6 +39,13 @@ from the packs below — trimmed, normalized, downmixed to mono and encoded to
 - **Source:** assets-src/vox/
 - **Used for:** announcer: match begin, start, headshot, killstreak, game over
 
+## Reload foley (text-to-sound)
+
+- **Author:** generated for this project
+- **License:** no third-party rights — masters in assets-src/reload/
+- **Source:** assets-src/reload/
+- **Used for:** reload phases for the M4A1, MPX-9, P-19 and AX-7
+
 ---
 
 Anything without a sample here is synthesized at runtime by

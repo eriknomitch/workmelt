@@ -27,6 +27,12 @@ const UI = { lead: 0.005, dur: 1.0, bitrate: '64k' };
  * peak window would start the clip at the loudest syllable and eat the first
  * word. 56k mono is transparent for speech. */
 const VOX = { whole: true, bitrate: '56k' };
+/* Reload phases are authored one hit per file and are already tight, so
+ * `whole` keeps them end to end rather than hunting a transient that is
+ * already at the front. `app: 'audio'` because these are mechanical, not
+ * spoken — voip would smear exactly the metallic attack that carries them —
+ * and `fade` because a whole-file encode has no window to fade it out. */
+const RELOAD = { whole: true, fade: true, app: 'audio', bitrate: '64k' };
 
 const fa = (dir, ...files) => files.map((f) => `firearms/${dir}/${f}.wav`);
 const fs = (dir, n) => Array.from({ length: n }, (_, i) => `footsteps/${dir}/${i}.ogg`);
@@ -117,6 +123,28 @@ export const SOURCES = [
   { group: 'vox', key: 'headshot', ...VOX, src: ['vox/headshot.wav'] },
   { group: 'vox', key: 'killstreak', ...VOX, src: ['vox/killstreak.wav'] },
   { group: 'vox', key: 'game_over', ...VOX, src: ['vox/game_over.wav'] },
+
+  /* ── reload foley ──────────────────────────────────────────────────────
+   * One file per *phase*, not per reload. `weapon:reload` fires four times
+   * (start / magout / magin / end) at cue points on the reload clip, and the
+   * clip stretches to each weapon's reloadTac/reloadEmpty — so a single long
+   * take would drift out of sync with the animation on every weapon but one.
+   * See the note at the head of foley.js reloadPhase().
+   *
+   * Keys are `<weapon>[_<variant>]_<phase>`. samples.js tries the variant-
+   * specific key first and falls back to the bare one, which is why `start`
+   * and `magin` are authored once: pressing the catch and seating a fresh
+   * magazine sound the same whether or not the gun ran dry. `magout` and
+   * `end` are the two phases where it genuinely differs — a retained partial
+   * magazine never hits the floor, and only an empty reload has a bolt or
+   * slide to release. */
+  ...['rifle', 'smg', 'pistol', 'sniper'].flatMap((w) => [
+    'start', 'magin',
+    'tac_magout', 'empty_magout',
+    'tac_end', 'empty_end',
+  ].map((p) => (
+    { group: 'reload', key: `${w}_${p}`, ...RELOAD, src: [`reload/${w}_${p}.wav`] }
+  ))),
 ];
 
 /** kenney numbers variants _000.._00N. */
@@ -161,5 +189,12 @@ export const CREDITS = [
     license: 'no third-party rights — masters in assets-src/vox/',
     url: 'assets-src/vox/',
     used: 'announcer: match begin, start, headshot, killstreak, game over',
+  },
+  {
+    pack: 'Reload foley (text-to-sound)',
+    authors: 'generated for this project',
+    license: 'no third-party rights — masters in assets-src/reload/',
+    url: 'assets-src/reload/',
+    used: 'reload phases for the M4A1, MPX-9, P-19 and AX-7',
   },
 ];

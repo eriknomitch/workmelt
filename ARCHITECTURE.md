@@ -91,7 +91,7 @@ Emit and listen via `ctx.events`. Payloads are plain objects. The canonical set:
 | event | payload | emitted by |
 |---|---|---|
 | `weapon:fire` | `{ weapon, origin: Vector3, dir: Vector3, seed }` | weapons |
-| `weapon:reload` | `{ weapon, phase: 'start'\|'magout'\|'magin'\|'end', position? }` | weapons / ai |
+| `weapon:reload` | `{ weapon, phase: 'start'\|'magout'\|'magin'\|'end', empty?, position? }` | weapons / ai |
 | ↳ | `position` is absent for the local player's own reload — that one is head-locked by definition. An emitter that is *not* the local player must supply it: `audio` falls back to a dry, unattenuated voice without one, which would put a bot's magazine clatter in your ears from across the map. | |
 | `weapon:shell` | `{ position, velocity }` | weapons / ai |
 | ↳ | `position` is required, not optional. Brass defaulted to the listener would sit in `attenuation()`'s flat near field and ring at full gain; `audio` drops a payload without one instead. | |
