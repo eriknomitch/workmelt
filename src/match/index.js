@@ -65,6 +65,7 @@
 
 import * as THREE from 'three';
 import { MatchStartUI, BOT_PRESETS } from './ui.js';
+import { StreakTracker } from './streaks.js';
 import { SCORE_LIMIT, MATCH_MS, BotMatchTally } from './bounds.js';
 
 const DEFAULT_BOTS = 'standard';
@@ -156,6 +157,10 @@ export class MatchSystem {
     on('net:join', (e) => this._onPresence('join', e));
     on('net:leave', (e) => this._onPresence('leave', e));
     this.ui.onCeremonyDone = () => this._ceremonyDone();
+
+    // The killstreak ladder (./streaks.js). It listens for its own kills and
+    // resets, so all this system owes it is a frame tick and a teardown.
+    this.streaks = new StreakTracker(ctx);
 
     this._enterSetup();
     if (typeof window !== 'undefined') window.__MATCH__ = this;
@@ -396,8 +401,9 @@ export class MatchSystem {
     this.ui.setCountdown(n, this._countCopy.label, this._countCopy.sub);
   }
 
-  update() {
+  update(dt) {
     this._updateRespawn();
+    this.streaks?.update(dt);
     this._updateBounds();
     if (this.state !== 'countdown') return;
     const left = this._countdownEnd - performance.now();
@@ -760,6 +766,7 @@ export class MatchSystem {
   dispose() {
     for (const off of this._off) off();
     this._off.length = 0;
+    this.streaks?.dispose();
     this.ui?.dispose();
   }
 }
