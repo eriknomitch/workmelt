@@ -68,9 +68,16 @@ const CSS = `
 .wm-lobby {
   position: fixed; inset: 0; z-index: 60; overflow-y: auto; cursor: default;
   font-family: var(--wm-body); color: var(--wm-fg); -webkit-font-smoothing: antialiased;
-  /* Console Black: the canvas is the void, at near-full opacity — the live
-     scene reads through only where a surface chooses to open a window. */
-  background: rgb(var(--wm-bg-rgb) / .97);
+  /* Console Black: the canvas is the void, and the live scene reads through
+     only where a surface chooses to open a window. The stage IS that window,
+     so the page floor is the open level (.75 Void) and every surface that
+     wants to be closed says so with a fill of its own — see the note above
+     .col. Never an opacity on a container: that would take the type down with
+     the fill, which is the whole reason the alphas are per-element. */
+  background: rgb(var(--wm-bg-rgb) / .75);
+  /* One constant for the shell's padding, its gaps, and the ring each panel
+     casts to close its own gutter — they have to agree or a seam opens. */
+  --wm-gutter: 14px;
   opacity: 0; transition: opacity var(--wm-t-slow);
 }
 .wm-lobby.show { opacity: 1; }
@@ -85,10 +92,21 @@ const CSS = `
 .wm-lobby .shell {
   display: grid; grid-template-columns: 320px minmax(0, 1fr) 372px;
   grid-template-areas: 'left stage right';
-  gap: 14px; padding: 14px; min-height: 100%; align-items: stretch;
+  gap: var(--wm-gutter); padding: var(--wm-gutter); min-height: 100%; align-items: stretch;
 }
+/* The rails close the window back up: --wm-panel is Console at .92, which over
+   the .75 floor composites to a .98 surface — the "near-full opacity" the token
+   exists for. They carry the room, the roster and the selector, so they stay a
+   console; only the stage opens.
+
+   The zero-offset ring is not a shadow, it is the gutter: it closes the shell's
+   padding and gaps back to .88 Void over the .75 floor, i.e. the .97 the page
+   used to be, so opening the stage does not also open the frame around
+   everything. Adjacent panels' rings meet inside a gap and overlap to .996 —
+   black either way, ~5/255 apart on the brightest scene. */
 .wm-lobby .col {
-  border: 1px solid var(--wm-border); background: rgb(var(--wm-surface-rgb) / .55);
+  border: 1px solid var(--wm-border); background: var(--wm-panel);
+  box-shadow: 0 0 0 var(--wm-gutter) rgb(var(--wm-bg-rgb) / .88);
   min-width: 0; min-height: 0;
 }
 
@@ -218,8 +236,28 @@ const CSS = `
 .wm-lobby .rail-mark { font-size: 15px; margin-top: 20px; color: var(--wm-fg-dim); }
 
 /* ── stage: the current map, written large ───────────────────────────────── */
+/* The one surface that stays open. It adds no fill of its own, so it reads at
+   the page floor — .75 Void over the live scene — and the map you are about to
+   drop into is visible behind its own name. Everything inside it that needs a
+   denser ground (the dock) buys that ground itself rather than closing the
+   whole panel. */
 .wm-lobby .stage {
   grid-area: stage; position: relative; display: flex; flex-direction: column; overflow: hidden;
+  background: none;
+}
+/* The header keeps its ground. DESIGN.md publishes Steel Lift at 7.0:1 and Ice
+   White Dim at 10.0:1 *on the Void*, and the open stage takes the Void away —
+   CURRENT MAP over a blown-out sky measures 3.8:1, under the floor for a 10px
+   string. So the window closes toward its own header: .72 Void at the top
+   (composite .93, which puts Steel Lift back at 6.8:1) fading to nothing well
+   below the last line of type, so there is no edge to read as a bar. */
+.wm-lobby .stage::before {
+  content: ''; position: absolute; inset: 0 0 auto; height: 38%; z-index: 0;
+  pointer-events: none;
+  background: linear-gradient(to bottom,
+    rgb(var(--wm-bg-rgb) / .72) 0%,
+    rgb(var(--wm-bg-rgb) / .55) 42%,
+    rgb(var(--wm-bg-rgb) / 0) 100%);
 }
 .wm-lobby .stage-hd { position: relative; z-index: 2; padding: 24px 30px 0; }
 .wm-lobby .curmap {
@@ -256,17 +294,24 @@ const CSS = `
 }
 .wm-lobby .stage.has-art .hero-plan { display: none; }
 /* The plan is drawn one cell per couple of device pixels; "pixelated" keeps the
-   blocks square instead of smearing them at 6x. */
+   blocks square instead of smearing them at 6x. Its .35 was calibrated against
+   a black stage — on the open stage the scene fills the gaps between the plan's
+   blocks, so a dim plan reads as haze rather than as a floorplan and the figure
+   has to out-run its new ground. */
 .wm-lobby .hero-plan canvas {
   max-width: 100%; max-height: 100%; width: auto; height: auto;
-  image-rendering: pixelated; opacity: .35;
+  image-rendering: pixelated; opacity: .6;
 }
 
 /* the action dock — primary, copy, key hints, and the optional alt link */
+/* The dock is the one thing on the open stage that needs a stable ground: the
+   primary CTA's contrast cannot depend on what the scene happens to be doing
+   behind it. .68 Void over the .75 floor composites to α .92, so it still
+   reads as part of the window rather than a black slab pasted onto it. */
 .wm-lobby .dock {
   position: absolute; z-index: 3; left: 50%; bottom: 22px; transform: translateX(-50%);
   width: min(440px, calc(100% - 44px));
-  background: rgb(var(--wm-bg-rgb) / .92); border: 1px solid var(--wm-border);
+  background: rgb(var(--wm-bg-rgb) / .68); border: 1px solid var(--wm-border);
   padding: 20px 20px 14px; display: flex; flex-direction: column; gap: 10px;
 }
 .wm-lobby .btn {
