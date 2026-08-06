@@ -27,12 +27,20 @@ import * as THREE from 'three';
  * REWARDS
  *   uav     `streak:uav { duration }` — `ai` publishes actor blips through
  *           `getHudActors()` for the window and the minimap lights up.
- *   mortar  a volley of `explosion` events walked over the point the player
- *           was aiming at. Each round is announced by a `bullet:tracer`
- *           falling out of the sky, then detonates with `source: 'player'`
- *           so `ai` credits the kill back to the streak (see the explosion
- *           listener in src/ai/index.js). Rounds land on the first surface
- *           under open sky — a roof shields whatever is beneath it.
+ *   mortar  called in with a GREEN LASER DESIGNATOR, not dropped where the
+ *           player happens to be standing. Digit5 raises the laser
+ *           (`streak:designate { active: true }`, reward still banked); the
+ *           beam is drawn by `fx.designate()` from the muzzle to wherever the
+ *           player is aiming, and only after it has held a surface for
+ *           `DESIGNATOR.paintTime` seconds does the strike commit to that
+ *           lased point. Digit5 again (or dying) lowers the laser with the
+ *           reward intact. The volley itself is unchanged: `explosion` events
+ *           walked over the lased point, each round announced by a
+ *           `bullet:tracer` falling out of the sky, then detonating with
+ *           `source: 'player'` so `ai` credits the kill back to the streak
+ *           (see the explosion listener in src/ai/index.js). Rounds land on
+ *           the first surface under open sky — a roof shields whatever is
+ *           beneath it.
  *
  * MULTIPLAYER: not yet on the wire. The count includes relay-confirmed PvP
  * kills, but a mortar only damages what this client owns (bots and the local
@@ -66,6 +74,11 @@ export const MORTAR = {
   maxRange: 140,
 };
 
+export const DESIGNATOR = {
+  /** Seconds the green laser must hold a surface before the strike commits. */
+  paintTime: 1.2,
+};
+
 /** Weapons own Digit1–4; the streak ladder takes the next key along. */
 const ACTIVATE_CODE = 'Digit5';
 
@@ -85,10 +98,17 @@ export class StreakTracker {
     /** In-flight mortar rounds: { t, fired, announced, x, z, y } (t relative). */
     this._volley = [];
     this._volleyT = 0;
+    /** The green laser is up and painting for the mortar. */
+    this._designating = false;
+    /** Seconds the laser has held its current surface. */
+    this._paint = 0;
 
     this._target = new THREE.Vector3();
     this._from = new THREE.Vector3();
     this._dir = new THREE.Vector3();
+    this._laserTo = new THREE.Vector3();
+    this._laserOpts = { hit: false, progress: 0 };
+    this._designateEvent = { active: false, reward: 'mortar' };
     this._explosion = {
       position: new THREE.Vector3(),
       radius: MORTAR.radius,
@@ -107,15 +127,21 @@ export class StreakTracker {
     on('net:kill', (e) => {
       if (e?.mine) this._score();
     });
-    on('player:death', () => this._resetKills());
+    on('player:death', () => {
+      // A dead hand drops the laser; the reward it was aiming stays banked.
+      this._cancelDesignate();
+      this._resetKills();
+    });
     on('match:start', () => {
       this.live = true;
+      this._cancelDesignate();
       this.banked.length = 0;
       this._volley.length = 0;
       this._resetKills();
     });
     on('match:end', () => {
       this.live = false;
+      this._cancelDesignate();
       this.banked.length = 0;
       this._volley.length = 0;
       this._resetKills();
@@ -154,30 +180,106 @@ export class StreakTracker {
     this._updateVolley(dt);
     if (!this.live || !this.ctx.input.enabled) return;
     if (this.ctx.input.pressed(ACTIVATE_CODE)) this.activate();
+    this._updateDesignator(dt);
   }
 
-  /** Fire the oldest banked reward. Returns the reward id, or null. */
+  /**
+   * Fire the oldest banked reward. A UAV fires on the spot and returns 'uav'.
+   * The mortar is called in with the laser instead: the first press raises the
+   * designator and returns 'designating' (the reward stays banked until the
+   * lase commits in `_updateDesignator`); a press while lasing lowers it and
+   * returns null with the reward intact.
+   */
   activate() {
+    if (this._designating) {
+      this._cancelDesignate();
+      this._banner('LASE CANCELLED', 'THE BARRAGE STAYS BANKED');
+      return null;
+    }
     if (!this.banked.length) return null;
     if (this.ctx.peek('player')?.health?.dead) return null;
     const reward = this.banked[0];
-    if (reward === 'mortar' && !this._solveAim(this._target)) {
-      // Not consumed: aiming at open sky is a mistake, not a spent streak.
-      this._banner('NO TARGET', 'AIM AT THE GROUND AND TRY AGAIN');
-      return null;
+    if (reward === 'mortar') {
+      this._designating = true;
+      this._paint = 0;
+      this._emitDesignate(true);
+      this._banner('LASER DESIGNATOR OUT', 'HOLD THE LASER ON TARGET — 5 CANCELS');
+      this._sfx('ready', 0.8);
+      return 'designating';
     }
     this.banked.shift();
-    if (reward === 'uav') {
-      this.ctx.events.emit('streak:activated', { reward });
-      this.ctx.events.emit('streak:uav', { duration: UAV.duration });
-      this._banner('RECON SWEEP ONLINE', 'HOSTILES ON YOUR MINIMAP');
-    } else if (reward === 'mortar') {
-      this.ctx.events.emit('streak:activated', { reward, position: this._target });
-      this._banner('MORTAR BARRAGE INBOUND', 'DANGER CLOSE — KEEP YOUR DISTANCE');
-      this._scheduleVolley(this._target);
-    }
+    this.ctx.events.emit('streak:activated', { reward });
+    this.ctx.events.emit('streak:uav', { duration: UAV.duration });
+    this._banner('RECON SWEEP ONLINE', 'HOSTILES ON YOUR MINIMAP');
     this._sfx('matchstart', 0.7);
     return reward;
+  }
+
+  /**
+   * The lasing frame: while the designator is up, paint accrues only while the
+   * beam is actually on a surface — wandering across the sky wipes it, so the
+   * lock is a deliberate hold rather than an accident on the way past. When
+   * the hold ripens the strike commits to the lased point.
+   */
+  _updateDesignator(dt) {
+    if (!this._designating) return;
+    if (this.ctx.peek('player')?.health?.dead) {
+      this._cancelDesignate();
+      return;
+    }
+    const hit = this._solveAim(this._target);
+    this._paint = hit ? this._paint + dt : 0;
+    this._drawLaser(hit, Math.min(1, this._paint / DESIGNATOR.paintTime));
+    if (hit && this._paint >= DESIGNATOR.paintTime) this._commitStrike();
+  }
+
+  /** The lase held: consume the reward and call the volley in on the point. */
+  _commitStrike() {
+    this._designating = false;
+    this._paint = 0;
+    this.banked.shift();
+    this._emitDesignate(false);
+    this.ctx.events.emit('streak:activated', { reward: 'mortar', position: this._target });
+    this._banner('TARGET LASED — BARRAGE INBOUND', 'DANGER CLOSE — KEEP YOUR DISTANCE');
+    this._scheduleVolley(this._target);
+    this._sfx('matchstart', 0.7);
+  }
+
+  /** Lower the laser without spending the reward. Safe to call when down. */
+  _cancelDesignate() {
+    if (!this._designating) return;
+    this._designating = false;
+    this._paint = 0;
+    this._emitDesignate(false);
+  }
+
+  _emitDesignate(active) {
+    this._designateEvent.active = active;
+    this.ctx.events.emit('streak:designate', this._designateEvent);
+  }
+
+  /**
+   * Hand this frame's beam to `fx`: muzzle to the lased point, or out to the
+   * solve range when the beam found nothing to land on. Headless (no `fx`)
+   * the lase still works — the beam is feedback, not state.
+   */
+  _drawLaser(hit, progress) {
+    const fx = this.ctx.peek('fx');
+    if (!fx?.designate) return;
+    const cam = this.ctx.camera;
+    cam.getWorldDirection(this._dir);
+    const wp = this.ctx.peek('weapons');
+    let fromMuzzle = false;
+    if (typeof wp?.muzzleWorld === 'function') {
+      wp.muzzleWorld(this._from);
+      fromMuzzle = this._from.lengthSq() > 1e-6;
+    }
+    if (!fromMuzzle) this._from.copy(cam.position).addScaledVector(this._dir, 0.4);
+    if (hit) this._laserTo.copy(this._target);
+    else this._laserTo.copy(cam.position).addScaledVector(this._dir, MORTAR.maxRange);
+    this._laserOpts.hit = hit;
+    this._laserOpts.progress = progress;
+    fx.designate(this._from, this._laserTo, this._laserOpts);
   }
 
   /** The point the player is looking at, or false when the ray escapes the map. */
@@ -186,7 +288,10 @@ export class StreakTracker {
     if (!phys) return false;
     const cam = this.ctx.camera;
     cam.getWorldDirection(this._dir);
-    const hit = phys.raycast(cam.position, this._dir, MORTAR.maxRange);
+    // WORLD, not the default ALL: the default includes the PLAYER layer, so an
+    // unmasked ray could land on the player's own capsule centimetres from the
+    // lens — a barrage called in on your own head. The laser paints the level.
+    const hit = phys.raycast(cam.position, this._dir, MORTAR.maxRange, phys.MASK?.WORLD);
     if (!hit.hit) return false;
     out.copy(hit.point);
     return true;

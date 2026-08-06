@@ -38,6 +38,8 @@ export class StreakMeter {
     this.banked = [];
     /** Seconds left on a live recon sweep. */
     this.uavT = 0;
+    /** The mortar's green laser is up (streak:designate). */
+    this.lasing = false;
     this._pulse = 0;
     this._lastPaint = null;
     setStyle(this.root, 'display', 'none');
@@ -61,21 +63,30 @@ export class StreakMeter {
     this.uavT = Math.max(this.uavT, duration ?? 0);
   }
 
+  designating(on) {
+    this.lasing = !!on;
+  }
+
   reset() {
     this.setKills(0);
     this.banked.length = 0;
     this.uavT = 0;
+    this.lasing = false;
   }
 
   update(dt) {
     if (this.uavT > 0) this.uavT = Math.max(0, this.uavT - dt);
     const ready = this.banked.length > 0;
-    const show = ready || this.kills > 0 || this.uavT > 0;
+    const show = ready || this.kills > 0 || this.uavT > 0 || this.lasing;
     setStyle(this.root, 'display', show ? '' : 'none');
     if (!show) return;
 
     let mode, text;
-    if (ready) {
+    if (this.lasing) {
+      // The most actionable fact while the laser is up: the key now cancels.
+      mode = 'lasing';
+      text = 'LASING TARGET — 5 CANCELS';
+    } else if (ready) {
       mode = 'ready';
       text = `${LABELS[this.banked[0]] ?? this.banked[0]} READY`;
     } else if (this.uavT > 0) {
@@ -93,9 +104,10 @@ export class StreakMeter {
       setText(this.txt, text);
       setClass(this.line, 'ready', mode === 'ready');
       setClass(this.line, 'online', mode === 'online');
+      setClass(this.line, 'lasing', mode === 'lasing');
     }
     // A banked reward breathes so the key hint cannot be missed mid-fight.
-    if (this.banked.length) {
+    if (this.banked.length && !this.lasing) {
       this._pulse += dt * 3.4;
       setStyle(this.line, 'opacity', (0.72 + 0.28 * Math.abs(Math.sin(this._pulse))).toFixed(3));
     } else {

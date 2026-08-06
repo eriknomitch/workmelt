@@ -505,8 +505,8 @@ const CSS = `
 /* ============================================================ killstreaks */
 /* Above the ammo block, right margin (the perf readout owns the space under
    the minimap): one pip per kill toward the next reward and a single line of
-   state. Same ink levels as the rest of the chrome; the only colour is the
-   amber of a banked reward waiting on its key. */
+   state. Same ink levels as the rest of the chrome; the only colours are the
+   amber of a banked reward waiting on its key and the green of a live lase. */
 .ow-streak {
   position:absolute; right:var(--pad);
   bottom: calc(var(--pad) + 172px * var(--k));
@@ -529,6 +529,7 @@ const CSS = `
 }
 .ow-streak-line.online { color: var(--ink-2); }
 .ow-streak-line.ready { color: var(--amber); }
+.ow-streak-line.lasing { color: var(--ok); }
 .ow-streak-key {
   min-width: calc(13px * var(--k)); text-align:center;
   padding: calc(1.5px * var(--k)) calc(3px * var(--k));

@@ -63,8 +63,9 @@ const MAX_BLIPS = 48;
  *
  * Events consumed: weapon:fire, weapon:reload, damage:dealt, damage:taken,
  * actor:death, player:state, explosion, equipment:flash, resize, and the
- * killstreak set — streak:kills, streak:earned, streak:activated, streak:uav
- * (plus match:start / match:end to reset the meter).
+ * killstreak set — streak:kills, streak:earned, streak:activated,
+ * streak:designate, streak:uav (plus match:start / match:end to reset the
+ * meter).
  * Events emitted:  ui:pause, ui:quality, ui:sensitivity, ui:fov, ui:setting.
  */
 export class UiSystem {
@@ -328,6 +329,7 @@ export class UiSystem {
     on('streak:kills', (e) => this.streakMeter.setKills(e?.kills ?? 0));
     on('streak:earned', (e) => e?.reward && this.streakMeter.earned(e.reward));
     on('streak:activated', (e) => e?.reward && this.streakMeter.activated(e.reward));
+    on('streak:designate', (e) => this.streakMeter.designating(e?.active));
     on('streak:uav', (e) => this.streakMeter.uavOnline(e?.duration ?? 0));
     on('match:start', () => this.streakMeter.reset());
     on('match:end', () => this.streakMeter.reset());

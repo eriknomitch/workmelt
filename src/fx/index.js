@@ -6,6 +6,7 @@ import { DecalSystem } from './decals.js';
 import { HazeSystem } from './haze.js';
 import { LightPool } from './lights.js';
 import { ShellSystem } from './shells.js';
+import { DesignatorBeam } from './designator.js';
 import { Ambience } from './ambience.js';
 import { spawnImpact } from './impacts.js';
 import { muzzleFlash } from './muzzle.js';
@@ -117,6 +118,13 @@ export class FxSystem {
 
     this.shells = new ShellSystem(this);
     ctx.scene.add(this.shells.mesh);
+
+    // The killstreak lase (src/match/streaks.js drives it, immediate-mode).
+    // Built at init rather than on first use so the pre-warm compiles its
+    // materials — a laser whose first frame is also a shader compile stutters
+    // at the exact moment the player is trying to hold an aim.
+    this.designatorBeam = new DesignatorBeam();
+    ctx.scene.add(this.designatorBeam.group);
 
     this.ambience = new Ambience(this, {
       motes: mote,
@@ -315,7 +323,15 @@ export class FxSystem {
     try {
       renderer.setRenderTarget(rt);
       compile(
-        [this.lit.mesh, this.add.mesh, this.motes.mesh, this.decals.mesh, this.shells.mesh],
+        [
+          this.lit.mesh,
+          this.add.mesh,
+          this.motes.mesh,
+          this.decals.mesh,
+          this.shells.mesh,
+          this.designatorBeam.beam,
+          this.designatorBeam.dot,
+        ],
         ctx.camera,
         ctx.scene
       );
@@ -485,6 +501,17 @@ export class FxSystem {
     vcam.localToWorld(this._p2);
     this._d2.copy(dir).transformDirection(cam.matrixWorldInverse).transformDirection(vcam.matrixWorld);
     this._d2.normalize();
+  }
+
+  /**
+   * Green target-designator beam (the killstreak lase). Immediate-mode: call
+   * once per frame while lasing and it hides itself the frame you stop.
+   * `opts.hit` marks a painted surface; `opts.progress` 0..1 is the lock.
+   */
+  designate(from, to, opts) {
+    if (!from || !to) return;
+    this.now = this.ctx.time.elapsed;
+    this.designatorBeam.set(from, to, this.now, opts);
   }
 
   /** A travelling tracer round. */
@@ -782,6 +809,7 @@ export class FxSystem {
     this._syncLighting(ctx);
     this.lights.update(dt);
     this.viewLights?.update(dt);
+    this.designatorBeam.update(this.now);
     this._runScript(dt);
     this.ambience.sunFactor = this._sunFactor;
     this.ambience.update(dt, this.now, ctx.camera, ctx.scene);
@@ -1277,6 +1305,7 @@ export class FxSystem {
     this.decals.dispose();
     this.shells.mesh.parent?.remove(this.shells.mesh);
     this.shells.dispose();
+    this.designatorBeam.dispose();
     this.hazeSys.dispose();
     this.lights.dispose();
     this.viewLights?.dispose();
