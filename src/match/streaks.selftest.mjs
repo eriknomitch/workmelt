@@ -10,17 +10,21 @@
  *     tableau must never bank a reward).
  *   • THE LADDER — the count resets on death but a BANKED reward survives it;
  *     a tier cannot be banked twice while unspent; match start/end clears all.
- *   • THE MORTAR — activation against open sky refuses without consuming the
- *     reward; a real target schedules the full volley, every round announced
- *     by a falling tracer before its `explosion`, every impact inside the
- *     scatter disc, tagged `source: 'player'` so `ai` can credit the kills,
+ *   • THE MORTAR — activation raises the green laser designator instead of
+ *     firing (`streak:designate`, reward still banked); a laser that never
+ *     finds a surface never locks, cancelling or dying lowers it with the
+ *     reward intact, and only a lase held on a real target for
+ *     `DESIGNATOR.paintTime` commits the strike. The committed volley is the
+ *     old contract unchanged: every round announced by a falling tracer
+ *     before its `explosion`, every impact inside the scatter disc around the
+ *     LASED point, tagged `source: 'player'` so `ai` can credit the kills,
  *     and the whole pattern deterministic for a given engine seed.
  *
  * Runs against the real StreakTracker on a stub ctx: a real EventBus and Rng,
  * a plane-at-y=0 physics ray stub, and a camera aimed at the ground.
  */
 import * as THREE from 'three';
-import { StreakTracker, STREAK_TIERS, UAV, MORTAR } from './streaks.js';
+import { StreakTracker, STREAK_TIERS, UAV, MORTAR, DESIGNATOR } from './streaks.js';
 import { EventBus } from '../core/registry.js';
 import { Rng } from '../core/rng.js';
 
@@ -166,22 +170,52 @@ console.log('uav activation');
 }
 
 /* ==================================================================== */
-console.log('mortar: refusal, volley, determinism');
+console.log('mortar: the laser designator');
 {
+  // A laser held on the sky paints nothing and can never lock.
   const skyCtx = makeCtx({ aimUp: true });
   const tracker = new StreakTracker(skyCtx);
+  const designate = record(skyCtx, 'streak:designate');
+  const activated = record(skyCtx, 'streak:activated');
   skyCtx.events.emit('match:start', {});
   for (let i = 0; i < STREAK_TIERS[1].kills; i++) botKill(skyCtx);
   tracker.banked.shift(); // spend the uav off-screen; the mortar is the point
-  check('aiming at the sky refuses', tracker.activate() === null);
-  check('a refused mortar is not consumed', tracker.banked.join(',') === 'mortar');
+  check('activation raises the designator instead of firing',
+    tracker.activate() === 'designating');
+  check('the designator going up is announced',
+    designate.length === 1 && designate[0].active === true && designate[0].reward === 'mortar');
+  check('the reward stays banked while lasing', tracker.banked.join(',') === 'mortar');
+  for (let i = 0; i < 60 * 4; i++) tracker.update(1 / 60);
+  check('a laser on the sky never locks',
+    activated.length === 0 && tracker.banked.join(',') === 'mortar');
+  check('the key lowers the laser instead of firing', tracker.activate() === null);
+  check('the designator coming down is announced', designate.at(-1).active === false);
+  check('a cancelled lase is not consumed', tracker.banked.join(',') === 'mortar');
   tracker.dispose();
 
+  // Dying mid-lase drops the laser but not the banked reward.
+  const dieCtx = makeCtx();
+  const t2 = new StreakTracker(dieCtx);
+  const designate2 = record(dieCtx, 'streak:designate');
+  dieCtx.events.emit('match:start', {});
+  for (let i = 0; i < STREAK_TIERS[1].kills; i++) botKill(dieCtx);
+  t2.banked.shift();
+  t2.activate();
+  dieCtx.events.emit('player:death', {});
+  check('death lowers the laser', designate2.at(-1).active === false);
+  check('death does not spend the lased reward', t2.banked.join(',') === 'mortar');
+  t2.dispose();
+}
+
+/* ==================================================================== */
+console.log('mortar: lock, volley, determinism');
+{
   const run = (seed) => {
     const ctx = makeCtx({ seed });
     const t = new StreakTracker(ctx);
     const explosions = record(ctx, 'explosion');
     const tracers = record(ctx, 'bullet:tracer');
+    const activated = record(ctx, 'streak:activated');
     ctx.events.emit('match:start', {});
     for (let i = 0; i < STREAK_TIERS[1].kills; i++) botKill(ctx);
     t.banked.shift();
@@ -190,7 +224,17 @@ console.log('mortar: refusal, volley, determinism');
     check('the aim solve lands on the floor plane', Math.abs(aim.y) < 1e-6);
     const midFlight = [];
     ctx.events.on('bullet:tracer', () => midFlight.push(explosions.length));
-    check('a grounded aim activates', t.activate() === 'mortar');
+    check('a grounded aim starts the lase', t.activate() === 'designating');
+    check('starting the lase fires nothing yet', activated.length === 0);
+    // Hold the laser on the floor until the lock ripens.
+    const lockFrames = Math.ceil(DESIGNATOR.paintTime * 60) + 2;
+    for (let i = 0; i < lockFrames; i++) t.update(1 / 60);
+    check('a held lase commits the strike',
+      activated.length === 1 && activated[0].reward === 'mortar');
+    check('the committed strike carries the lased point',
+      Math.abs(activated[0].position.x - aim.x) < 1e-6 &&
+      Math.abs(activated[0].position.z - aim.z) < 1e-6);
+    check('the commit spends the reward', t.banked.length === 0);
     for (let i = 0; i < 60 * 12; i++) t.update(1 / 60);
     t.dispose();
     return { explosions, tracers, midFlight, aim };
