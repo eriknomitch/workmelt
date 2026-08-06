@@ -332,7 +332,7 @@ gaps.
   the map's artwork (`public/maps/<id>.png`) when it ships, its blueprint
   floorplan on a faint graticule when it does not. The action dock floats at
   the bottom centre: primary, copy-invite, key hints, and the optional alt
-  link.
+  link. The stage is **the window** — see The One Window Rule below.
 - **Right rail — the map selector.** One card per enabled map in a two-column
   grid: floorplan thumbnail, name, description. The selected card wears the
   Signal Blue border and a small blue badge.
@@ -359,6 +359,25 @@ screen margins are 6.5 units.
 **The Height-Query Rule.** Menu surfaces sit over a live scene on laptops. Test
 `max-height`, not just `max-width` — a 1440×700 window is the common failure,
 and it is invisible to a width breakpoint.
+
+**The One Window Rule.** Console Black is a console, not a window: the live
+scene reads through in exactly one place, and on the lobby that place is the
+stage. The lobby's page floor is therefore the open level — Void at **.75** —
+and everything that is *not* the window closes itself back up: the rails to
+`--wm-panel` (Console .92, composited .98) and the shell's padding and gaps to
+Void .88 (composited .97, what the whole page used to be), cast as a
+zero-offset ring by each panel so a rearranged grid cannot leave a gutter open.
+Two corollaries, and they are the whole reason the alphas are per-element
+rather than one `opacity` on a container:
+
+- **Never `opacity` on a container.** It takes the type down with the fill.
+  Set the alpha on the *background* of each component and leave the text alone.
+- **Type on the window buys its own ground.** The contrast figures published
+  above are measured on the Void, and the window takes the Void away — Steel
+  Lift over a blown-out sky is 3.8:1, under the floor. So the stage's header
+  sits under a Void gradient (.72 → 0, restoring 6.8:1) and the action dock
+  under a flat Void .68 (composited .92). Anything else placed on the window
+  owes the same arithmetic.
 
 ## Elevation & Depth
 
