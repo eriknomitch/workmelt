@@ -104,10 +104,31 @@ them the party flow working:
   **start now with the N who are ready**; the rest are left with a live room and
   the lobby's "deploy now".
 
-### Between matches
+### How a match ends
 
-A match has no scripted end — it runs until people leave it (pause menu → **Leave
-match**), and the room survives that, so the invite link never changes.
+Every match is a **bounded free-for-all**: first to **15 kills** wins outright,
+and **5 minutes** is full time — when the clock runs out the leader on kills
+wins (fewer deaths breaks a tie; a dead heat is a draw). The defaults are sized
+for a quick match during a work break; tune them with `SCORE_LIMIT` /
+`MATCH_MS` on the relay. The relay is the referee, because the relay already
+owns the score: it resets everyone's scoreline at the start signal, and one
+authoritative `match_end` ends the match for the whole room, exactly as one
+`match_start` began it.
+
+The end is a **ceremony**: the winner's callsign in the livery colour they were
+identified by all match, the reason ("First to 15" / full time), and the final
+standings — then everyone walks back to the lobby together (auto after ~10 s,
+or one click / Enter). The relay undeploys the whole match when it ends, so the
+room stops being live at the horn: the map unlocks and the ready flow — and the
+rematch — are immediately open. A bots match is bounded by the same numbers,
+refereed by the client (nobody else can see it), and scored honestly in both
+directions: the garrison putting you down 15 times before you do it to them is
+a defeat, not a formality.
+
+A match can also simply be walked out of (pause menu → **Leave match**), and
+the room survives either kind of ending, so the invite link never changes.
+
+### Between matches
 
 Coming back to the lobby while others were still playing used to be a dead end:
 the room was live, so the map was frozen and there was nothing to press but
@@ -177,10 +198,13 @@ could be dropped in later without touching the client protocol.
 Environment: `PORT` (default 8787), `TICK_HZ` (20), `MAX_ROOM` (12),
 `COUNTDOWN_MS` (3000, the pre-match countdown once everyone is ready),
 `MAX_START_MS` (3× the countdown, the outer edge of a start that keeps being
-pushed back for late arrivals).
+pushed back for late arrivals), `SCORE_LIMIT` (15, the kills that win a match
+outright) and `MATCH_MS` (5 minutes, full time — the leader then wins).
 
 `server/lobby.selftest.mjs` walks all of the lobby rules above against a real
-server on a real socket; `RELAY_URL=ws://127.0.0.1:8788/ws` points the same checks
+server on a real socket, and `server/bounds.selftest.mjs` does the same for the
+bounded match — the score reset at the horn, the `match_end` on the winning
+kill, the time cap, and the room un-living so the rematch flow opens; `RELAY_URL=ws://127.0.0.1:8788/ws` points the same checks
 at the Durable Object under `npm run cf:dev`, which is how the two stay in step.
 `tools/lobby-playtest.mjs` drives the whole flow in two real browsers.
 
@@ -228,10 +252,11 @@ non-capture run (disable with `?mp=0`). It:
 | C→S | `kill {by,headshot}` | victim confirms its own death |
 | C→S | `spawn {p}` | "I am coming in here" — a spawn claim, relayed to the room |
 | C→S | `name` / `chat` / `respawn` / `ping` | misc |
-| S→C | `welcome {id,room,skin,live,map,startIn,peers}` | you joined; who's here; which level; is the match already live. `startIn` is non-zero when you walked into a countdown. `skin` is your colour slot — see below |
+| S→C | `welcome {id,room,skin,live,map,startIn,limit,matchLeft,peers}` | you joined; who's here; which level; is the match already live. `startIn` is non-zero when you walked into a countdown. `skin` is your colour slot — see below. `limit`/`matchLeft` state the bounded-match contract for a joiner walking into a live match |
 | S→C | `peer_join {id,name,skin}` / `peer_leave {id}` | roster changes |
 | S→C | `lobby {live,players,map}` | match-start lobby: `[{id,name,ready,deployed,warm}]`, plus the room's level |
-| S→C | `match_start {in,ids}` | count down `in` ms and deploy — if you are in `ids`. Absent `ids` (an older relay) means everybody |
+| S→C | `match_start {in,ids,limit,ms}` | count down `in` ms and deploy — if you are in `ids`. Absent `ids` (an older relay) means everybody. `limit` is the kill target, `ms` full time; every scoreline in it starts at zero |
+| S→C | `match_end {reason,winner,limit,ms,standings}` | the match is over — first to `limit` (`reason:'score'`) or full time (`'time'`, the leader wins; `winner` null is a draw). The relay has already undeployed everyone in it; clients show the ceremony and return to the lobby |
 | S→C | `snapshot {states:[…]}` | everyone's latest transform |
 | S→C | `spawn {id,p}` | somebody else claimed that ground to spawn on |
 | S→C | `fire` / `hit` / `kill` / `score` / `chat` | relayed events + scoreboard |

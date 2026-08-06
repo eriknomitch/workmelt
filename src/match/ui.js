@@ -68,9 +68,16 @@ const CSS = `
 .wm-lobby {
   position: fixed; inset: 0; z-index: 60; overflow-y: auto; cursor: default;
   font-family: var(--wm-body); color: var(--wm-fg); -webkit-font-smoothing: antialiased;
-  /* Console Black: the canvas is the void, at near-full opacity — the live
-     scene reads through only where a surface chooses to open a window. */
-  background: rgb(var(--wm-bg-rgb) / .97);
+  /* Console Black: the canvas is the void, and the live scene reads through
+     only where a surface chooses to open a window. The stage IS that window,
+     so the page floor is the open level (.75 Void) and every surface that
+     wants to be closed says so with a fill of its own — see the note above
+     .col. Never an opacity on a container: that would take the type down with
+     the fill, which is the whole reason the alphas are per-element. */
+  background: rgb(var(--wm-bg-rgb) / .75);
+  /* One constant for the shell's padding, its gaps, and the ring each panel
+     casts to close its own gutter — they have to agree or a seam opens. */
+  --wm-gutter: 14px;
   opacity: 0; transition: opacity var(--wm-t-slow);
 }
 .wm-lobby.show { opacity: 1; }
@@ -85,10 +92,21 @@ const CSS = `
 .wm-lobby .shell {
   display: grid; grid-template-columns: 320px minmax(0, 1fr) 372px;
   grid-template-areas: 'left stage right';
-  gap: 14px; padding: 14px; min-height: 100%; align-items: stretch;
+  gap: var(--wm-gutter); padding: var(--wm-gutter); min-height: 100%; align-items: stretch;
 }
+/* The rails close the window back up: --wm-panel is Console at .92, which over
+   the .75 floor composites to a .98 surface — the "near-full opacity" the token
+   exists for. They carry the room, the roster and the selector, so they stay a
+   console; only the stage opens.
+
+   The zero-offset ring is not a shadow, it is the gutter: it closes the shell's
+   padding and gaps back to .88 Void over the .75 floor, i.e. the .97 the page
+   used to be, so opening the stage does not also open the frame around
+   everything. Adjacent panels' rings meet inside a gap and overlap to .996 —
+   black either way, ~5/255 apart on the brightest scene. */
 .wm-lobby .col {
-  border: 1px solid var(--wm-border); background: rgb(var(--wm-surface-rgb) / .55);
+  border: 1px solid var(--wm-border); background: var(--wm-panel);
+  box-shadow: 0 0 0 var(--wm-gutter) rgb(var(--wm-bg-rgb) / .88);
   min-width: 0; min-height: 0;
 }
 
@@ -218,8 +236,28 @@ const CSS = `
 .wm-lobby .rail-mark { font-size: 15px; margin-top: 20px; color: var(--wm-fg-dim); }
 
 /* ── stage: the current map, written large ───────────────────────────────── */
+/* The one surface that stays open. It adds no fill of its own, so it reads at
+   the page floor — .75 Void over the live scene — and the map you are about to
+   drop into is visible behind its own name. Everything inside it that needs a
+   denser ground (the dock) buys that ground itself rather than closing the
+   whole panel. */
 .wm-lobby .stage {
   grid-area: stage; position: relative; display: flex; flex-direction: column; overflow: hidden;
+  background: none;
+}
+/* The header keeps its ground. DESIGN.md publishes Steel Lift at 7.0:1 and Ice
+   White Dim at 10.0:1 *on the Void*, and the open stage takes the Void away —
+   CURRENT MAP over a blown-out sky measures 3.8:1, under the floor for a 10px
+   string. So the window closes toward its own header: .72 Void at the top
+   (composite .93, which puts Steel Lift back at 6.8:1) fading to nothing well
+   below the last line of type, so there is no edge to read as a bar. */
+.wm-lobby .stage::before {
+  content: ''; position: absolute; inset: 0 0 auto; height: 38%; z-index: 0;
+  pointer-events: none;
+  background: linear-gradient(to bottom,
+    rgb(var(--wm-bg-rgb) / .72) 0%,
+    rgb(var(--wm-bg-rgb) / .55) 42%,
+    rgb(var(--wm-bg-rgb) / 0) 100%);
 }
 .wm-lobby .stage-hd { position: relative; z-index: 2; padding: 24px 30px 0; }
 .wm-lobby .curmap {
@@ -256,17 +294,24 @@ const CSS = `
 }
 .wm-lobby .stage.has-art .hero-plan { display: none; }
 /* The plan is drawn one cell per couple of device pixels; "pixelated" keeps the
-   blocks square instead of smearing them at 6x. */
+   blocks square instead of smearing them at 6x. Its .35 was calibrated against
+   a black stage — on the open stage the scene fills the gaps between the plan's
+   blocks, so a dim plan reads as haze rather than as a floorplan and the figure
+   has to out-run its new ground. */
 .wm-lobby .hero-plan canvas {
   max-width: 100%; max-height: 100%; width: auto; height: auto;
-  image-rendering: pixelated; opacity: .35;
+  image-rendering: pixelated; opacity: .6;
 }
 
 /* the action dock — primary, copy, key hints, and the optional alt link */
+/* The dock is the one thing on the open stage that needs a stable ground: the
+   primary CTA's contrast cannot depend on what the scene happens to be doing
+   behind it. .68 Void over the .75 floor composites to α .92, so it still
+   reads as part of the window rather than a black slab pasted onto it. */
 .wm-lobby .dock {
   position: absolute; z-index: 3; left: 50%; bottom: 22px; transform: translateX(-50%);
   width: min(440px, calc(100% - 44px));
-  background: rgb(var(--wm-bg-rgb) / .92); border: 1px solid var(--wm-border);
+  background: rgb(var(--wm-bg-rgb) / .68); border: 1px solid var(--wm-border);
   padding: 20px 20px 14px; display: flex; flex-direction: column; gap: 10px;
 }
 .wm-lobby .btn {
@@ -374,6 +419,70 @@ const CSS = `
 }
 .wm-lobby .count .sub { margin-top: 12px; font-family: var(--wm-mono); font-size: 10px;
   letter-spacing: .18em; text-transform: uppercase; color: var(--wm-muted-fg); }
+
+/* ── ceremony ────────────────────────────────────────────────────────────── */
+/* The end-of-match screen: the verdict written in the display face, the reason
+   under it in the mono register, the final standings as hairline rows, and one
+   primary action home. Same overlay treatment as the countdown — the ceremony
+   replaces the lobby body rather than floating over it. */
+.wm-lobby .cere {
+  position: fixed; inset: 0; z-index: 4; display: grid; place-items: center;
+  padding: 40px 24px; background: rgb(var(--wm-bg-rgb) / .97); overflow-y: auto;
+}
+.wm-lobby .cere-inner {
+  display: flex; flex-direction: column; align-items: center; gap: 16px;
+  width: min(860px, 100%); text-align: center;
+}
+/* Sized so a 20-character callsign plus "wins" survives at the tracking —
+   the verdict is a name, not a fixed word, and a name must not ellipsise. */
+.wm-lobby .cere .verdict {
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: var(--wm-display); font-weight: 300; font-size: clamp(30px, 4.2vw, 60px);
+  line-height: 1.1; letter-spacing: .16em; text-transform: uppercase; color: var(--wm-fg);
+}
+.wm-lobby .cere .verdict.beat { animation: wm-beat 180ms cubic-bezier(.2,.85,.3,1); }
+.wm-lobby .cere .how {
+  font-family: var(--wm-mono); font-size: 10.5px; font-weight: 400; letter-spacing: .3em;
+  text-transform: uppercase; color: var(--wm-muted-fg);
+}
+.wm-lobby .board {
+  width: min(560px, 100%); margin-top: 10px; padding: 4px 16px;
+  border: 1px solid var(--wm-border); background: rgb(var(--wm-surface-rgb) / .55);
+  text-align: left;
+}
+.wm-lobby .board .brow { display: flex; align-items: baseline; gap: 12px; padding: 10px 2px; }
+.wm-lobby .board .brow + .brow { border-top: 1px solid var(--wm-border); }
+.wm-lobby .board .brow.head { padding: 8px 2px; }
+/* The winner's row carries the same inset accent tick a fresh roster row does —
+   selection is a mark, not a wash. */
+.wm-lobby .board .brow.win { box-shadow: inset 3px 0 0 var(--wm-accent); padding-left: 10px; }
+.wm-lobby .board .rank {
+  width: 22px; flex: none; font-family: var(--wm-mono); font-size: 10px; font-weight: 500;
+  letter-spacing: .1em; color: var(--wm-muted-fg); font-variant-numeric: tabular-nums;
+}
+/* The livery square: the colour a player is identified by in the world, so the
+   board reads at the same glance the match did. Painted per-row from the ai
+   palette at runtime — the value is data, not a stylesheet colour. */
+.wm-lobby .board .liv { width: 9px; height: 9px; flex: none; align-self: center; background: var(--wm-muted); }
+.wm-lobby .board .who {
+  flex: 1 1 auto; min-width: 0; font-size: 13px; font-weight: 500; letter-spacing: .04em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--wm-fg-dim);
+}
+.wm-lobby .board .brow.me .who { color: var(--wm-fg); }
+.wm-lobby .board .num {
+  width: 34px; flex: none; text-align: right; font-family: var(--wm-mono); font-size: 12px;
+  font-weight: 500; color: var(--wm-fg-dim); font-variant-numeric: tabular-nums;
+}
+.wm-lobby .board .num.k { color: var(--wm-fg); }
+.wm-lobby .board .col-lbl {
+  width: 34px; flex: none; text-align: right; font-family: var(--wm-mono); font-size: 9px;
+  font-weight: 500; letter-spacing: .18em; text-transform: uppercase; color: var(--wm-muted-fg);
+}
+.wm-lobby .cere .btn { max-width: 340px; margin-top: 8px; }
+.wm-lobby .cere .auto {
+  font-family: var(--wm-mono); font-size: 9.5px; font-weight: 400; letter-spacing: .18em;
+  text-transform: uppercase; color: var(--wm-muted-fg);
+}
 
 /* ── touch ───────────────────────────────────────────────────────────────── */
 /* A touch session (body.wm-touch, set at boot) has no keyboard: the keycap
@@ -508,6 +617,7 @@ export class MatchStartUI {
     this.onBots = null;
     this.onName = null;
     this.onSettings = null;
+    this.onCeremonyDone = null; // the ceremony's one action — back to the lobby
 
     this.root.innerHTML = `
       <div class="shell" data-body>
@@ -588,6 +698,17 @@ export class MatchStartUI {
           <div class="sub" data-count-sub>Deploying to the floor</div>
         </div>
       </div>
+
+      <div class="cere hide" data-cere>
+        <div class="cere-inner">
+          <span class="eyebrow" data-cere-eyebrow>Match complete</span>
+          <h2 class="verdict" data-cere-verdict></h2>
+          <div class="how" data-cere-how></div>
+          <div class="board" data-cere-board></div>
+          <button type="button" class="btn btn-primary" data-cere-btn>${PLAY_SVG}<span>Back to the lobby</span></button>
+          <div class="auto" data-cere-auto></div>
+        </div>
+      </div>
     `;
 
     const q = (sel) => this.root.querySelector(sel);
@@ -619,6 +740,13 @@ export class MatchStartUI {
     this.countN = q('[data-count-n]');
     this.countLbl = q('[data-count-lbl]');
     this.countSub = q('[data-count-sub]');
+    this.cereEl = q('[data-cere]');
+    this.cereEyebrow = q('[data-cere-eyebrow]');
+    this.cereVerdict = q('[data-cere-verdict]');
+    this.cereHow = q('[data-cere-how]');
+    this.cereBoard = q('[data-cere-board]');
+    this.cereBtn = q('[data-cere-btn]');
+    this.cereAuto = q('[data-cere-auto]');
     this.stripNet = q('[data-strip-net]');
     this.stripPrimary = q('[data-strip-primary]');
 
@@ -649,6 +777,7 @@ export class MatchStartUI {
     }
 
     this.primaryBtn.addEventListener('click', () => this.onPrimary?.());
+    this.cereBtn.addEventListener('click', () => this.onCeremonyDone?.());
     this.altBtn.addEventListener('click', () => this.onAlt?.());
     this.copyBtn.addEventListener('click', () => this.onCopyInvite?.());
     this.copyBtn2.addEventListener('click', () => this.onCopyInvite?.());
@@ -664,6 +793,12 @@ export class MatchStartUI {
       if (e.key === 'Enter') {
         if (typing) {
           this.nameIn.blur();
+          return;
+        }
+        // The ceremony owns the screen when it is up, and it has one action.
+        if (!this.cereEl.classList.contains('hide')) {
+          e.preventDefault();
+          this.onCeremonyDone?.();
           return;
         }
         if (!this.primaryBtn.disabled) {
@@ -1070,6 +1205,9 @@ export class MatchStartUI {
   showCountdown(on) {
     this.bodyEl.classList.toggle('hide', on);
     this.countEl.classList.toggle('hide', !on);
+    // A room start can land while the ceremony is up (a warm-up that ended
+    // while friends readied) — the countdown takes the screen.
+    if (on) this.cereEl.classList.add('hide');
   }
 
   setCountdown(n, label = 'Match starting', sub = 'Deploying to the floor') {
@@ -1083,6 +1221,90 @@ export class MatchStartUI {
     }
     this.countLbl.textContent = label;
     this.countSub.textContent = sub;
+  }
+
+  /**
+   * Swap the lobby body for the end-of-match ceremony.
+   *
+   * @param {object} m
+   *   eyebrow   the small tracked label over the verdict ('Match complete')
+   *   verdict   the big line — a winner's callsign, 'Victory', 'Draw', …
+   *   colour    CSS colour for the verdict, or null for Ice White. This is the
+   *             winner's livery — the hue they were identified by in the match.
+   *   how       the reason line ('First to 15' / 'Time — full 5:00 played')
+   *   rows      [{ name, kills, deaths, colour, me, win }] final standings,
+   *             already sorted; null/empty hides the board (a bots match shows
+   *             you against the garrison instead of a one-line table)
+   */
+  setCeremony({ eyebrow = 'Match complete', verdict = '', colour = null, how = '', rows = null } = {}) {
+    this.cereEyebrow.textContent = eyebrow;
+    this.cereVerdict.textContent = verdict;
+    this.cereVerdict.style.color = colour ?? '';
+    // Restart the beat, same trick as the countdown digits.
+    this.cereVerdict.classList.remove('beat');
+    void this.cereVerdict.offsetWidth;
+    this.cereVerdict.classList.add('beat');
+    this.cereHow.textContent = how;
+
+    this.cereBoard.textContent = '';
+    this.cereBoard.classList.toggle('hide', !rows?.length);
+    if (rows?.length) {
+      const head = document.createElement('div');
+      head.className = 'brow head';
+      const spacer = document.createElement('span');
+      spacer.className = 'who';
+      const kh = document.createElement('span');
+      kh.className = 'col-lbl';
+      kh.textContent = 'K';
+      const dh = document.createElement('span');
+      dh.className = 'col-lbl';
+      dh.textContent = 'D';
+      head.append(spacer, kh, dh);
+      this.cereBoard.appendChild(head);
+      rows.forEach((r, i) => {
+        const row = document.createElement('div');
+        row.className = `brow${r.me ? ' me' : ''}${r.win ? ' win' : ''}`;
+        const rank = document.createElement('span');
+        rank.className = 'rank';
+        rank.textContent = String(i + 1).padStart(2, '0');
+        const liv = document.createElement('span');
+        liv.className = 'liv';
+        if (r.colour) liv.style.background = r.colour;
+        const who = document.createElement('span');
+        who.className = 'who';
+        // A bots match names your row literally 'You' — suffixing that one
+        // would read "You (you)".
+        who.textContent = r.name + (r.me && !/^you$/i.test(r.name) ? ' (you)' : '');
+        const k = document.createElement('span');
+        k.className = 'num k';
+        k.textContent = String(r.kills ?? 0);
+        const d = document.createElement('span');
+        d.className = 'num';
+        d.textContent = String(r.deaths ?? 0);
+        row.append(rank, liv, who, k, d);
+        this.cereBoard.appendChild(row);
+      });
+    }
+  }
+
+  /** The auto-return line under the button. 0 or less clears it. */
+  setCeremonyReturn(seconds) {
+    this.cereAuto.textContent = seconds > 0 ? `Returning to the lobby in ${Math.ceil(seconds)}s` : '';
+  }
+
+  showCeremony(on) {
+    this.bodyEl.classList.toggle('hide', on);
+    this.cereEl.classList.toggle('hide', !on);
+    if (on) {
+      this.countEl.classList.add('hide');
+      requestAnimationFrame(() => {
+        try {
+          this.cereBtn.focus({ preventScroll: true });
+        } catch {
+          /* focus is a nicety, never a requirement */
+        }
+      });
+    }
   }
 
   /** Move keyboard focus onto the primary button so Enter/Tab work immediately. */

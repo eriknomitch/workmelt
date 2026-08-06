@@ -19,6 +19,13 @@ export class Room {
     this.countdownMs = Number(env.COUNTDOWN_MS ?? 3000);
     /** How far a start may be pushed back to sweep in late arrivals. */
     this.maxStartMs = Number(env.MAX_START_MS ?? this.countdownMs * 3);
+    /**
+     * Bounded free-for-all: first to `scoreLimit` kills wins, `matchMs` is the
+     * time cap after which the leader wins. Sized for a quick work-break match.
+     * Mirrors SCORE_LIMIT / MATCH_MS in server/index.mjs.
+     */
+    this.scoreLimit = Math.max(1, Number(env.SCORE_LIMIT ?? 15));
+    this.matchMs = Math.max(10_000, Number(env.MATCH_MS ?? 5 * 60_000));
 
     /** ws -> peer */
     this.sessions = new Map();
@@ -36,6 +43,8 @@ export class Room {
     this.startCap = 0;
     /** Peer ids this start deploys — everyone else stays in the lobby. */
     this.starting = new Set();
+    /** When the running match ends on time (ms epoch). 0 while no match. */
+    this.matchUntil = 0;
     this.tickHandle = null;
   }
 
@@ -113,6 +122,9 @@ export class Room {
           live: this._isLive(),
           map: this.map,
           startIn: this._startRemaining(),
+          // The bounded-match contract, for a client joining a live match.
+          limit: this.scoreLimit,
+          matchLeft: this.matchUntil ? Math.max(0, this.matchUntil - Date.now()) : 0,
           peers: this._roster().filter((p) => p.id !== peer.id),
         });
         this._broadcast({ t: 'peer_join', id: peer.id, name: peer.name, skin: peer.skin }, peer.id);
@@ -150,6 +162,14 @@ export class Room {
         peer.warm = !!msg.solo;
         peer.ready = false;
         this.starting.delete(peer.id);
+        if (peer.deployed && !peer.warm) {
+          // A late joiner enters the match's scoreline at zero, and the first
+          // body on the floor starts the clock when no start signal set one.
+          peer.kills = 0;
+          peer.deaths = 0;
+          if (!this.matchUntil) this.matchUntil = Date.now() + this.matchMs;
+          this._broadcast({ t: 'score', roster: this._roster() });
+        }
         this._sendLobby();
         // Stepping out of the lobby can complete the ready set — see the note on
         // the same call in server/index.mjs.
@@ -164,6 +184,8 @@ export class Room {
         peer.warm = false;
         peer.ready = false;
         this.starting.delete(peer.id);
+        // The clock must not keep running against an empty floor.
+        if (!this._isLive()) this.matchUntil = 0;
         this._sendLobby();
         // The last player out of a match can complete a waiting ready set.
         this._maybeStart();
@@ -210,6 +232,9 @@ export class Room {
           headshot: !!msg.headshot,
         });
         this._broadcast({ t: 'score', roster: this._roster() });
+        if (killer && killer.deployed && !killer.warm && killer.kills >= this.scoreLimit) {
+          this._endMatch('score', killer.id);
+        }
         break;
       }
       case 'respawn':
@@ -259,6 +284,7 @@ export class Room {
     }
     // A departure can complete the ready set, or take the last deployed player
     // with it and drop the room back to a lobby.
+    if (!this._isLive()) this.matchUntil = 0;
     this._sendLobby();
     this._maybeStart();
   }
@@ -322,9 +348,71 @@ export class Room {
     this.startAt = now + this.countdownMs;
     this.startCap = now + this.maxStartMs;
     this.starting = new Set(cohort.map((p) => p.id));
-    for (const p of cohort) p.ready = false;
-    this._broadcast({ t: 'match_start', in: this.countdownMs, ids: [...this.starting] });
+    // A match is a fresh scoreline; the clock runs from the countdown's end.
+    for (const p of cohort) {
+      p.ready = false;
+      p.kills = 0;
+      p.deaths = 0;
+    }
+    this.matchUntil = this.startAt + this.matchMs;
+    this._broadcast({
+      t: 'match_start',
+      in: this.countdownMs,
+      ids: [...this.starting],
+      limit: this.scoreLimit,
+      ms: this.matchMs,
+    });
+    this._broadcast({ t: 'score', roster: this._roster() });
     this._sendLobby();
+  }
+
+  /* ---- bounded match ----
+   * First to `scoreLimit` kills, or the leader when `matchMs` runs out. One
+   * authoritative end signal, like the start. Mirrors endMatch()/standings()
+   * in server/index.mjs — read the notes there.
+   */
+
+  _standings() {
+    return [...this.sessions.values()]
+      .filter((p) => p.deployed && !p.warm)
+      .sort((a, b) => b.kills - a.kills || a.deaths - b.deaths || a.id - b.id)
+      .map((p) => ({ id: p.id, name: p.name, kills: p.kills, deaths: p.deaths, skin: p.skin }));
+  }
+
+  _endMatch(reason, winnerId) {
+    const rows = this._standings();
+    if (!rows.length) return;
+    this._broadcast({
+      t: 'match_end',
+      reason,
+      winner: winnerId ?? null,
+      limit: this.scoreLimit,
+      ms: this.matchMs,
+      standings: rows,
+    });
+    this.matchUntil = 0;
+    for (const p of this.sessions.values()) {
+      if (!p.deployed || p.warm) continue;
+      p.deployed = false;
+      p.warm = false;
+      p.ready = false;
+    }
+    this._sendLobby();
+    this._maybeStart();
+  }
+
+  _maybeEndOnTime() {
+    if (!this.matchUntil || Date.now() < this.matchUntil) return;
+    if (this._startRemaining() > 0) return;
+    const rows = this._standings();
+    if (!rows.length) {
+      this.matchUntil = 0;
+      return;
+    }
+    const [a, b] = rows;
+    const winner =
+      !b || a.kills > b.kills || (a.kills === b.kills && a.deaths < b.deaths) ? a.id : null;
+    this._endMatch('time', winner);
   }
 
   /** Push a running countdown back to a full one for a late arrival, up to the cap. */
@@ -342,6 +430,7 @@ export class Room {
   }
 
   _tick() {
+    this._maybeEndOnTime();
     const states = [];
     for (const peer of this.sessions.values()) {
       // Warm-ups are private in both directions — see _broadcastMatch().

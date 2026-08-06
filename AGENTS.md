@@ -77,7 +77,15 @@ either works: `test:quality` = `src/core/selftest.mjs`, `test:graphics` =
   garrison chips, keyboard shortcuts — over
   `?renderGame=false`, so no engine boots and it runs in seconds even without
   a GPU. It cannot see the join flow; that stays `playtest:lobby`'s job.
+- `node src/match/bounds.selftest.mjs` checks the client half of the bounded-match
+  contract: the default kill target and time cap (and that the relay and Durable
+  Object default to the same numbers), the bots-match tally that can be won and
+  lost, and the time-expiry outcomes including the draw.
 - `node server/map.selftest.mjs` walks the relay's room-map protocol against a real server on a real socket.
+- `node server/bounds.selftest.mjs` does the same for the bounded match: the
+  fresh scoreline at the start signal, `match_end` on the winning kill, the
+  time cap crowning the leader, and the room un-living at the horn so the
+  rematch flow opens.
 - `node server/lobby.selftest.mjs` does the same for the match-start lobby: that a
   warm-up against bots stays private and does not lock the room, that a warm-up
   player is pulled into the countdown instead of having to leave first, the forced
@@ -156,11 +164,11 @@ Read on demand, not loaded at session start:
 ## Verifying a change
 
 **Default to not rendering.** The Node-only self-tests carry most of the real
-coverage and are effectively free — all twenty of them (`physics`, `ai`,
+coverage and are effectively free — all twenty-one of them (`physics`, `ai`,
 `ai/lod`, `ai/footstep`, `weapons/balance`, `weapons/throwables`,
 `weapons/loadout`, `weapons/autoreload`, `audio/attenuation`, `core` × 4,
-`render/resolution`, `render/dof`, `ui/touch`, `world/maps`, `world/collision`,
-`world/spawns`, `match/streaks`) run in ~10 s combined, and
+`render/resolution`, `render/dof`, `ui/touch`, `match/bounds`, `match/streaks`,
+`world/maps`, `world/collision`, `world/spawns`) run in ~10 s combined, and
 `world/maps.selftest.mjs` builds every map headlessly without a browser at all.
 Run those plus `npm run build` and stop there unless the change is genuinely a
 function of the image.
@@ -173,10 +181,10 @@ find src server \( -name 'selftest.*' -o -name '*.selftest.*' \) | sort
 
 Note both halves of that pattern — four suites are a bare `selftest.js`/`.mjs`
 (`physics`, `ai`, `core`, `audio`) and `-name '*.selftest.*'` alone silently
-misses them. It returns 24 files; the twenty above are the free ones. The
-other four are not: `server/{lobby,map,skin}.selftest.mjs` each stand up a real
-relay on a real socket, and `src/audio/selftest.js` is a library the audio probe
-drives from a page — run directly it exits 0 having asserted nothing.
+misses them. It returns 26 files; the twenty-one above are the free ones. The
+other five are not: `server/{bounds,lobby,map,skin}.selftest.mjs` each stand up
+a real relay on a real socket, and `src/audio/selftest.js` is a library the audio
+probe drives from a page — run directly it exits 0 having asserted nothing.
 
 **When the change *is* a function of the image** — shading, post-processing,
 materials, lighting, layout, a HUD or menu surface — or when it needs the

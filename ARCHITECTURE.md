@@ -119,8 +119,10 @@ Emit and listen via `ctx.events`. Payloads are plain objects. The canonical set:
 | `net:join` / `net:leave` | `{ id, name, colour, count }` — somebody else entered or left the room. `colour` is their livery as a CSS colour (null until the relay has assigned a slot) and `count` is how many are in the room afterwards, so a listener can raise the presence card (`src/ui/presence.js`) without reaching into `net`'s peer table | net |
 | `net:countdown` | `{ ms }` — the relay fired the pre-match start signal | net |
 | `net:kill` | `{ by, victim, headshot, mine }` — a relay-confirmed PvP kill | net |
+| `net:matchend` | `{ reason: 'score'\|'time', winner, limit, standings, mine }` — the relay ended the room's bounded match (first to the kill target, or the leader at full time). `winner` is a peer id or null for a draw; `standings` is the final sorted board. `match` renders the ceremony off this. | net |
 | `match:start` | `{ bots, squads, perSquad, mode, map }` — the match is live | match |
 | `match:countdown` | `{ seconds }` | match |
+| `match:end` | `{ reason: 'left'\|'pulled-in'\|'complete' }` — the match is over and the lobby owns the screen again. `complete` means it ran its bounds out (ceremony shown); the others are a player-initiated exit. | match |
 | `streak:kills` | `{ kills }` — the local player's kills-without-dying count moved (a kill, or back to 0 on death / match start). Bot kills are counted off `damage:dealt { killed }`, PvP kills off `net:kill { mine }`; nothing counts outside a live match. | match |
 | `streak:earned` | `{ reward: 'uav'\|'mortar', kills }` — a killstreak tier was reached and BANKED. Rewards survive the death that ends the streak and wait on the activation key (Digit5). | match |
 | `streak:activated` | `{ reward, position? }` — a banked reward fired. `position` is the mortar's aim point; a UAV also emits `streak:uav` in the same frame. | match |
