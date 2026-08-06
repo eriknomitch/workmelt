@@ -26,6 +26,8 @@
  *   COUNTDOWN_MS  pre-match countdown once everyone is ready (default 3000)
  *   MAX_START_MS  how long a start signal may be pushed back to sweep in late
  *                 arrivals (default 3× COUNTDOWN_MS)
+ *   SCORE_LIMIT   kills that win a match outright (default 15)
+ *   MATCH_MS      match length before the leader wins on time (default 5 min)
  *
  * Run:  node server/index.mjs      (after `npm run build`)
  * Dev:  the vite client auto-connects to ws://<host>:8787 — just run this too.
@@ -47,6 +49,15 @@ const COUNTDOWN_MS = Number(process.env.COUNTDOWN_MS ?? 3000);
  * or a room where somebody keeps reloading the page never starts at all.
  */
 const MAX_START_MS = Number(process.env.MAX_START_MS ?? COUNTDOWN_MS * 3);
+/**
+ * Every match is a bounded free-for-all: first to SCORE_LIMIT kills wins, and
+ * MATCH_MS is the outer edge — when it expires the leader wins on time. The
+ * defaults are sized for a quick match during a work break: 15 kills is a few
+ * minutes of honest shooting in a small room, and five minutes caps it even
+ * when everybody is hiding.
+ */
+const SCORE_LIMIT = Math.max(1, Number(process.env.SCORE_LIMIT ?? 15));
+const MATCH_MS = Math.max(10_000, Number(process.env.MATCH_MS ?? 5 * 60_000));
 const ROOT = resolve(import.meta.dirname, '..');
 const DIST = join(ROOT, 'dist');
 
@@ -148,6 +159,8 @@ function getRoom(code) {
       startCap: 0,
       /** Peer ids this start deploys — everyone else stays in the lobby. */
       starting: new Set(),
+      /** When the running match ends on time (ms epoch). 0 while no match. */
+      matchUntil: 0,
     };
     rooms.set(code, r);
   }
@@ -311,9 +324,91 @@ function startMatch(room, cohort) {
   room.startAt = now + COUNTDOWN_MS;
   room.startCap = now + MAX_START_MS;
   room.starting = new Set(cohort.map((p) => p.id));
-  for (const p of cohort) p.ready = false;
-  broadcast(room, { t: 'match_start', in: COUNTDOWN_MS, ids: [...room.starting] });
+  // A match is a fresh scoreline for everyone in it — the last match's kills
+  // must not put anybody one shot from the score limit at the horn.
+  for (const p of cohort) {
+    p.ready = false;
+    p.kills = 0;
+    p.deaths = 0;
+  }
+  // The clock runs from the moment players are actually on the floor.
+  room.matchUntil = room.startAt + MATCH_MS;
+  broadcast(room, {
+    t: 'match_start',
+    in: COUNTDOWN_MS,
+    ids: [...room.starting],
+    limit: SCORE_LIMIT,
+    ms: MATCH_MS,
+  });
+  broadcast(room, { t: 'score', roster: roster(room) });
   sendLobby(room);
+}
+
+/**
+ * The match's final order: kills decide, fewer deaths breaks a tie, and the
+ * relay id (join order) keeps the sort stable. Time-expiry declares the top
+ * row the winner only when it actually beats the second — otherwise the match
+ * is a draw and says so, rather than crowning whoever joined first.
+ */
+function standings(room) {
+  return [...room.peers.values()]
+    .filter((p) => inMatch(p))
+    .sort((a, b) => b.kills - a.kills || a.deaths - b.deaths || a.id - b.id)
+    .map((p) => ({ id: p.id, name: p.name, kills: p.kills, deaths: p.deaths, skin: p.skin }));
+}
+
+/**
+ * End the room's match: one authoritative signal, like the start.
+ *
+ * Everybody in the match is undeployed here rather than waiting on each
+ * client's `undeploy` — the room must stop being LIVE the moment the match
+ * ends, or a player closing the tab during the ceremony would hold the map
+ * locked and the ready flow shut for everyone else. Clients treat `match_end`
+ * as the relay having already stepped them out.
+ */
+function endMatch(room, reason, winnerId) {
+  const rows = standings(room);
+  if (!rows.length) return;
+  broadcast(room, {
+    t: 'match_end',
+    reason,
+    winner: winnerId ?? null,
+    limit: SCORE_LIMIT,
+    ms: MATCH_MS,
+    standings: rows,
+  });
+  room.matchUntil = 0;
+  for (const p of room.peers.values()) {
+    if (!inMatch(p)) continue;
+    p.deployed = false;
+    p.warm = false;
+    p.ready = false;
+  }
+  sendLobby(room);
+  // A ready set may already be armed for the rematch (players who left early
+  // and pressed "ready up for the next match") — the end is what unblocks it.
+  maybeStart(room);
+}
+
+/** Kill-target check, called on every confirmed kill. */
+function maybeEndOnScore(room, killer) {
+  if (killer && inMatch(killer) && killer.kills >= SCORE_LIMIT) {
+    endMatch(room, 'score', killer.id);
+  }
+}
+
+/** Time check, called from the tick. The leader wins; a dead heat is a draw. */
+function maybeEndOnTime(room) {
+  if (!room.matchUntil || Date.now() < room.matchUntil) return;
+  if (startRemaining(room) > 0) return; // still counting down — clock not live
+  const rows = standings(room);
+  if (!rows.length) {
+    room.matchUntil = 0;
+    return;
+  }
+  const [a, b] = rows;
+  const winner = !b || a.kills > b.kills || (a.kills === b.kills && a.deaths < b.deaths) ? a.id : null;
+  endMatch(room, 'time', winner);
 }
 
 /**
@@ -432,6 +527,10 @@ function handle(peer, msg) {
         // Non-zero when a countdown is already running: this player is joining
         // it, not the match it is about to become.
         startIn: startRemaining(room),
+        // The bounded-match contract, so a client walking into a live match
+        // can paint the score target and the clock without waiting for a kill.
+        limit: SCORE_LIMIT,
+        matchLeft: room.matchUntil ? Math.max(0, room.matchUntil - Date.now()) : 0,
         peers: roster(room).filter((p) => p.id !== peer.id),
       });
       // Announce to everyone else.
@@ -484,6 +583,17 @@ function handle(peer, msg) {
       peer.warm = !!msg.solo;
       peer.ready = false;
       room.starting.delete(peer.id);
+      if (inMatch(peer)) {
+        // Entering the match is entering its scoreline at zero — this is the
+        // late "deploy now" joiner, whose last match must not follow them in.
+        peer.kills = 0;
+        peer.deaths = 0;
+        // The first body on the floor is what starts the clock when a match
+        // forms without a start signal (a lone player deploying into a live-
+        // from-elsewhere room, or an old client). A running clock is kept.
+        if (!room.matchUntil) room.matchUntil = Date.now() + MATCH_MS;
+        broadcast(room, { t: 'score', roster: roster(room) });
+      }
       sendLobby(room);
       // Stepping out of the lobby can complete the ready set: the players left in
       // it were waiting on everybody in the lobby, and there is now one fewer.
@@ -503,6 +613,9 @@ function handle(peer, msg) {
       peer.warm = false;
       peer.ready = false;
       room.starting.delete(peer.id);
+      // The last player out takes the match with them — the clock must not
+      // keep running against an empty floor and end a match nobody is in.
+      if (!isLive(room)) room.matchUntil = 0;
       sendLobby(room);
       // The last player out of a match un-lives the room, which can complete a
       // ready set that has been waiting for exactly that.
@@ -564,6 +677,7 @@ function handle(peer, msg) {
         headshot: !!msg.headshot,
       });
       broadcast(room, { t: 'score', roster: roster(room) });
+      maybeEndOnScore(room, killer);
       break;
     }
 
@@ -621,6 +735,7 @@ function leave(peer) {
   }
   // Someone leaving can complete the ready set — or empty out the last deployed
   // player, which drops the room back to a lobby for whoever is still here.
+  if (!isLive(room)) room.matchUntil = 0;
   sendLobby(room);
   maybeStart(room);
 }
@@ -631,6 +746,7 @@ function leave(peer) {
 
 setInterval(() => {
   for (const room of rooms.values()) {
+    maybeEndOnTime(room);
     const states = [];
     for (const p of room.peers.values()) {
       // A warm-up is private: its transform never enters the match, and the

@@ -65,6 +65,14 @@ export class NetSystem {
      */
     this.lobby = { live: false, players: [], map: null };
     this.ready = false;
+    /**
+     * The bounded-match contract as the relay states it: `limit` is the kill
+     * target, `endsAt` (performance.now() ms) is when the leader wins on time,
+     * 0 while no room match is running. `match` paints the HUD from this; the
+     * relay's `match_end` is what actually ends anything.
+     */
+    this.matchLimit = 0;
+    this.matchEndsAt = 0;
     /** Have we ever been welcomed? Separates "connecting" from "dropped out". */
     this.everConnected = false;
     /** `MAX_ROOM` when the relay turned us away for a full room, else 0. */
@@ -215,6 +223,7 @@ export class NetSystem {
       this._clearPeers();
       this.lobby = { live: false, players: [], map: this.lobby?.map ?? null };
       this.ready = false;
+      this.matchEndsAt = 0;
       this._readyIds.clear();
       this._emitLobby();
       if (this._wantReconnect) this._scheduleReconnect();
@@ -264,6 +273,10 @@ export class NetSystem {
         this.tickHz = msg.tickHz ?? SEND_HZ;
         this.lobby.live = !!msg.live;
         if (msg.map) this.lobby.map = msg.map;
+        // Walking into a live match: the relay says how it is bounded, so the
+        // scoreline and the clock are honest from the first frame.
+        if (typeof msg.limit === 'number') this.matchLimit = msg.limit;
+        this.matchEndsAt = Number(msg.matchLeft) > 0 ? performance.now() + Number(msg.matchLeft) : 0;
         for (const p of msg.peers ?? []) this._ensurePeer(p.id, p.name, p);
         // A reconnect lands here too, and the relay has no memory of the socket
         // it lost. Say where we are again, or a room whose players are all still
@@ -315,13 +328,46 @@ export class NetSystem {
         this._emitLobby();
         break;
       }
-      case 'match_start':
+      case 'match_start': {
         // `ids` is the set the relay is deploying. An unready player in a forced
         // start is not one of them — the room simply goes live around them and
         // the lobby offers "deploy now". An older relay omits it: everybody goes.
         if (Array.isArray(msg.ids) && this.myId != null && !msg.ids.includes(this.myId)) break;
-        this.ctx.events.emit('net:countdown', { ms: Math.max(0, Number(msg.in) || 0) });
+        const inMs = Math.max(0, Number(msg.in) || 0);
+        if (typeof msg.limit === 'number') this.matchLimit = msg.limit;
+        // The clock runs from the countdown's end. An older relay sends no
+        // `ms`; the HUD then simply shows no time cap, and nothing else breaks.
+        this.matchEndsAt = Number(msg.ms) > 0 ? performance.now() + inMs + Number(msg.ms) : 0;
+        this.ctx.events.emit('net:countdown', { ms: inMs });
         break;
+      }
+      case 'match_end': {
+        // The relay ended the room's match — score limit or full time — and has
+        // already stepped everyone in it out (the lobby frame confirms). Hand
+        // the result to `match`, which owns the ceremony; this system only
+        // resets its own idea of being deployed so a reconnect does not
+        // re-declare a match that is over.
+        this._deployed = false;
+        this._warm = false;
+        this._deadSince = -1;
+        this.matchEndsAt = 0;
+        this.roster = msg.standings ?? this.roster;
+        this.ctx.events.emit('net:matchend', {
+          reason: msg.reason === 'time' ? 'time' : 'score',
+          winner: msg.winner ?? null,
+          limit: Number(msg.limit) || 0,
+          standings: (msg.standings ?? []).map((r) => ({
+            id: r.id,
+            name: r.name,
+            kills: r.kills ?? 0,
+            deaths: r.deaths ?? 0,
+            colour: this._liveryCss(r),
+            me: r.id === this.myId,
+          })),
+          mine: msg.winner === this.myId,
+        });
+        break;
+      }
       case 'snapshot':
         this._onSnapshot(msg.states);
         break;
