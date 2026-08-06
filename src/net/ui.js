@@ -88,6 +88,8 @@ const CSS = `
   font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: var(--wm-muted-fg); }
 .cod-mp .hintkey .k { border: 1px solid var(--wm-border); border-radius: 3px;
   padding: 1px 5px; margin-right: 4px; color: var(--wm-fg-dim); }
+/* No keyboard on a touch session — the Tab-scoreboard hint reads as broken. */
+body.wm-touch .cod-mp .hintkey { display: none; }
 `;
 
 export class NetUI {

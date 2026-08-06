@@ -208,6 +208,14 @@ export const DEFAULTS = {
    */
   autoReload: true,
   invertY: false,
+  /**
+   * Touch session: the on-screen controls are up, pointer lock is never
+   * requested, and the lost-lock pause watchdog stands down. Decided once at
+   * boot by `detectTouchMode()` (src/core/input.js); `?touch=1|0` overrides.
+   */
+  touchMode: false,
+  /** Player multiplier on touch-look speed. Persisted by `core/controls.js`. */
+  touchSensitivity: 1,
   exposure: 1.0,
   /** Capture mode disables anything nondeterministic so screenshots are stable. */
   deterministic: false,

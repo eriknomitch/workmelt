@@ -204,7 +204,13 @@ export class Movement {
     const jump = input.action('jump');
     const crouch = input.action('crouch');
     const prone = input.action('prone');
-    const sprint = input.action('sprint') || Math.abs(this.ctx.input.stick.moveY) > 0.92;
+    // Full deflection sprints on both analogue sources: gamepad (raw axis,
+    // either sign) and the virtual touch stick (+y forward only — a thumb
+    // pulled fully back is a retreat, not a sprint request).
+    const sprint =
+      input.action('sprint') ||
+      Math.abs(this.ctx.input.stick.moveY) > 0.92 ||
+      this.ctx.input.touch.moveY > 0.92;
 
     cmd.jump = jump && !prev.jump;
     cmd.jumpHeld = jump;

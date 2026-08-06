@@ -37,7 +37,17 @@ export const DEFAULT_CONTROLS = Object.freeze({
   adsMode: 'hold',
   adsKey: 'KeyX',
   autoReload: true,
+  /**
+   * Multiplier on touch-look drag speed, on top of `config.sensitivity` and
+   * the fixed pixel scale in `core/input.js`. Its own knob because a thumb on
+   * glass and a mouse on a desk are different instruments: tuning one must not
+   * detune the other. Only surfaced in the menu on a touch session.
+   */
+  touchSensitivity: 1,
 });
+
+/** Clamp range for `touchSensitivity` — matches the menu slider. */
+export const TOUCH_SENS_RANGE = Object.freeze({ min: 0.3, max: 3 });
 
 /**
  * Codes ADS may not steal: everything the game already binds, plus the keys the
@@ -120,7 +130,13 @@ export function normalizeControls(raw) {
   // the default (on), and truthy junk does not silently become a choice.
   const autoReload =
     typeof raw?.autoReload === 'boolean' ? raw.autoReload : DEFAULT_CONTROLS.autoReload;
-  return { version: 1, adsMode, adsKey, autoReload };
+  // A finite number inside the slider's range, or the default — junk and
+  // out-of-range values must not produce an unplayable spin rate.
+  const ts = Number(raw?.touchSensitivity);
+  const touchSensitivity = Number.isFinite(ts)
+    ? Math.min(TOUCH_SENS_RANGE.max, Math.max(TOUCH_SENS_RANGE.min, ts))
+    : DEFAULT_CONTROLS.touchSensitivity;
+  return { version: 1, adsMode, adsKey, autoReload, touchSensitivity };
 }
 
 export function loadControlSettings(storage = browserStorage()) {

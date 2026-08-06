@@ -2,7 +2,13 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <!-- user-scalable=no / maximum-scale=1: pinch zoom over a live FPS canvas
+         is never intent, and a double-tap zoom mid-firefight is a soft-lock.
+         The menus honour OS-level accessibility zoom, which this cannot block. -->
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"
+    />
     <title>WORKMELT — Tactical Shooter</title>
     <meta name="theme-color" content="#28303d" />
     <meta
@@ -32,8 +38,17 @@
       * { margin: 0; padding: 0; box-sizing: border-box; }
       /* Graphite — the void behind panels, never black. */
       html, body { width: 100%; height: 100%; overflow: hidden; background: #181c28; }
-      body { font-family: "Inter", "Helvetica Neue", Arial, sans-serif; -webkit-font-smoothing: antialiased; }
-      #game { display: block; width: 100vw; height: 100vh; touch-action: none; }
+      body {
+        font-family: "Inter", "Helvetica Neue", Arial, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        /* Mobile: no rubber-banding, no pull-to-refresh, no long-press callout
+           over the game — the canvas is not a document. */
+        overscroll-behavior: none;
+        -webkit-touch-callout: none;
+      }
+      /* dvh follows the collapsing browser chrome on phones; the plain vh line
+         stays first as the fallback for engines without dynamic units. */
+      #game { display: block; width: 100vw; height: 100vh; height: 100dvh; touch-action: none; }
       /*
         THE CURSOR RULE.
 
