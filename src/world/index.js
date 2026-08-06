@@ -290,8 +290,14 @@ export class WorldSystem {
     // a spawn is not a reason to throw the point away — a crate at chest
     // height is.
     const R = 0.34; // a shade wider than the player capsule: spawns want room
+    // The datum a point is validated against is the LEVEL'S OWN floor at that
+    // spot, not sea level: `buildSpawnPoints` probes for real collision and
+    // rejects a floor more than 0.6 m off the datum, and on a terraced map
+    // (Shivam's street stands 2.2 m over its beach) an authored point on
+    // perfectly good ground would otherwise be dropped as "floor at +2.2 m".
+    // Flat maps are untouched — their analytic ground is ~0 everywhere.
     this.spawnPoints = buildSpawnPoints(this.map.spawnPoints, {
-      toWorld: (x, y, z) => A.toWorld(x, y, z),
+      toWorld: (x, y, z) => A.toWorld(x, y + (this.map.groundY?.(x, z) ?? 0), z),
       standable: this.map.standable,
       groundY: physics ? (x, z, fromY) => physics.groundHeight(x, z, fromY) : null,
       clear: physics

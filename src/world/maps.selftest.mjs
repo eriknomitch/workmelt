@@ -102,6 +102,24 @@ import {
   groundYDome,
 } from './dome.js';
 import {
+  SHIVAM,
+  DECK as ICE_DECK,
+  POOL as ICE_POOL,
+  STRUCTURES as SHIVAM_STRUCTURES,
+  TOWER as SHIVAM_TOWER,
+  WALL_GAPS,
+  WALL_GAP_W,
+  WALL_Z0,
+  REEF,
+  WEST_ROCKS,
+  PAVILION_STAIR,
+  KIOSK_STAIR,
+  CLUB_STAIR,
+  DECK_STAIR_Z,
+  inSolidShivam,
+  groundYShivam,
+} from './shivam.js';
+import {
   LOOP,
   EL,
   STATION,
@@ -1504,6 +1522,193 @@ for (const [sz, mx, mw] of DOME_MOUTHS) {
   ok(leaks.length === 0, `the ${sz < 0 ? 'north' : 'south'} mouth is sealed`,
     leaks.length ? `open at x=${leaks.join(',')}` : `${mw} m of opening covered`);
 }
+
+/* ────────────────────────────────────────────────────── shivam — the beach ── */
+console.log(B('\nshivam — the beach'));
+
+const shivam = mapById('shivam');
+
+/**
+ * THE TERRACES FLOW DOWNHILL. The north half of the map is three slabs whose
+ * steps are authored at 0.45 m precisely so they can be mantled anywhere —
+ * nudge one terrace and the step quietly becomes a wall, the lawn becomes a
+ * one-way drop, and nothing in a frame looks wrong.
+ */
+{
+  const steps = [SHIVAM.yStreet - SHIVAM.yLawn, SHIVAM.yLawn - SHIVAM.yProm];
+  ok(steps.every((s) => s > 0.2 && s <= 0.5), 'every terrace step is a mantle, not a wall',
+    steps.map((s) => s.toFixed(2)).join(', '));
+  ok(
+    SHIVAM.yStreet > SHIVAM.yLawn && SHIVAM.yLawn > SHIVAM.yProm && SHIVAM.yProm > SHIVAM.beachTop,
+    'and the terraces descend toward the sand'
+  );
+}
+
+/**
+ * THE SEA WALL IS ONE-WAY. Promenade side: 0.48 m — cover you can vault and
+ * drop over. Beach side: the wall plus the terrace face, well past any
+ * mantle, so the way back up is the three stairs. Both halves are one
+ * constant each; either drifting flips the map's whole north-south flow.
+ */
+ok(SHIVAM.wallH <= 0.5, 'the sea wall can be vaulted from the promenade', `${SHIVAM.wallH} m`);
+ok(
+  SHIVAM.yProm + SHIVAM.wallH - SHIVAM.beachTop > 1.0,
+  'but not from the beach',
+  `${(SHIVAM.yProm + SHIVAM.wallH - SHIVAM.beachTop).toFixed(2)} m face over the sand`
+);
+// The gaps are open floor and the wall between them is not.
+for (const g of WALL_GAPS) {
+  ok(shivam.isOpen(g, WALL_Z0 + 0.15) && shivam.isOpen(g, 2.2),
+    `the stair gap at x=${g} connects promenade to sand`);
+}
+{
+  const mids = [-33, -12, 7, 19.5]; // segment midpoints between the gaps
+  ok(mids.every((x) => inSolidShivam(x, WALL_Z0 + 0.15, 0)), 'and the wall between the gaps blocks');
+}
+
+/** Solids: no two overlap, everything inside the perimeter. */
+{
+  const rects = SHIVAM_STRUCTURES.filter((s) => s.id !== 'tower')
+    .map((s) => ({ id: s.id, x0: s.x - s.w / 2, z0: s.z - s.d / 2, x1: s.x + s.w / 2, z1: s.z + s.d / 2 }));
+  rects.push({ id: 'pool', x0: ICE_POOL.x0, z0: ICE_POOL.z0, x1: ICE_POOL.x1, z1: ICE_POOL.z1 });
+  const overlaps = [];
+  for (let i = 0; i < rects.length; i++)
+    for (let j = i + 1; j < rects.length; j++) {
+      const a = rects[i];
+      const b = rects[j];
+      if (a.x0 < b.x1 && a.x1 > b.x0 && a.z0 < b.z1 && a.z1 > b.z0) overlaps.push(`${a.id} ∩ ${b.id}`);
+    }
+  ok(overlaps.length === 0, 'nothing solid is inside anything else solid', overlaps.join(', '));
+  const outside = rects.filter(
+    (r) => r.x0 < -SHIVAM.halfX || r.x1 > SHIVAM.halfX || r.z0 < SHIVAM.zBack || r.z1 > ICE_DECK.z1
+  );
+  ok(outside.length === 0, 'everything solid is inside the perimeter', outside.map((r) => r.id).join(' '));
+}
+
+/**
+ * THE SURF LINE IS SEALED. The one perimeter that cannot be a wall: from the
+ * west side to the Icebergs deck the reef chain must interrupt every walk
+ * line into the water, and the deck itself (with its parapets) seals the
+ * rest. Same probe as Rust's gates — shallow on purpose.
+ */
+{
+  const leaks = [];
+  for (let x = -SHIVAM.halfX + 0.5; x <= ICE_DECK.x0 - 0.2; x += 0.2) {
+    let solid = false;
+    for (let z = SHIVAM.zSurf; z <= SHIVAM.zSurf + 4 && !solid; z += 0.2) {
+      if (inSolidShivam(x, z, 0)) solid = true;
+    }
+    if (!solid) leaks.push(x.toFixed(1));
+  }
+  ok(leaks.length === 0, 'the reef seals the surf line, west wall to deck',
+    leaks.length ? `open at x=${leaks.slice(0, 5).join(',')}` : `${(ICE_DECK.x0 + SHIVAM.halfX).toFixed(0)} m of waterline`);
+  // and the chain really is a chain — consecutive rects must overlap
+  const gaps = [];
+  for (let i = 1; i < REEF.length; i++) {
+    const [ax, az, ar] = REEF[i - 1];
+    const [bx, bz, br] = REEF[i];
+    if (ax + ar * 0.75 < bx - br * 0.75 || Math.abs(az - bz) > (ar + br) * 0.75) gaps.push(i);
+  }
+  ok(gaps.length === 0, 'the reef rocks chain without a gap', gaps.length ? `broken at ${gaps.join(',')}` : `${REEF.length} rocks`);
+}
+{
+  const leaks = [];
+  for (let z = 0.5; z <= SHIVAM.zSurf; z += 0.2) {
+    let solid = false;
+    for (let x = -SHIVAM.halfX + 0.2; x <= -SHIVAM.halfX + 4.5 && !solid; x += 0.2) {
+      if (inSolidShivam(x, z, 0)) solid = true;
+    }
+    if (!solid) leaks.push(z.toFixed(1));
+  }
+  ok(leaks.length === 0, 'the headland rocks seal the west end of the sand',
+    leaks.length ? `open at z=${leaks.slice(0, 5).join(',')}` : 'sea wall to reef corner');
+}
+ok(
+  !shivam.isOpen(0, SHIVAM.zSurf + 3) && !shivam.isOpen(33, ICE_DECK.z1 + 1.5) &&
+    !shivam.isOpen(0, SHIVAM.zBack - 1.5) && !shivam.isOpen(-SHIVAM.halfX - 1, -10) &&
+    !shivam.isOpen(SHIVAM.halfX + 1, -10),
+  'outside the perimeter is not playable ground'
+);
+
+/**
+ * THE ICE_POOL IS A DETOUR, NEVER A TRAP — the same contract as the Fisher's
+ * pool. The floor sits a mantle below the coping, the water between the two,
+ * and a full apron ring survives around it.
+ */
+ok(ICE_DECK.y - ICE_POOL.floorY <= 0.5, 'the pool can be mantled out of anywhere on its rim',
+  `${(ICE_DECK.y - ICE_POOL.floorY).toFixed(2)} m deep`);
+ok(ICE_POOL.floorY < ICE_POOL.waterY && ICE_POOL.waterY < ICE_DECK.y, 'and its water sits inside the basin');
+ok(
+  ICE_POOL.x0 - ICE_DECK.x0 >= 2.5 && ICE_DECK.x1 - ICE_POOL.x1 >= 2.5 && ICE_DECK.z1 - ICE_POOL.z1 >= 2.0,
+  'the apron ring around the pool is wide enough to fight on',
+  `${(ICE_POOL.x0 - ICE_DECK.x0).toFixed(1)} / ${(ICE_DECK.x1 - ICE_POOL.x1).toFixed(1)} / ${(ICE_DECK.z1 - ICE_POOL.z1).toFixed(1)} m`
+);
+ok(shivam.isOpen(ICE_DECK.x0 + 1.2, DECK_STAIR_Z) && shivam.isOpen(ICE_DECK.x0 - 2.5, DECK_STAIR_Z),
+  'the deck beach stair has floor at both ends');
+
+/**
+ * THE PAVILION IS THE LANDMARK. Tallest position on the map, biggest
+ * footprint, and its roof is reached by one stair whose foot starts from
+ * open lawn — the three constants that hold that route live in three places.
+ */
+{
+  const pav = SHIVAM_STRUCTURES.find((s) => s.id === 'pavilion');
+  const roofs = SHIVAM_STRUCTURES.map((s) => (s.id === 'tower' ? SHIVAM_TOWER.deckY : s.floorY + s.h));
+  const pavRoof = pav.floorY + pav.h;
+  ok(roofs.every((r) => r <= pavRoof), 'the pavilion roof is the highest position',
+    `${pavRoof.toFixed(1)} m vs ${roofs.map((r) => r.toFixed(1)).join('/')}`);
+  ok(
+    SHIVAM_STRUCTURES.every((s) => s.w * s.d <= pav.w * pav.d),
+    'and its footprint is the biggest on the map'
+  );
+  ok(Math.abs(PAVILION_STAIR.x) < pav.w / 2 - 1.5, 'its roof stair lands inside the parapet line');
+}
+// Every roof stair's foot starts from open ground, or the roof is scenery.
+for (const [id, x, z] of [
+  ['pavilion', PAVILION_STAIR.x, PAVILION_STAIR.footZ - 0.5],
+  ['kiosk', KIOSK_STAIR.x, KIOSK_STAIR.footZ + 1.2],
+  ['clubhouse', CLUB_STAIR.x, CLUB_STAIR.footZ - 1.2],
+]) {
+  ok(shivam.isOpen(x, z), `the ${id} roof stair has open ground to start from`, `(${x}, ${z})`);
+}
+
+// The floor: flat on each terrace, monotonic down the sand, underwater past
+// the surf — `groundY` is what spawns validate against and props drop onto.
+{
+  let flat = true;
+  for (let x = -40; x <= 40 && flat; x += 2) {
+    if (groundYShivam(x, -26) !== SHIVAM.yStreet) flat = false;
+    if (groundYShivam(x, -18) !== SHIVAM.yLawn) flat = false;
+    if (groundYShivam(x, -7) !== SHIVAM.yProm && !(x >= -13 && x <= 13) && !(x >= -37 && x <= -29)) flat = false;
+  }
+  ok(flat, 'each terrace is dead flat — every height on this map is built');
+  ok(
+    groundYShivam(0, 1) > groundYShivam(0, 8) && groundYShivam(0, 8) > groundYShivam(0, 13),
+    'the sand falls toward the water'
+  );
+  ok(groundYShivam(0, 20) < -0.22, 'and the seabed is under the water plane past the surf');
+  ok(groundYShivam(25.5, 15) === ICE_DECK.y && groundYShivam(33, 16) === ICE_POOL.floorY,
+    'the deck and the pool answer for their own floor');
+}
+
+// Sample the floor. A beach should read open — the structures, the pool, the
+// wall and the rock chains have to keep it under an empty field.
+{
+  let open = 0;
+  let total = 0;
+  for (let x = -SHIVAM.halfX; x <= SHIVAM.halfX; x += 1)
+    for (let z = SHIVAM.zBack; z <= ICE_DECK.z1; z += 1) {
+      total++;
+      if (shivam.isOpen(x, z)) open++;
+    }
+  const frac = open / total;
+  ok(frac > 0.55 && frac < 0.9, 'walkable fraction sits in the open-beach band', frac.toFixed(2));
+}
+
+// The wall gaps must line up with where the sea wall actually breaks — the
+// spawn-side tables and the build both read WALL_GAPS, so what can drift is
+// a gap wide enough to matter: two bodies, like the bases' doors.
+ok(WALL_GAP_W >= 1.6, 'every sea-wall stair gap passes two players', `${WALL_GAP_W} m`);
 
 console.log(
   fail === 0
