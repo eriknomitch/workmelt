@@ -4,7 +4,7 @@ import { registerProps } from './props.js';
 import { registerWilmotProps } from './wilmotprops.js';
 import { registerFisherProps } from './fisherprops.js';
 import { registerShivamProps } from './shivamprops.js';
-import { fbm3, paintMasks, patchGeometry, rockGeometry, driftBerm } from './util.js';
+import { fbm3, paintMasks, patchGeometry, rockGeometry, driftBerm, tubeY } from './util.js';
 
 /**
  * WORLD — SHIVAM.
@@ -122,6 +122,26 @@ export const PAVILION_STAIR = { x: -2, footZ: -21.2 };
 export const KIOSK_STAIR = { x: -33, footZ: -2.4 };
 export const CLUB_STAIR = { x: 36, footZ: -4.8 };
 export const DECK_STAIR_Z = 4; // the beach stair in the deck's west parapet
+
+/**
+ * THE ROO — the map's ambient kangaroo (see `src/ai/roo.js`, which reads
+ * this off the descriptor's `critter` field at runtime).
+ *
+ * He grazes the lawn and hops the beach front inside `bounds` — kept west of
+ * the Icebergs and north of the surf so he never crosses his own respawn
+ * ritual. Shooting him is a frag going off at chest height. Bringing him
+ * back means standing on the lit pad on the Icebergs deck's south apron for
+ * `pad.hold` continuous seconds: far enough from his meadow that the ritual
+ * is a trip, on ground that is already authored standable (the self-test
+ * pins both).
+ */
+export const ROO = {
+  kind: 'roo',
+  home: { x: -8, z: -18 },
+  bounds: { x0: -38, z0: -26, x1: 21, z1: 13 },
+  pad: { x: 30.5, z: 24.4, r: 0.9, hold: 3 },
+  explosion: { radius: 6, damage: 95 },
+};
 
 /** Deterministic 0..1 hash for the rock tables — no rng at module scope. */
 const hash01 = (i, s) => ((i * s) % 97) / 97;
@@ -816,6 +836,19 @@ function buildIcebergs(A, rng, s) {
     railing: false,
   });
 
+  // THE ROO PAD: the lit ring on the south apron that brings the kangaroo
+  // back (see the ROO constants and `src/ai/roo.js`). A stone kerb around a
+  // glowing disc — emissive surface, so it reads "stand here" in any light.
+  // 6 cm proud of the deck: a texture on the floor is a stain, a kerb is a
+  // place. No collision proxy — it is a step, not an obstacle.
+  A.addOnce('stone_pale', tubeY(ROO.pad.r + 0.14, 0.06, { radial: 18 }),
+    LL(IDENT, ROO.pad.x, D.y, ROO.pad.z), { masks: [0.85, 0.3, 0.1] });
+  {
+    const glow = new THREE.CircleGeometry(ROO.pad.r, 18);
+    glow.rotateX(-Math.PI / 2);
+    A.addOnce('sign_glow', glow, LL(IDENT, ROO.pad.x, D.y + 0.065, ROO.pad.z));
+  }
+
   // rocks under the deck's seaward corners — the apron stands over the
   // shelf it is actually poured on, and the surf line needs the mass
   for (const [rx, rz, rs] of [
@@ -1126,4 +1159,6 @@ export const SHIVAM_MAP = {
   groundY: groundYShivam,
   isOpen: isOpenShivam,
   build: buildShivam,
+  /** The ambient kangaroo — `src/ai/roo.js` reads this at runtime. */
+  critter: ROO,
 };

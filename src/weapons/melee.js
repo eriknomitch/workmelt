@@ -121,6 +121,7 @@ export class Melee {
       point: this._point,
       part: 'torso',
       incident: this._incident,
+      source: 'player', // melee is only ever the local player's swing
     };
   }
 

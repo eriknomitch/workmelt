@@ -706,7 +706,14 @@ export class PhysicsSystem {
    * Returns an array of impact records (reused; copy what you keep).
    */
   fireBullet(opts) {
+    // Who pulled the trigger, carried onto every `damage:dealt` this trace
+    // emits. The trace is fully synchronous, so a plain field is enough —
+    // and without it a listener cannot tell a player's round from a bot's
+    // (both arrive here; projectile flight time breaks any event-ordering
+    // inference). 'player' | 'ai' | null.
+    this._bulletSource = opts.source ?? null;
     const n = this.ballistics.fire({ rng: this.rng, ...opts });
+    this._bulletSource = null;
     const res = this._impactResult;
     res.length = 0;
     for (let i = 0; i < n; i++) res.push(this.ballistics.impacts[i]);
@@ -736,6 +743,7 @@ export class PhysicsSystem {
         headshot: hit?.part === 'head',
         killed: false,
         point: p.point,
+        source: this._bulletSource ?? null,
       });
     }
   }
