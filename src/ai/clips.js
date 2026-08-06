@@ -125,7 +125,7 @@ const WALK = {
   thigh: 21, thighBias: -2, thighTwist: 1.5, splay: 1.5,
   kneeBase: 7, knee: 46, kneeStance: 8,
   ankle: 12, ankleBias: 2, toe: 16,
-  sway: 0.014, bob: 0.014, bobBias: -0.014,
+  sway: 0.012, bob: 0.008, bobBias: -0.008,
   pelvisTilt: -1, pelvisYaw: 4.5, pelvisRoll: 3.2,
   lean: 4, spineYaw: 3.4, armSwing: 3.5,
 };
@@ -134,7 +134,7 @@ const RUN = {
   thigh: 34, thighBias: 2, thighTwist: 2, splay: 2,
   kneeBase: 14, knee: 86, kneeStance: 22,
   ankle: 20, ankleBias: 4, toe: 26,
-  sway: 0.02, bob: 0.03, bobBias: -0.03,
+  sway: 0.018, bob: 0.018, bobBias: -0.018,
   pelvisTilt: -3, pelvisYaw: 7, pelvisRoll: 5,
   lean: 13, spineYaw: 6, armSwing: 7,
 };
