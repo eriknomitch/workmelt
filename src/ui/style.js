@@ -851,6 +851,128 @@ const CSS = `
   .ow-menu .grow { flex-basis: 100%; }
 }
 
+/* =========================================================== touch controls
+   Only ever on screen when body.wm-touch / .ow-hud.ow-touch is set (a real
+   touch session, decided at boot) — a capture run never sees any of this, so
+   the pixel baselines are untouched. Control sizes are raw px, NOT --k:
+   thumbs are a physical size, and a button that shrinks with the viewport is
+   a button a phone player cannot hit. Visual treatment is the HUD's outlined
+   language (this is in-world chrome, the DESIGN.md HUD exemption). */
+.ow-touchctl { position:absolute; inset:0; pointer-events:none; z-index:30; }
+.ow-touchctl.off { display:none; }
+.ow-touch-zone { position:absolute; pointer-events:auto; touch-action:none; }
+.ow-touch-zone.move { left:0; top:20%; bottom:0; width:44%; }
+.ow-touch-zone.look { right:0; top:12%; bottom:0; width:56%; }
+
+.ow-stick { position:absolute; left:0; top:0; opacity:0; pointer-events:none; }
+.ow-stick.on { opacity:1; }
+.ow-stick-ring {
+  position:absolute; left:-60px; top:-60px; width:120px; height:120px;
+  border-radius:50%; border:1.5px solid rgba(255,255,255,.35);
+  background: rgba(5,9,12,.20);
+  box-shadow: 0 0 0 1px rgba(0,0,0,.35), inset 0 0 0 1px rgba(0,0,0,.3);
+}
+.ow-stick-nub { position:absolute; left:0; top:0; }
+.ow-stick-nub::before {
+  content:''; position:absolute; left:-24px; top:-24px; width:48px; height:48px;
+  border-radius:50%; background: rgba(238,244,247,.82);
+  box-shadow: 0 0 0 1px rgba(0,0,0,.45), 0 0 12px rgba(0,0,0,.35);
+}
+.ow-stick.sprint .ow-stick-nub::before { background: var(--amber); }
+
+.ow-tbtn {
+  position:absolute; pointer-events:auto; touch-action:none;
+  width:52px; height:52px; border-radius:50%;
+  display:grid; place-items:center;
+  border:1.5px solid rgba(255,255,255,.38);
+  background: rgba(5,9,12,.32);
+  color: rgba(238,244,247,.92);
+  box-shadow: 0 0 0 1px rgba(0,0,0,.4);
+}
+.ow-tbtn svg {
+  width:46%; height:46%; display:block;
+  fill:none; stroke:currentColor; stroke-width:1.5;
+  stroke-linecap:round; stroke-linejoin:round;
+}
+.ow-tbtn.down { background: rgba(238,244,247,.26); border-color: rgba(255,255,255,.8); }
+.ow-tbtn.latched { border-color: var(--amber); color: var(--amber); }
+.ow-tbtn.hidden { display:none; }
+
+/* Per-side safe-area room (notches, home indicators), touch sessions only. */
+.ow-hud.ow-touch {
+  --safe-l: env(safe-area-inset-left, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+}
+.ow-tbtn.fire   { width:84px; height:84px; right: calc(116px + var(--safe-r)); bottom: calc(92px + var(--safe-b)); }
+.ow-tbtn.fire2  { width:64px; height:64px; left: calc(26px + var(--safe-l)); bottom: calc(150px + var(--safe-b)); }
+.ow-tbtn.ads    { right: calc(34px + var(--safe-r)); bottom: calc(198px + var(--safe-b)); }
+.ow-tbtn.jump   { width:60px; height:60px; right: calc(28px + var(--safe-r)); bottom: calc(96px + var(--safe-b)); }
+.ow-tbtn.crouch { width:48px; height:48px; right: calc(128px + var(--safe-r)); bottom: calc(22px + var(--safe-b)); }
+.ow-tbtn.reload { width:48px; height:48px; right: calc(208px + var(--safe-r)); bottom: calc(46px + var(--safe-b)); }
+.ow-tbtn.swap   { width:44px; height:44px; right: calc(284px + var(--safe-r)); bottom: calc(24px + var(--safe-b)); }
+.ow-tbtn.lethal   { width:46px; height:46px; right: calc(122px + var(--safe-r)); bottom: calc(206px + var(--safe-b)); }
+.ow-tbtn.tactical { width:44px; height:44px; right: calc(198px + var(--safe-r)); bottom: calc(158px + var(--safe-b)); }
+.ow-tbtn.use    { right: calc(126px + var(--safe-r)); bottom: calc(288px + var(--safe-b)); }
+.ow-tbtn.pause  { width:40px; height:40px; border-radius:6px; right: calc(10px + var(--safe-r)); top: calc(10px + var(--safe-t)); }
+
+/* HUD furniture moves out from under the thumbs on a touch session. */
+.ow-hud.ow-touch .ow-killfeed { top: calc(var(--pad) + 52px); right: calc(var(--pad) + var(--safe-r)); }
+.ow-hud.ow-touch .ow-minimap { left: calc(var(--pad) + var(--safe-l)); }
+/* Ammo leaves the bottom-right corner (the trigger cluster owns it) and sits
+   bottom-centre, clear of the crosshair and both thumb arcs. */
+.ow-hud.ow-touch .ow-ammo {
+  right:50%; transform: translateX(50%);
+  bottom: calc(var(--pad) + var(--safe-b));
+}
+.ow-hud.ow-touch .ow-ammo-head,
+.ow-hud.ow-touch .ow-ammo-row,
+.ow-hud.ow-touch .ow-equip { justify-content:center; }
+.ow-hud.ow-touch .ow-mag { justify-content:center; }
+.ow-hud.ow-touch .ow-reload-bar { margin-left:auto; margin-right:auto; }
+/* Vitals leave the bottom-left corner (the stick owns it) for under the map. */
+.ow-hud.ow-touch .ow-vitals {
+  left: calc(var(--pad) + var(--safe-l));
+  bottom:auto; top: calc(var(--pad) + 196px * var(--k));
+  width: calc(170px * var(--k));
+}
+
+/* ============================================================ rotate prompt
+   A WORKMELT product surface (brand tokens, not HUD ink): an FPS with a
+   thumbstick needs both hands, and both hands need landscape. */
+.wm-rotate { display:none; }
+@media (orientation: portrait) {
+  body.wm-touch .wm-rotate {
+    position:fixed; inset:0; z-index:95;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:14px; text-align:center; padding:24px;
+    background: rgb(var(--wm-void-rgb) / .94);
+    color: var(--wm-fg); font-family: var(--wm-body);
+    text-transform:none; letter-spacing:normal; pointer-events:auto;
+  }
+}
+.wm-rotate svg { width:44px; height:44px; display:block; color: var(--wm-accent);
+  fill:none; stroke:currentColor; stroke-width:1.5; stroke-linecap:round; stroke-linejoin:round; }
+.wm-rotate .t {
+  font-family: var(--wm-display); font-size:24px; letter-spacing:.12em;
+  text-transform:uppercase; color: var(--wm-fg);
+}
+.wm-rotate .s { font-size:12px; color: var(--wm-muted-fg); max-width:32ch; line-height:1.55; }
+
+/* Touch sessions read menus at thumb range: hit targets grow to >=40px and
+   the sliders get a fatter knob. Everything below is sizing only — every
+   colour still comes from the brand tokens. */
+body.wm-touch .ow-x { width:40px; height:40px; }
+body.wm-touch .ow-tab { padding: 10px 13px; font-size:11px; }
+body.wm-touch .ow-seg button { padding: 11px 14px; font-size:11px; }
+body.wm-touch .ow-select, body.wm-touch .ow-bind { padding: 11px 12px; font-size:12px; }
+body.wm-touch .ow-slider { height: 34px; }
+body.wm-touch .ow-slider .knob { width:18px; height:18px; }
+body.wm-touch .ow-btn { padding: 13px 22px 10px; }
+body.wm-touch .ow-menu { padding: max(24px, env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px)); }
+body.wm-touch .ow-lockhint { display:none !important; }
+
 /* ============================================================ perf readout */
 /* Debug overlay, not game chrome: monospace so digits do not reflow, plain dark
    plate rather than the HUD's outlined type, and it deliberately sits outside

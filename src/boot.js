@@ -16,6 +16,7 @@ import {
 } from './core/quality.js';
 import { applyGraphicsOverrides } from './core/graphics.js';
 import { DEFAULT_CONTROLS, loadControlSettings } from './core/controls.js';
+import { detectTouchMode } from './core/input.js';
 
 import { RenderSystem } from './render/index.js';
 import { MaterialSystem } from './materials/index.js';
@@ -71,11 +72,19 @@ const { enabled: adaptiveEnabled, quality: bootQuality } = resolveGraphicsBoot({
 // Capture runs must not inherit whatever aim style a previous session saved,
 // or a scripted ADS shot could come back hip-fired.
 const controls = capture ? { ...DEFAULT_CONTROLS } : loadControlSettings();
+// Touch mode never applies to a capture: the pixel gate frames a desktop HUD,
+// and an overlay of thumb controls in every baseline would be a visual change.
+const touchMode = !capture && detectTouchMode(params);
+// Menus (the lobby, the pause panel, the net overlay) read this class to grow
+// hit targets and drop keyboard hints; it is set before any UI exists.
+document.body.classList.toggle('wm-touch', touchMode);
 const config = createConfig({
   quality: bootQuality,
   adsMode: controls.adsMode,
   adsKey: controls.adsKey,
   autoReload: controls.autoReload,
+  touchMode,
+  touchSensitivity: controls.touchSensitivity,
   graphicsMode: graphics.mode,
   targetFps: graphics.targetFps,
   displayRefreshHz: graphics.refreshHz ?? 120,

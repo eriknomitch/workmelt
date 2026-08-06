@@ -46,7 +46,16 @@ either works: `test:quality` = `src/core/selftest.mjs`, `test:graphics` =
   frame, so a check that cannot fail would be worse than none.
 - `node src/audio/probe.mjs --port=5213` is the audio equivalent of the capture
   harness: offline render of every voice plus a live-graph event storm.
-- `npm run test:input` checks input aggregation and the persisted control binds.
+- `npm run test:input` checks input aggregation and the persisted control binds,
+  including the touch channel: virtual-stick merge and clamping, touch-look
+  folding and invert, synthetic button press/release (and that a held touch
+  button still releases after input is disabled), and the ADS toggle latch.
+- `node src/ui/touch.selftest.mjs` checks the touch control scheme's pure half:
+  the virtual-stick vector maths (deadzone continuity, unit clamp, +y forward,
+  the sprint gate) and that every on-screen button maps to a code the game
+  actually binds — a button bound to nothing would render, press, and do
+  nothing. Touch mode is decided by `detectTouchMode()` (`src/core/input.js`);
+  `?touch=1` / `?touch=0` force it for testing on the wrong hardware.
 - `npm run test:viewport` checks how the engine reacts to the window changing
   size: that a window drag costs one render-target reallocation rather than one
   per event, that a devicePixelRatio move at a fixed CSS size still reaches the
@@ -142,13 +151,13 @@ Read on demand, not loaded at session start:
 ## Verifying a change
 
 **Default to not rendering.** The Node-only self-tests carry most of the real
-coverage and are effectively free — all seventeen of them (`physics`, `ai`,
+coverage and are effectively free — all eighteen of them (`physics`, `ai`,
 `ai/lod`, `ai/footstep`, `weapons/balance`, `weapons/throwables`,
 `weapons/loadout`, `audio/attenuation`, `core` × 4, `render/resolution`,
-`render/dof`, `world/maps`, `world/collision`, `world/spawns`) run in ~10 s
-combined, and `world/maps.selftest.mjs` builds every map headlessly without a
-browser at all. Run those plus `npm run build` and stop there unless the change
-is genuinely a function of the image.
+`render/dof`, `ui/touch`, `world/maps`, `world/collision`, `world/spawns`) run
+in ~10 s combined, and `world/maps.selftest.mjs` builds every map headlessly
+without a browser at all. Run those plus `npm run build` and stop there unless
+the change is genuinely a function of the image.
 
 That list drifts as suites are added, so enumerate rather than trust it:
 
@@ -158,7 +167,7 @@ find src server \( -name 'selftest.*' -o -name '*.selftest.*' \) | sort
 
 Note both halves of that pattern — four suites are a bare `selftest.js`/`.mjs`
 (`physics`, `ai`, `core`, `audio`) and `-name '*.selftest.*'` alone silently
-misses them. It returns 21 files; the seventeen above are the free ones. The
+misses them. It returns 22 files; the eighteen above are the free ones. The
 other four are not: `server/{lobby,map,skin}.selftest.mjs` each stand up a real
 relay on a real socket, and `src/audio/selftest.js` is a library the audio probe
 drives from a page — run directly it exits 0 having asserted nothing.

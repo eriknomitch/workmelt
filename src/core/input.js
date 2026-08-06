@@ -6,6 +6,32 @@
  * the transition happened — read them in update(), not fixedUpdate().
  */
 
+/**
+ * True when this session should run the touch control scheme. Coarse-pointer
+ * capability alone is not enough (a touchscreen laptop still has a mouse), so
+ * both signals are required; `?touch=1` / `?touch=0` force it either way for
+ * testing on the wrong hardware.
+ */
+export function detectTouchMode(params) {
+  try {
+    const p = params ?? new URLSearchParams(globalThis.location?.search ?? '');
+    const forced = p.get('touch');
+    if (forced === '1') return true;
+    if (forced === '0') return false;
+  } catch {
+    /* no URL in this environment — fall through to capability sniffing */
+  }
+  const coarse = globalThis.matchMedia?.('(pointer: coarse)')?.matches === true;
+  const touchable =
+    (globalThis.navigator?.maxTouchPoints ?? 0) > 0 || 'ontouchstart' in (globalThis.window ?? {});
+  return coarse && touchable;
+}
+
+/** Raw touch-look pixels -> radians, before `config.sensitivity` and the
+ *  player's touch multiplier. ~1.8x the mouse count rate: a full-width swipe
+ *  on a phone should turn roughly half a revolution. */
+export const TOUCH_LOOK_SCALE = 1.8;
+
 export const ACTIONS = {
   forward: ['KeyW', 'ArrowUp'],
   back: ['KeyS', 'ArrowDown'],
@@ -52,6 +78,17 @@ export class Input {
     this.gamepadIndex = null;
     this.stick = { moveX: 0, moveY: 0, lookX: 0, lookY: 0 };
 
+    /**
+     * Touch control channel, fed by the on-screen overlay (src/ui/touch.js).
+     * `moveX`/`moveY` are already in the game convention (+y forward), clamped
+     * to the unit disc, and PERSIST between frames — a thumb resting on the
+     * stick is a held input, unlike the gamepad axes which are re-polled.
+     * Look arrives as raw pixels via `touchLook()` and is folded into `look`
+     * in `beginFrame`, exactly like the pointer path.
+     */
+    this.touch = { active: !!config.touchMode, moveX: 0, moveY: 0 };
+    this._rawTouchLook = { x: 0, y: 0 };
+
     /** Resolved once per frame from the ADS key latch + `config.adsMode`. */
     this._ads = false;
     this._adsLatched = false;
@@ -95,6 +132,10 @@ export class Input {
   }
 
   requestPointerLock() {
+    // Touch sessions never lock the pointer: there is no pointer to lose, and
+    // a granted lock on a hybrid device would hide the cursor the player is
+    // not using while the lost-lock watchdog fights the pause menu over it.
+    if (this.config.touchMode) return;
     // Chrome returns a promise that rejects if the document is not eligible
     // (headless capture, an iframe, a lock request too soon after an exit).
     // An unhandled rejection there shows up as a page error in the harness, so
@@ -157,9 +198,80 @@ export class Input {
     for (const code of this.down) this._pendingUp.add(code);
     this._rawLook.x = 0;
     this._rawLook.y = 0;
+    this._rawTouchLook.x = 0;
+    this._rawTouchLook.y = 0;
+    this.touch.moveX = 0;
+    this.touch.moveY = 0;
     // A latch is not a held key, so the release sweep above misses it: coming
     // back from a pause or an alt-tab should never leave the optic stuck up.
     this.clearAdsToggle();
+  }
+
+  /* ==================================================================== */
+  /* touch — driven by the on-screen overlay in src/ui/touch.js           */
+  /* ==================================================================== */
+
+  /** Accumulate a raw look drag in CSS pixels; consumed next `beginFrame`. */
+  touchLook(dx, dy) {
+    if (!this.enabled || this.frozen) return;
+    this._rawTouchLook.x += dx;
+    this._rawTouchLook.y += dy;
+  }
+
+  /**
+   * Set the virtual stick's held vector, +y forward, clamped to the unit disc.
+   * Persists until the next call — a resting thumb is a held input.
+   */
+  setTouchMove(x, y) {
+    if (!this.enabled || this.frozen) {
+      x = 0;
+      y = 0;
+    }
+    const len = Math.hypot(x, y);
+    if (len > 1) {
+      x /= len;
+      y /= len;
+    }
+    this.touch.moveX = x;
+    this.touch.moveY = y;
+  }
+
+  /** Press a synthetic control as if its key/button went down. */
+  touchPress(code) {
+    if (!this.enabled) return;
+    this._pendingDown.add(code);
+  }
+
+  /** Release a synthetic control. Never gated on `enabled` — a button held
+   *  when the menu takes input away must still let go, or the player fires
+   *  into the pause screen when input comes back. */
+  touchRelease(code) {
+    this._pendingUp.add(code);
+  }
+
+  /** One tap = a same-frame press+release; edge queries still see it. */
+  touchTap(code) {
+    this.touchPress(code);
+    this.touchRelease(code);
+  }
+
+  /** Synthetic wheel step — how the swap button cycles weapons. */
+  touchWheel(steps = 1) {
+    if (!this.enabled) return;
+    this._pendingWheel += steps;
+  }
+
+  /**
+   * Flip the shared ADS latch — the touch ADS button is always a toggle, like
+   * the keyboard bind: nobody can hold an aim button and aim with the same
+   * thumb. Uses the same latch as `_resolveAds`, so sprint still breaks it and
+   * `clearAdsToggle` still clears it.
+   */
+  toggleAds() {
+    if (!this.enabled) return;
+    this._adsLatched = !this._adsLatched;
+    this._ads =
+      this._adsLatched || (this.config.adsMode !== 'toggle' && this.down.has('Mouse2'));
   }
 
   /** Drop a latched ADS. Safe to call every frame. */
@@ -187,10 +299,18 @@ export class Input {
     this._pendingUp.clear();
 
     const s = this.config.sensitivity;
-    this.look.x = this.frozen ? 0 : this._rawLook.x * s;
-    this.look.y = this.frozen ? 0 : this._rawLook.y * s * (this.config.invertY ? -1 : 1);
+    // Touch look shares the mouse pipeline (same sensitivity base, same invert)
+    // with its own scale + player multiplier, so `look` stays the one number
+    // every consumer reads.
+    const ts = s * TOUCH_LOOK_SCALE * (this.config.touchSensitivity ?? 1);
+    const rawX = this._rawLook.x * s + this._rawTouchLook.x * ts;
+    const rawY = this._rawLook.y * s + this._rawTouchLook.y * ts;
+    this.look.x = this.frozen ? 0 : rawX;
+    this.look.y = this.frozen ? 0 : rawY * (this.config.invertY ? -1 : 1);
     this._rawLook.x = 0;
     this._rawLook.y = 0;
+    this._rawTouchLook.x = 0;
+    this._rawTouchLook.y = 0;
 
     this.wheel = this._pendingWheel;
     this._pendingWheel = 0;
@@ -296,6 +416,8 @@ export class Input {
     let y = (this.action('forward') ? 1 : 0) - (this.action('back') ? 1 : 0);
     x += this.stick.moveX;
     y -= this.stick.moveY;
+    x += this.touch.moveX;
+    y += this.touch.moveY;
     const len = Math.hypot(x, y);
     if (len > 1) {
       x /= len;

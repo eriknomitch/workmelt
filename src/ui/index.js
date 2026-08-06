@@ -15,6 +15,7 @@ import { PauseMenu } from './menu.js';
 import { CombatDemo } from './demo.js';
 import { PerfHud, PERF_MODES } from './perfhud.js';
 import { FlashFx } from './flash.js';
+import { TouchControls } from './touch.js';
 
 const MAX_BLIPS = 48;
 
@@ -113,6 +114,21 @@ export class UiSystem {
     // own z-index would trap it underneath. Mounted on the shared host instead,
     // with `position: fixed` and its own layer in src/ui/style.js.
     this.menu = new PauseMenu(host, ctx);
+
+    // Touch sessions get the on-screen control scheme (see touch.js) and a
+    // rotate-to-landscape prompt; a mouse session pays nothing for either.
+    this.root.classList.toggle('ow-touch', !!ctx.config.touchMode);
+    this.touch = ctx.config.touchMode ? new TouchControls(this.root, ctx, this) : null;
+    this.rotateHint = null;
+    if (ctx.config.touchMode) {
+      this.rotateHint = el('div', 'wm-rotate', host);
+      this.rotateHint.innerHTML =
+        '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="3.5" width="10" height="17" rx="2"/>' +
+        '<path d="M2.5 9.5a9.5 9.5 0 013.2-5.2M21.5 14.5a9.5 9.5 0 01-3.2 5.2"/>' +
+        '<path d="M2.5 5.5v4h4M21.5 18.5v-4h-4"/></svg>' +
+        '<span class="t">Rotate your device</span>' +
+        '<span class="s">WORKMELT plays in landscape — two thumbs, one arena.</span>';
+    }
 
     this.health.onBeat = (i) => this.sfx('heartbeat', 0.35 + i * 0.5);
 
@@ -543,22 +559,30 @@ export class UiSystem {
     if (ctx.input.enabled && !ctx.input.frozen) {
       if (ctx.input.actionPressed('pause')) this.menu.toggle();
       // Losing pointer lock mid-match is the same intent as pressing Escape.
-      if (ctx.input.pointerLocked) this._hadPointerLock = true;
-      else if (this._hadPointerLock && !this.menu.open) {
-        this._hadPointerLock = false;
-        this.menu.show();
+      // Touch sessions never hold a lock, so the watchdog stands down there —
+      // pausing is the on-screen button's job.
+      if (!ctx.config.touchMode) {
+        if (ctx.input.pointerLocked) this._hadPointerLock = true;
+        else if (this._hadPointerLock && !this.menu.open) {
+          this._hadPointerLock = false;
+          this.menu.show();
+        }
       }
     }
     // Live match, menu closed, no lock, and the grace window has run out: the
-    // browser is not going to hand it over without another gesture.
+    // browser is not going to hand it over without another gesture. Never on
+    // touch, where "click to resume" would nag forever about a lock that can
+    // not exist.
     this.menu.setLockHint(
       ctx.input.enabled &&
         !ctx.input.frozen &&
         !ctx.config.deterministic &&
+        !ctx.config.touchMode &&
         !ctx.input.pointerLocked &&
         !this.menu.open &&
         this._lockGrace <= 0
     );
+    this.touch?.update(rawDt, ctx);
     if (this.menu.open) this.menu.setQualityStatus(ctx.peek('quality')?.getStatus());
     this.menu.update(rawDt);
 
@@ -759,6 +783,8 @@ export class UiSystem {
     this.prompt.dispose();
     this.banner.dispose();
     this.perf?.dispose();
+    this.touch?.dispose();
+    this.rotateHint?.remove();
     this.menu.dispose();
     this.root.remove();
     removeStyles();

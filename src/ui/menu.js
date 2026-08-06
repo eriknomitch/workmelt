@@ -3,6 +3,7 @@ import { installBrand } from './brand.js';
 import {
   ADS_MODES,
   DEFAULT_CONTROLS,
+  TOUCH_SENS_RANGE,
   isBindableKey,
   keyLabel,
   saveControlSettings,
@@ -178,6 +179,25 @@ export class PauseMenu {
       return v.toFixed(2);
     });
 
+    // Touch-look speed, its own knob on top of the shared base sensitivity —
+    // a thumb on glass and a mouse on a desk are different instruments. Only
+    // surfaced on a touch session; the value still persists with the other
+    // control prefs either way.
+    this.touchSens = this._slider(
+      'Touch Sensitivity',
+      TOUCH_SENS_RANGE.min,
+      TOUCH_SENS_RANGE.max,
+      0.05,
+      (v) => {
+        this.ctx.config.touchSensitivity = v;
+        this.ctx.events.emit('ui:setting', { key: 'touchSensitivity', value: v });
+        return v.toFixed(2);
+      }
+    );
+    // Persist once the finger lets go, not on every drag sample.
+    this.touchSens.input.addEventListener('change', () => this._persistControls());
+    if (!ctx.config.touchMode) setStyle(this.touchSens.row, 'display', 'none');
+
     const invRow = this._row('Invert Look');
     const invSeg = el('div', 'ow-seg', invRow);
     this.invBtns = [];
@@ -252,6 +272,7 @@ export class PauseMenu {
     reset.type = 'button';
     reset.addEventListener('click', () => {
       this.sens.set(1);
+      this.touchSens.set(DEFAULT_CONTROLS.touchSensitivity);
       this.ctx.config.invertY = false;
       this._setAdsMode(DEFAULT_CONTROLS.adsMode);
       this._setAdsKey(DEFAULT_CONTROLS.adsKey);
@@ -537,7 +558,12 @@ export class PauseMenu {
 
   _persistControls() {
     const cfg = this.ctx.config;
-    saveControlSettings({ adsMode: cfg.adsMode, adsKey: cfg.adsKey, autoReload: cfg.autoReload });
+    saveControlSettings({
+      adsMode: cfg.adsMode,
+      adsKey: cfg.adsKey,
+      autoReload: cfg.autoReload,
+      touchSensitivity: cfg.touchSensitivity,
+    });
   }
 
   /**
@@ -614,13 +640,16 @@ export class PauseMenu {
       for (const [b, v] of this.adsModeBtns) b.classList.toggle('on', adsMode === v);
       const autoReload = cfg.autoReload !== false;
       for (const [b, v] of this.autoReloadBtns) b.classList.toggle('on', autoReload === v);
+      this.touchSens?.set(cfg.touchSensitivity ?? 1);
       // Don't stomp the prompt while the player is mid-rebind.
       if (!this._rebinding && this._keyFlash <= 0)
         setText(this.adsKeyBtn, keyLabel(cfg.adsKey ?? null));
       const aim = cfg.adsKey ? `${keyLabel(cfg.adsKey)}/RMB ADS` : 'RMB ADS';
       setText(
         this.hint,
-        `WASD MOVE · SHIFT SPRINT · ${aim} · R RELOAD · ESC ${this._resumeToGame ? 'RESUME' : 'CLOSE'}`
+        cfg.touchMode
+          ? 'LEFT STICK MOVE · PUSH FULL FORWARD TO SPRINT · DRAG RIGHT SIDE TO AIM'
+          : `WASD MOVE · SHIFT SPRINT · ${aim} · R RELOAD · ESC ${this._resumeToGame ? 'RESUME' : 'CLOSE'}`
       );
     } finally {
       this._syncing = false;

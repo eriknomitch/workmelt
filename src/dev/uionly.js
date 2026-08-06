@@ -25,6 +25,7 @@
  */
 
 import { MatchStartUI } from '../match/ui.js';
+import { detectTouchMode } from '../core/input.js';
 import { mapSummaries, resolveBootMap, saveMapPreference } from '../world/maps.js';
 
 const DEFAULT_BOTS = 'standard';
@@ -32,6 +33,9 @@ const DEFAULT_BOTS = 'standard';
 export async function bootUiOnly() {
   const params = new URLSearchParams(location.search);
   const multiplayer = params.get('mp') !== '0';
+  // Same class the real boot sets, so the lobby's touch dress (no keycap row,
+  // safe-area padding) is inspectable under ?renderGame=false&touch=1.
+  document.body.classList.toggle('wm-touch', detectTouchMode(params));
 
   const ui = new MatchStartUI({ multiplayer });
   ui.setMaps(mapSummaries());

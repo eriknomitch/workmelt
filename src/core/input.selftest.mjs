@@ -279,6 +279,7 @@ check('bad stored controls fall back instead of throwing', () => {
     adsMode: 'hold',
     adsKey: 'KeyX',
     autoReload: true,
+    touchSensitivity: 1,
   });
   // An explicit "no bind" has to round-trip, unlike a missing field.
   assert.equal(normalizeControls({ adsKey: null }).adsKey, null);
@@ -307,6 +308,7 @@ check('controls round-trip through storage', () => {
     adsMode: 'toggle',
     adsKey: 'KeyB',
     autoReload: false,
+    touchSensitivity: 1,
   });
 
   saveControlSettings({ adsMode: 'toggle', adsKey: null }, storage);
@@ -323,7 +325,113 @@ check('missing storage is not an error', () => {
     adsMode: 'toggle',
     adsKey: 'KeyX',
     autoReload: true,
+    touchSensitivity: 1,
   });
+});
+
+/* ----------------------------------------------------------------- touch -- */
+
+check('touch sensitivity round-trips and junk falls back clamped', () => {
+  assert.equal(normalizeControls({ touchSensitivity: 1.6 }).touchSensitivity, 1.6);
+  assert.equal(normalizeControls({ touchSensitivity: 99 }).touchSensitivity, 3);
+  assert.equal(normalizeControls({ touchSensitivity: 0 }).touchSensitivity, 0.3);
+  assert.equal(normalizeControls({ touchSensitivity: 'fast' }).touchSensitivity, 1);
+  assert.equal(normalizeControls({}).touchSensitivity, 1);
+});
+
+check('touch move merges into moveVector and clamps to the unit disc', () => {
+  const input = makeInput();
+  input.setTouchMove(0, 1);
+  const v = input.moveVector();
+  assert.equal(v.x, 0);
+  assert.equal(v.y, 1);
+
+  // Overlong vectors are clamped at the source...
+  input.setTouchMove(3, 4);
+  assert.ok(Math.hypot(input.touch.moveX, input.touch.moveY) <= 1 + 1e-9);
+  // ...and a diagonal of touch + keys is still clamped by moveVector itself.
+  down(input, 'KeyW');
+  input.beginFrame();
+  const d = input.moveVector();
+  assert.ok(Math.hypot(d.x, d.y) <= 1 + 1e-9);
+
+  // The stick persists between frames — a resting thumb is a held input.
+  input.beginFrame();
+  assert.ok(input.touch.moveY > 0, 'touch move must survive beginFrame');
+});
+
+check('touch look folds into look with the touch scale and invert', () => {
+  const input = makeInput();
+  input.touchLook(10, -4);
+  input.beginFrame();
+  const s = input.config.sensitivity * 1.8; // TOUCH_LOOK_SCALE
+  assert.ok(Math.abs(input.look.x - 10 * s) < 1e-9);
+  assert.ok(Math.abs(input.look.y - -4 * s) < 1e-9);
+  // Consumed: a second frame with no drag reads zero.
+  input.beginFrame();
+  assert.equal(input.look.x, 0);
+
+  input.config.invertY = true;
+  input.touchLook(0, 6);
+  input.beginFrame();
+  assert.ok(input.look.y < 0, 'invertY applies to touch look too');
+});
+
+check('touch buttons ride the normal press/release pipeline', () => {
+  const input = makeInput();
+  input.touchPress('Mouse0');
+  input.beginFrame();
+  assert.equal(input.fire, true);
+  assert.equal(input.firePressed, true);
+  input.touchRelease('Mouse0');
+  input.beginFrame();
+  assert.equal(input.fire, false);
+
+  // A tap lands both edges in one frame — how the pause button reaches
+  // `actionPressed('pause')` without a keyboard.
+  input.touchTap('Escape');
+  input.beginFrame();
+  assert.equal(input.actionPressed('pause'), true);
+  assert.equal(input.held('Escape'), false);
+});
+
+check('a held touch button releases even after input is disabled', () => {
+  const input = makeInput();
+  input.touchPress('Mouse0');
+  input.beginFrame();
+  assert.equal(input.fire, true);
+  input.enabled = false; // the pause menu takes input away mid-hold
+  input.touchRelease('Mouse0');
+  input.beginFrame();
+  assert.equal(input.fire, false, 'the release must not be swallowed');
+});
+
+check('toggleAds flips the shared latch and sprint still breaks it', () => {
+  const input = makeInput({ touchMode: true });
+  input.toggleAds();
+  input.beginFrame();
+  assert.equal(input.ads, true);
+  input.toggleAds();
+  input.beginFrame();
+  assert.equal(input.ads, false);
+
+  input.toggleAds();
+  input.beginFrame();
+  assert.equal(input.ads, true);
+  down(input, 'ShiftLeft');
+  input.beginFrame();
+  assert.equal(input.ads, false, 'sprint is gated on not being scoped');
+});
+
+check('blur zeroes the touch channel', () => {
+  const input = makeInput();
+  input.setTouchMove(0.5, 0.5);
+  input.touchLook(20, 20);
+  input._onBlur();
+  input.beginFrame();
+  assert.equal(input.touch.moveX, 0);
+  assert.equal(input.touch.moveY, 0);
+  assert.equal(input.look.x, 0);
 });
 
 console.log(`\ninput selftest: ${checks} checks passed`);

@@ -375,6 +375,15 @@ const CSS = `
 .wm-lobby .count .sub { margin-top: 12px; font-family: var(--wm-mono); font-size: 10px;
   letter-spacing: .18em; text-transform: uppercase; color: var(--wm-muted-fg); }
 
+/* ── touch ───────────────────────────────────────────────────────────────── */
+/* A touch session (body.wm-touch, set at boot) has no keyboard: the keycap
+   hint row is noise there, and safe-area padding keeps the rails off notches. */
+body.wm-touch .wm-lobby .keys { display: none; }
+body.wm-touch .wm-lobby {
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
 /* ── responsive ──────────────────────────────────────────────────────────── */
 /* Semantic thresholds, not device names: the selector drops under the stage as
    soon as three rails would squeeze the display type. */
