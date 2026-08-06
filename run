@@ -62,6 +62,9 @@ if ! kill_orphans; then
   exit 1
 fi
 
+# Keep node_modules in step with the lockfile before anything tries to boot.
+pnpm install || exit 1
+
 pnpm run dev:mp &
 until curl -sf http://localhost:${OW_PORT:-5273} >/dev/null; do
   sleep 0.2
