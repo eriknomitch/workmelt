@@ -15,6 +15,8 @@
  *                 cover point extraction and scoring
  *   agent.js      one enemy: senses, state machine, gun, hit zones, death
  *   squad.js      peek rotation, contact sharing, flank and grenade rationing
+ *   roo.js        the map critter (Shivam's kangaroo): harmless until a player
+ *                 shoots it, detonates, respawned by the lit pad ritual
  *
  * PUBLIC API — `const ai = ctx.get('ai')`
  *   ai.spawn(variant, position, yaw, opts) -> Agent   (opts.livery = colour slot)
@@ -60,6 +62,7 @@ import { Agent, STATE } from './agent.js';
 import { Squad } from './squad.js';
 import { GroundShadows } from './grounding.js';
 import { NetPuppet } from './puppet.js';
+import { Roo } from './roo.js';
 
 /**
  * How long a body stays on the ground before it is retired, and how long the
@@ -213,7 +216,23 @@ export class AiSystem {
     // the collision world is not registered yet.
     this._registerSpawnSource(ctx.peek('world'));
     this._bootNav(ctx);
+    this.roo = null;
+    this._syncCritter();
     await this.prewarmMaterials();
+  }
+
+  /**
+   * The map's ambient critter — today, Shivam's kangaroo. The descriptor
+   * carries the config (`map.critter`); this system owns the animal. Skipped
+   * under `deterministic` for the same reason the garrison is: a capture
+   * must not have a kangaroo mid-hop in it depending on wall-clock settle.
+   */
+  _syncCritter() {
+    this.roo?.dispose();
+    this.roo = null;
+    if (this.ctx.config.deterministic) return;
+    const cfg = this.ctx.peek('world')?.map?.critter;
+    if (cfg?.kind === 'roo') this.roo = new Roo(this.ctx, cfg, this.rng.fork(), this.root);
   }
 
   /**
@@ -376,6 +395,7 @@ export class AiSystem {
       this.grid = null;
       this.cover = null;
       this._navPending = true;
+      this._syncCritter();
     });
 
     on('weapon:fire', (e) => {
@@ -1134,6 +1154,7 @@ export class AiSystem {
         penetration: 0.9,
         maxDist: 200,
         mask: phys.MASK.BULLET,
+        source: 'ai',
       });
       if (impacts.length) end = impacts[0].point;
     }
@@ -1299,6 +1320,7 @@ export class AiSystem {
     }
     this._updateGrenades(dt);
     this._updateGarrison(dt);
+    this.roo?.update(dt);
     this.stats.agents = this.agents.length;
     this.stats.alive = alive;
   }
@@ -1703,6 +1725,8 @@ export class AiSystem {
     for (const off of this._off ?? []) off();
     this._offSpawnSource?.();
     this._offSpawnSource = null;
+    this.roo?.dispose();
+    this.roo = null;
     for (const a of this.agents) a.dispose();
     this.agents.length = 0;
     this.squads.length = 0;

@@ -161,6 +161,7 @@ export class ProjectileSim {
             penetration: p.penetration,
             dropoff: 1,
             mask: p.mask,
+            source: 'player', // this module simulates the local player's rounds
           });
           this.stats.impacts++;
           this._retire(p);

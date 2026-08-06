@@ -98,7 +98,8 @@ Emit and listen via `ctx.events`. Payloads are plain objects. The canonical set:
 | `weapon:melee` | `{ origin: Vector3, dir: Vector3, reach, damage }` — the local player's melee strike, fired on the swing's contact beat whether or not it connects. `weapons` settles bot hits itself (a `damage:dealt`, below); `net` listens to this and settles the PvP half against its puppet capsules, reading reach/damage arithmetic off `weapons.melee` so the two damage models agree. | weapons |
 | `bullet:impact` | `{ point, normal, surface, incident, damage }` | physics |
 | `bullet:tracer` | `{ from, to, speed }` | weapons |
-| `damage:dealt` | `{ target, amount, headshot, killed, point, applied? }` | ai / physics / weapons |
+| `damage:dealt` | `{ target, amount, headshot, killed, point, applied?, source? }` | ai / physics / weapons |
+| ↳ | `source` says who pulled the trigger: `'player'` (local player's rounds and melee) or `'ai'` (a bot's rounds), threaded through `physics.fireBullet({ source })`. Absent on payloads that predate it; a listener that keys behaviour off the shooter (the roo detonates only for `'player'`) must treat a missing source as "not the player". | |
 | ↳ | means *damage dealt **to** `target`*. `target` is the local player when an enemy round connects (`'player'`, the player system, or anything with `isPlayer === true`) — filter it out before drawing a hitmarker. Damage is applied by the target's own listener, never by the emitter as well. | |
 | ↳ | `applied: true` inverts that one rule: the emitter already applied the damage and the event is purely the report of it, for the hitmarker / announcer / killstreak listeners. `ai` emits these for player-sourced blast damage, which it applies itself inside its `explosion` listener; anything that applies damage off this event must skip a payload carrying the flag. | |
 | `damage:taken` | `{ amount, from: Vector3, health }` | player |
