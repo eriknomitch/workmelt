@@ -105,12 +105,13 @@ check('buckets clean animation-frame samples to a common display rate', () => {
   assert.equal(bucketRefreshRate([], 120), 120);
 });
 
-check('selects a pipeline tier from p95 performance against the target', () => {
-  assert.equal(chooseCalibrationTier(120, 120), 'ultra');
-  assert.equal(chooseCalibrationTier(90, 120), 'high');
-  assert.equal(chooseCalibrationTier(60, 120), 'medium');
-  assert.equal(chooseCalibrationTier(48, 120), 'low');
-  assert.equal(chooseCalibrationTier(30, 120), 'performance');
+check('selects a pipeline tier conservatively from medium-pipeline calibration', () => {
+  assert.equal(chooseCalibrationTier(120, 120), 'medium');
+  assert.equal(chooseCalibrationTier(144, 120), 'high');
+  assert.equal(chooseCalibrationTier(180, 120), 'ultra');
+  assert.equal(chooseCalibrationTier(90, 120), 'low');
+  assert.equal(chooseCalibrationTier(60, 120), 'low');
+  assert.equal(chooseCalibrationTier(30, 120), 'low');
 });
 
 check('performance tier exposes the aggressive Auto pipeline contract', () => {
@@ -139,17 +140,17 @@ check('loads versioned per-browser settings and rejects corrupt values', () => {
     getItem: () =>
       JSON.stringify({ version: 2, mode: 'auto', targetFps: 144, tier: 'high', renderScale: 0.8 }),
   };
-  // v3 added `overrides` (the advanced graphics options); a v2 profile migrates
-  // to "none set", which renders exactly what v2 rendered.
+  // v5 recalibrates legacy Auto profiles so the new initial-tier policy runs
+  // once rather than preserving an older direct walk-down result.
   assert.deepEqual(loadGraphicsSettings(storage), {
-    version: 3,
+    version: 5,
     mode: 'auto',
     targetFps: 144,
-    tier: 'high',
-    renderScale: 0.8,
+    tier: null,
+    renderScale: 1,
     refreshHz: null,
     signature: null,
-    calibrated: true,
+    calibrated: false,
     overrides: {},
   });
   assert.equal(loadGraphicsSettings({ getItem: () => '{bad' }).mode, 'auto');
@@ -164,6 +165,24 @@ check('loads versioned per-browser settings and rejects corrupt values', () => {
   assert.equal(migrated.targetFps, 90);
   assert.equal(migrated.tier, 'high');
   assert.equal(migrated.calibrated, true);
+
+  const retargeted = loadGraphicsSettings({
+    getItem: () => JSON.stringify({ version: 3, mode: 'auto', targetFps: 'display', tier: 'high', renderScale: 0.8, calibrated: true }),
+  });
+  assert.equal(retargeted.version, 5);
+  assert.equal(retargeted.targetFps, 60);
+  assert.equal(retargeted.tier, null);
+  assert.equal(retargeted.renderScale, 1);
+  assert.equal(retargeted.calibrated, false);
+
+  const recalibrated = loadGraphicsSettings({
+    getItem: () => JSON.stringify({ version: 4, mode: 'auto', targetFps: 60, tier: 'performance', renderScale: 0.3, calibrated: true }),
+  });
+  assert.equal(recalibrated.version, 5);
+  assert.equal(recalibrated.targetFps, 60);
+  assert.equal(recalibrated.tier, null);
+  assert.equal(recalibrated.renderScale, 1);
+  assert.equal(recalibrated.calibrated, false);
 });
 
 check('invalidates calibration when the device or measured refresh changes', () => {
@@ -241,8 +260,8 @@ await checkAsync('calibrates once, persists the tier, and reloads when the pipel
   perf.count = 60;
   system.lateUpdate(0, ctx);
 
-  assert.equal(loadGraphicsSettings(storage).tier, 'performance');
-  assert.equal(loadGraphicsSettings(storage).renderScale, 0.3);
+  assert.equal(loadGraphicsSettings(storage).tier, 'low');
+  assert.equal(loadGraphicsSettings(storage).renderScale, 0.7);
   assert.equal(reloads, 1);
   assert.equal(location.href, 'http://localhost:5173/?room=ABC123');
 });

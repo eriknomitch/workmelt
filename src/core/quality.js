@@ -12,13 +12,13 @@ const LOWER_TIER = { ultra: 'high', high: 'medium', medium: 'low', low: 'perform
 export const GRAPHICS_STORAGE_KEY = 'cod_graphics_v1';
 export const GRAPHICS_MODES = ['auto', 'low', 'medium', 'high', 'ultra'];
 export const FPS_TARGETS = [30, 60, 90, 120, 144, 165, 240];
-const STORED_VERSIONS = [1, 2, 3];
-const CURRENT_VERSION = 3;
+const STORED_VERSIONS = [1, 2, 3, 4, 5];
+const CURRENT_VERSION = 5;
 
 const DEFAULT_GRAPHICS = Object.freeze({
   version: CURRENT_VERSION,
   mode: 'auto',
-  targetFps: 'display',
+  targetFps: 60,
   tier: null,
   renderScale: 1,
   refreshHz: null,
@@ -49,12 +49,12 @@ export function loadGraphicsSettings(storage = browserStorage()) {
   if (!raw || !STORED_VERSIONS.includes(raw.version)) return defaultGraphics();
   const migrated = raw.version === 1;
   const mode = GRAPHICS_MODES.includes(raw.mode) ? raw.mode : 'auto';
-  const targetFps =
+  let targetFps =
     raw.targetFps === 'display' || FPS_TARGETS.includes(Number(raw.targetFps))
       ? raw.targetFps === 'display'
         ? 'display'
         : Number(raw.targetFps)
-      : 'display';
+      : 60;
   let tier = ['performance', 'low', 'medium', 'high', 'ultra'].includes(raw.tier)
     ? raw.tier
     : null;
@@ -72,6 +72,24 @@ export function loadGraphicsSettings(storage = browserStorage()) {
     renderScale = mode === 'auto' ? 1 : QUALITY_PRESETS[mode]?.renderScale ?? 1;
     calibrated = mode !== 'auto';
     signature = null;
+  }
+  // v4 changes the default auto target from "match the display" to a stable
+  // 60 fps. Existing auto profiles that were still following the panel refresh
+  // are reset so they recalibrate to the new target on next boot instead of
+  // preserving a blurry 120 Hz-era compromise on high-refresh panels.
+  if (raw.version < 4 && mode === 'auto' && targetFps === 'display') {
+    targetFps = 60;
+    tier = null;
+    renderScale = 1;
+    calibrated = false;
+  }
+  // v5 recalibrates every Auto profile. The initial tier choice is now capped
+  // at a one-step drop below the medium boot pipeline, so old persisted tiers
+  // — especially aggressive falls straight to `performance` — must be re-done.
+  if (raw.version < 5 && mode === 'auto') {
+    tier = null;
+    renderScale = 1;
+    calibrated = false;
   }
   return {
     version: CURRENT_VERSION,
@@ -199,11 +217,17 @@ export function estimateRefreshRate({
 
 export function chooseCalibrationTier(p95Fps, targetFps) {
   const ratio = targetFps > 0 ? p95Fps / targetFps : 0;
-  if (ratio >= 1) return 'ultra';
-  if (ratio >= 0.7) return 'high';
-  if (ratio >= 0.45) return 'medium';
-  if (ratio >= 0.35) return 'low';
-  return 'performance';
+  // Calibration is measured while booted on the medium pipeline. Reaching the
+  // target there does NOT mean the machine can also hold high or ultra, so the
+  // step-up thresholds are intentionally conservative.
+  if (ratio >= 1.45) return 'ultra';
+  if (ratio >= 1.15) return 'high';
+  if (ratio >= 0.95) return 'medium';
+  // Likewise, missing the target on medium is not enough evidence to jump
+  // straight to the ultra-cheap `performance` preset. Land on `low` first and
+  // let the live adaptive policy demote again only if low still misses at its
+  // own resolution floor under actual gameplay.
+  return 'low';
 }
 
 /**
@@ -497,7 +521,7 @@ export class AdaptiveQualitySystem {
   }
 
   _resolveTarget(target) {
-    return target === 'display' ? this.settings.refreshHz ?? 120 : Number(target) || 120;
+    return target === 'display' ? this.settings.refreshHz ?? 120 : Number(target) || 60;
   }
 
   _persist(patch) {
@@ -539,7 +563,7 @@ export class AdaptiveQualitySystem {
     if (!this.enabled) return false;
     this._persist({
       mode: 'auto',
-      targetFps: 'display',
+      targetFps: 60,
       tier: null,
       calibrated: false,
       renderScale: 1,
