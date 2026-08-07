@@ -153,9 +153,49 @@ either works: `test:quality` = `src/core/selftest.mjs`, `test:graphics` =
 
 ## Coding Style & Naming Conventions
 
-Use modern ES modules, two-space indentation, semicolons, and single-quoted strings, matching surrounding code. Use `camelCase` for functions and variables, `PascalCase` for classes, and lowercase subsystem IDs and file names. No formatter or linter is configured, so keep edits consistent and focused. Do not add runtime dependencies. Textures are generated in code, always. Geometry and animation are generated in code *by default* — see "Importing a 3D model" below for the two cases where a premade model is allowed and which path each takes. Use seeded `ctx.rng`, never `Math.random()`. Avoid per-frame allocations, respect quality budgets, and dispose GPU/audio resources.
+Use modern ES modules, two-space indentation, semicolons, and single-quoted strings, matching surrounding code. Use `camelCase` for functions and variables, `PascalCase` for classes, and lowercase subsystem IDs and file names. No formatter or linter is configured, so keep edits consistent and focused. Runtime dependencies are a decision, not a default — see "Taking on a third-party dependency" below; dev dependencies are ordinary. Textures are generated in code, always. Geometry and animation are generated in code *by default* — see "Importing a 3D model" below for the two cases where a premade model is allowed and which path each takes. Use seeded `ctx.rng`, never `Math.random()`. Avoid per-frame allocations, respect quality budgets, and dispose GPU/audio resources.
 
 Menu surfaces — the lobby (`src/match/ui.js`), the pause/settings menu (`src/ui/menu.js` + the menu block of `src/ui/style.js`) and the multiplayer overlay (`src/net/ui.js`) — follow `DESIGN.md` and take every colour, font, radius and duration from the CSS custom properties in `src/ui/brand.js`. Do not introduce a literal hex there. The in-world HUD is deliberately exempt: it is drawn over a live scene and keeps its own outlined, viewport-scaled treatment. Note that these stylesheets are template literals, so a backtick in a CSS comment is a syntax error.
+
+## Taking on a third-party dependency
+
+The door is open; it is not a revolving door. `three` is the only runtime
+dependency today, and the default answer stays no. A candidate — a library, a
+downloaded model, a texture or audio pack — is allowed when it clears all five
+of these, and the burden of showing that is on the change proposing it.
+
+1. **Offline.** It ships in the bundle and fetches nothing at runtime. No CDN,
+   no side-loaded `.wasm`, no worker file pulled from a path. This is
+   `ARCHITECTURE.md` rule 3 and it has no exceptions — it is why Draco is
+   rejected in favour of meshopt (see *"Importing a 3D model"*).
+2. **Deterministic**, if it touches geometry, visuals or gameplay. Bit-stable
+   output across runs *and* between node and Chromium — test it, do not assume
+   it. `tools/baseline.mjs` compares pixels, and a non-reproducible input makes
+   the pixel gate unusable, which costs more than the library is worth.
+   `LIBRARIES.md` §7.5.3 is the worked example, including how to write this
+   test so it can actually fail.
+3. **Measured.** Build with and without it and record the gzip delta on the
+   boot chunk in `LIBRARIES.md`. Predicting the number is not measuring it.
+   Past ~5% of the boot chunk, the justification has to be proportionate.
+4. **Licensed, with attribution shipped.** Permissive only. If the licence
+   requires credit, it goes in `public/models/CREDITS.md` or
+   `public/sfx/CREDITS.md` — those ship with the build, and *baking or encoding
+   an asset into our source does not change its licence*.
+5. **Not a re-implementation.** If `src/` already does the job well, adopting
+   someone else's version trades working, purpose-fit code for a migration.
+   `LIBRARIES.md` §4 is a list of good libraries rejected on exactly this
+   ground — read it before proposing one of them again.
+
+**Prefer npm over vendoring.** A vendored file feels like the smaller
+commitment and is worse on every axis that matters later: `package.json` plus
+the lockfile pin an exact version and an integrity hash and give `npm audit`
+something to check, while a committed blob records only what a comment
+remembers to say and never gets updated. Vendor only when npm genuinely cannot
+express it, and then record version and upstream commit in the file header.
+
+Record every accepted addition in `LIBRARIES.md` with its measured cost and the
+reason it cleared the bar, so the next person inherits the reasoning rather than
+just the dependency.
 
 ## Importing a 3D model
 

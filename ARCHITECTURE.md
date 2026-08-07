@@ -26,8 +26,17 @@ generated procedurally at load time; audio may be procedural or sample-based.
    example, and `DESIGN.md`'s One Token File Rule *requires* importing it from
    `src/match/ui.js` and `src/net/ui.js`. A leaf has no lifecycle to coordinate,
    so routing it through `ctx` buys nothing and costs a runtime lookup.
-3. **No new npm dependencies.** `three` only. No CDN fetches — every asset the
-   game needs ships in the bundle, so it runs fully offline.
+3. **Nothing is fetched at runtime. Ever.** Every asset the game needs ships in
+   the bundle, so it runs fully offline and the current URL is always a valid
+   invite. That clause is not negotiable and no third party gets an exception
+   to it.
+   **New third-party code, models or packs are allowed, but they are a
+   decision, not a default.** `three` is the only runtime dependency today, and
+   the answer stays "no" until a candidate clears the bar in *"Taking on a
+   third-party dependency"* in `AGENTS.md` — offline, deterministic, measured,
+   licensed, and not a re-implementation of something `src/` already does well.
+   Prefer npm over a vendored copy; record the addition where that section
+   says. Dev dependencies are ordinary and need no ceremony.
 4. **No `Math.random()` in gameplay or visuals.** Use `ctx.rng` (see
    `src/core/rng.js`) or a `ctx.rng.fork()` you keep. Capture reproducibility
    depends on it.
