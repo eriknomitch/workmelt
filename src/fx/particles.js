@@ -136,7 +136,19 @@ void main() {
     vec2 along = dl > 1e-5 ? d / dl : vec2( 0.0, 1.0 );
     vec2 perp = vec2( -along.y, along.x );
     float len = size * ( 1.0 + aRot.z * length( velView ) );
-    off = along * ( c.y * len ) + perp * ( c.x * size );
+    // The smear is centred on the particle, but it may never claim ground the
+    // particle has not covered: the trailing half is capped by the distance
+    // travelled since spawn, the leading half by the distance left before the
+    // particle dies. A tracer moves ~89 world units per stretch unit at its
+    // clamped visual speed, so without these caps its streak pokes metres out
+    // of the muzzle it was born at — enemy fire reads as coming from the air
+    // behind the shooter — and through the surface it dies on. It also keeps a
+    // freshly spawned spark's tail out of the wall that emitted it.
+    float travelled = distance( wpos, aPS.xyz );
+    float remaining = max( ( 1.0 - n ) / max( aLife.y, 1e-4 ), 0.0 ) * length( wvel );
+    float backLen = min( len * 0.5, travelled + size );
+    float fwdLen = min( len * 0.5, remaining + size );
+    off = along * ( c.y * 2.0 * ( c.y > 0.0 ? fwdLen : backLen ) ) + perp * ( c.x * size );
   } else {
     float rot = aRot.x + aRot.y * t;
     float s = sin( rot ), co = cos( rot );
