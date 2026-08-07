@@ -1,0 +1,73 @@
+# Enforces ARCHITECTURE.md rule 7 — "npm run build must pass after your change.
+# If you break the boot, nobody else can work." Until this file existed, that
+# rule was enforced by hope (LIBRARIES.md §3.1).
+#
+# Scope is deliberately the *free* half of the verification story that
+# AGENTS.md calls the default: the Node-only self-tests plus the build. It
+# renders nothing. GitHub runners have no GPU, so a capture here would go
+# through ANGLE/SwiftShader and cost minutes per shot for a frame nobody reads
+# — and "a .png nobody read is not a visual check". Captures, playtests and the
+# pixel gate stay a local/manual step driven by the visual-check skill.
+#
+# Two suite families are excluded on purpose:
+#   server/*.selftest.mjs  — each stands up a real relay on a real socket
+#   src/audio/selftest.js  — a library the audio probe drives from a page;
+#                            run directly it exits 0 having asserted nothing
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A second push to the same PR cancels the first — these are gates, not history.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-selftest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      # Not scripts/setup.sh: that also provisions Chromium, which nothing in
+      # this workflow launches. SKIP_BROWSERS=1 would work too, but npm ci is
+      # the whole of what we need and keeps the job honest about its scope.
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Build
+        run: npm run build
+
+      # AGENTS.md: "That list drifts as suites are added, so enumerate rather
+      # than trust it." Discovering the suites means a new selftest.mjs is
+      # picked up by CI the moment it lands, with no edit to this file.
+      #
+      # Note both halves of the -name pattern: four suites are a bare
+      # selftest.js/.mjs and '*.selftest.*' alone silently misses them.
+      - name: Self-tests
+        run: |
+          set -uo pipefail
+          fail=0
+          suites=$(find src \( -name 'selftest.*' -o -name '*.selftest.*' \) \
+                     ! -path 'src/audio/selftest.js' | sort)
+          count=$(printf '%s\n' "$suites" | wc -l | tr -d ' ')
+          echo "discovered $count suites"
+          for f in $suites; do
+            if out=$(node "$f" 2>&1); then
+              echo "ok   $f"
+            else
+              echo "FAIL $f"
+              printf '%s\n' "$out" | tail -40
+              fail=1
+            fi
+          done
+          exit $fail
