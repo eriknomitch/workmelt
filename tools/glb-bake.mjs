@@ -85,10 +85,14 @@ const log = (...a) => { if (!QUIET) console.log(...a); };
  * The engine's material keys, read from the source of truth rather than
  * duplicated here — a key added to `materials.js` is usable the same day, and a
  * key removed fails the map validation instead of baking a silent fallback.
+ *
+ * ALL_MATERIAL_KEYS, not MATERIAL_KEYS: the latter is only the library-derived
+ * set, and omits the ones `WeaponMaterials.get()` answers itself. `glass` is in
+ * that second group, and an optic lens has nowhere else to go.
  */
 let MATERIAL_KEYS;
 try {
-  ({ MATERIAL_KEYS } = await import(new URL('../src/weapons/materials.js', import.meta.url)));
+  ({ ALL_MATERIAL_KEYS: MATERIAL_KEYS } = await import(new URL('../src/weapons/materials.js', import.meta.url)));
 } catch (err) {
   console.error(`could not read MATERIAL_KEYS from src/weapons/materials.js: ${err.message}`);
   process.exit(1);
@@ -290,7 +294,7 @@ function placement() {
 const IDENTITY = Float64Array.from([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
 const PLACE = placement();
 
-/** name -> { node, matName, tris:[], min, max } */
+/** name -> { node, group, matName, tris:[], min, max } */
 const groups = new Map();
 let skipped = 0;
 
@@ -298,10 +302,33 @@ function label(nodeName, meshName, i) {
   return nodeName || meshName || `mesh${i}`;
 }
 
-function collect(nodeIndex, parent, inheritedName) {
+/**
+ * Exporter scaffolding that carries no meaning. Sketchfab and the FBX
+ * converters wrap every scene in three or four of these.
+ */
+const BOILERPLATE = /^(sketchfab_model|root|rootnode|gltf_scenerootnode|scene|correction|.*\.fbx)$/i;
+
+/**
+ * The GROUP is the outermost meaningful ancestor, and it is usually the only
+ * human-authored name in the file.
+ *
+ * Leaf nodes come out of these exporters as `Object_12`, but their parents are
+ * named by whoever built the model — `RMR_0`, `G31_1`, `RMR CUT_2`. Those names
+ * are exactly the split a weapon needs (optic vs gun vs mount), so throwing
+ * them away and keying only on the leaf makes every selector a guess. Both are
+ * recorded; selectors match against either.
+ */
+function groupOf(chain) {
+  for (const name of chain) if (name && !BOILERPLATE.test(name)) return name;
+  return '';
+}
+
+function collect(nodeIndex, parent, inheritedName, chain) {
   const node = gltf.nodes[nodeIndex];
   const world = mul(parent, trs(node));
   const name = node.name || inheritedName;
+  const here = [...chain, node.name ?? ''];
+  const group = groupOf(here);
 
   if (node.mesh !== undefined) {
     const nm = normalMatrix(world);
@@ -313,10 +340,10 @@ function collect(nodeIndex, parent, inheritedName) {
       if (prim.attributes?.POSITION === undefined) { skipped++; continue; }
 
       const matName = prim.material !== undefined ? gltf.materials[prim.material].name ?? `material${prim.material}` : '(none)';
-      const key = `${label(name, mesh.name, node.mesh)} ${matName}`;
+      const key = `${group} ${label(name, mesh.name, node.mesh)} ${matName}`;
       let g = groups.get(key);
       if (!g) {
-        g = { node: label(name, mesh.name, node.mesh), matName, v: [], min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
+        g = { node: label(name, mesh.name, node.mesh), group, matName, v: [], min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
         groups.set(key, g);
       }
 
@@ -347,11 +374,11 @@ function collect(nodeIndex, parent, inheritedName) {
       }
     }
   }
-  for (const child of node.children ?? []) collect(child, world, name);
+  for (const child of node.children ?? []) collect(child, world, name, here);
 }
 
 const scene = gltf.scenes[gltf.scene ?? 0];
-for (const root of scene.nodes) collect(root, IDENTITY, '');
+for (const root of scene.nodes) collect(root, IDENTITY, '', []);
 
 if (!groups.size) {
   console.error('no triangle geometry found in the scene');
@@ -388,7 +415,13 @@ const totalTris = parts.reduce((s, g) => s + g.v.length / 3, 0);
 /* ──────────────────────────────────────────────────────── material mapping ── */
 
 const matMap = MAP_FILE ? JSON.parse(fs.readFileSync(MAP_FILE, 'utf8')) : {};
-const unknown = Object.entries(matMap).filter(([, v]) => !MATERIAL_KEYS.includes(v));
+/**
+ * JSON has no comments, so a leading underscore marks a note rather than a
+ * mapping. Skipped by both the validator and the lookup.
+ */
+const unknown = Object.entries(matMap).filter(
+  ([k, v]) => !k.startsWith('_') && !MATERIAL_KEYS.includes(v)
+);
 if (unknown.length) {
   console.error(
     `${MAP_FILE} maps to material keys that do not exist in src/weapons/materials.js:\n` +
@@ -398,9 +431,26 @@ if (unknown.length) {
   process.exit(1);
 }
 const unmapped = new Set();
-const matKeyFor = (name) => {
-  if (matMap[name]) return matMap[name];
-  unmapped.add(name);
+
+/**
+ * Resolve a part's engine material key, most specific key first:
+ *
+ *   "G31_1/Object_11"  a single part
+ *   "Object_11"        a leaf name
+ *   "G31_1"            a whole group
+ *   "Material.001"     every part sharing a glTF material
+ *
+ * The material name alone is not enough, and this is not a corner case: on the
+ * G31 the single glTF material `Material.001` is shared by the red-dot housing
+ * and the polymer grip, which must not end up on the same engine key. Modellers
+ * reuse a material for whatever was the same colour in the viewport, so the
+ * glTF material is a colour, not a substance.
+ */
+const matKeyFor = (g) => {
+  for (const key of [`${g.group}/${g.node}`, g.node, g.group, g.matName]) {
+    if (key && !key.startsWith('_') && matMap[key]) return matMap[key];
+  }
+  unmapped.add(g.matName);
   return DEFAULT_MAT;
 };
 
@@ -418,18 +468,20 @@ log('');
  * slide from the trigger is where it sits and how big it is. Centre and extent
  * are therefore the load-bearing columns of this table, not decoration.
  */
-log('  part                    glTF material    matKey         tris  centre (m)             extent (m)');
-log('  ' + '-'.repeat(100));
+log('  group          part            glTF material    matKey         tris  centre (m)             extent (m)');
+log('  ' + '-'.repeat(115));
 for (const g of parts) {
   const ext = g.min.map((v, k) => fmt(g.max[k] - v, 3)).join(' x ');
   const mid = g.min.map((v, k) => fmt((g.max[k] + v) / 2, 3).padStart(6)).join(' ');
   log(
     '  ' +
-      g.node.padEnd(23).slice(0, 23) +
+      (g.group || '-').padEnd(14).slice(0, 14) +
+      ' ' +
+      g.node.padEnd(15).slice(0, 15) +
       ' ' +
       g.matName.padEnd(16).slice(0, 16) +
       ' ' +
-      matKeyFor(g.matName).padEnd(13) +
+      matKeyFor(g).padEnd(13) +
       String(g.v.length / 3).padStart(5) +
       '  ' +
       mid +
@@ -453,6 +505,8 @@ if (!OUT) {
    */
   log(`material-map scaffold (save as src/weapons/models/${ID}.materials.json, then --map=)`);
   const scaffold = {};
+  // Seeded from the glTF materials; override any single part or group by adding
+  // a "<group>/<node>", "<node>" or "<group>" key alongside these.
   for (const g of parts) scaffold[g.matName] = matMap[g.matName] ?? DEFAULT_MAT;
   log(JSON.stringify(scaffold, null, 2));
   log('');
@@ -510,8 +564,9 @@ const baked = parts.map((g) => {
   bakedTris += idx.length / 3;
   return {
     node: g.node,
+    group: g.group,
     material: g.matName,
-    mat: matKeyFor(g.matName),
+    mat: matKeyFor(g),
     tris: idx.length / 3,
     verts: vcount,
     min: g.min,
@@ -543,8 +598,8 @@ lines.push(' *');
 lines.push(' * Positions are uint16 over BOUNDS, normals int8; decode with');
 lines.push(" * `bakedParts()` from './baked.js'. See .claude/skills/glb-weapon/.");
 lines.push(' *');
-lines.push(' * parts (node / glTF material -> engine matKey / triangles):');
-for (const p of baked) lines.push(` *   ${p.node.padEnd(30).slice(0, 30)} ${p.material.padEnd(16).slice(0, 16)} -> ${p.mat.padEnd(13)} ${String(p.tris).padStart(5)}`);
+lines.push(' * parts (group / node / glTF material -> engine matKey / triangles):');
+for (const p of baked) lines.push(` *   ${(p.group || '-').padEnd(14).slice(0, 14)} ${p.node.padEnd(14).slice(0, 14)} ${p.material.padEnd(16).slice(0, 16)} -> ${p.mat.padEnd(13)} ${String(p.tris).padStart(5)}`);
 lines.push(' */');
 lines.push('');
 lines.push(`export const SOURCE = ${j({ file: rel, sha256: sha, tris: bakedTris, verts: bakedVerts })};`);
@@ -554,7 +609,7 @@ lines.push('');
 lines.push('export const PARTS = [');
 for (const p of baked) {
   lines.push('  {');
-  lines.push(`    node: ${j(p.node)}, material: ${j(p.material)}, mat: ${j(p.mat)},`);
+  lines.push(`    node: ${j(p.node)}, group: ${j(p.group)}, material: ${j(p.material)}, mat: ${j(p.mat)},`);
   lines.push(`    tris: ${p.tris}, verts: ${p.verts},`);
   lines.push(`    min: ${j(round(p.min))}, max: ${j(round(p.max))},`);
   lines.push(`    pos: ${j(p.pos)},`);

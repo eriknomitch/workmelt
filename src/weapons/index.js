@@ -6,7 +6,7 @@ import { ProjectileSim, rangeFalloff } from './ballistics.js';
 import { WEAPON_DEFS, buildRecoilPattern, SPREAD_MODS, HIT_ZONES } from './defs.js';
 import { buildRifle } from './models/rifle.js';
 import { buildSmg } from './models/smg.js';
-import { buildPistol } from './models/pistol.js';
+import { buildG31 } from './models/g31.js';
 import { buildSniper } from './models/sniper.js';
 import { Throwables } from './throwables.js';
 import { Melee } from './melee.js';
@@ -25,7 +25,7 @@ import { clamp, clamp01, lerp, damp, DEG } from './mathx.js';
  * The order is the draw order and the escalation order: rate of fire, then
  * reach, then a sidearm, then the thing that ends an exchange in one round.
  */
-export const LOADOUT = ['rifle', 'smg', 'pistol', 'sniper'];
+export const LOADOUT = ['rifle', 'smg', 'g31', 'sniper'];
 
 /** Slot binds, in `LOADOUT` order. */
 const SLOT_KEYS = ['Digit1', 'Digit2', 'Digit3', 'Digit4'];
@@ -59,7 +59,7 @@ const SLOT_KEYS = ['Digit1', 'Digit2', 'Digit3', 'Digit4'];
  *   wp.spreadDegrees      live cone half-angle — drive the crosshair gap with it
  *   wp.adsProgress        0..1
  *   wp.reloading / wp.firing / wp.switching / wp.inspecting
- *   wp.weaponIds          ['rifle','smg','pistol','sniper']  (= LOADOUT)
+ *   wp.weaponIds          ['rifle','smg','g31','sniper']  (= LOADOUT)
  *   wp.damageAt(d, zone)  what one round would do at `d` metres — `net` settles
  *                         PvP hits with it so both damage models agree
  *   wp.setWeapon(id)      draw/holster animated swap
@@ -204,7 +204,7 @@ export class WeaponSystem {
     this.viewmodel.onClipEvent = (name, clip) => this._onClipEvent(name, clip);
 
     const t0 = performance.now();
-    const builders = { rifle: buildRifle, smg: buildSmg, pistol: buildPistol, sniper: buildSniper };
+    const builders = { rifle: buildRifle, smg: buildSmg, g31: buildG31, sniper: buildSniper };
     let tris = 0;
     for (const id of LOADOUT) {
       const def = { ...WEAPON_DEFS[id] };

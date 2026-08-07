@@ -123,12 +123,21 @@ export function requireBaked(asm, parts, bounds, opts = {}) {
   return n;
 }
 
+/**
+ * Selectors match the part's leaf name OR its group.
+ *
+ * The leaf name is exporter noise (`Object_12`); the group is the one
+ * human-authored name in the file (`RMR_0`, `G31_1`). Matching both means a
+ * selector can say what it means — `include: /RMR/` takes the whole optic —
+ * instead of enumerating indices that a re-bake could renumber.
+ */
 function matches(part, sel, dflt) {
   if (sel === null || sel === undefined) return dflt;
-  if (sel instanceof RegExp) return sel.test(part.node);
-  if (Array.isArray(sel)) return sel.includes(part.node);
+  const names = [part.node, part.group ?? ''];
+  if (sel instanceof RegExp) return names.some((n) => sel.test(n));
+  if (Array.isArray(sel)) return names.some((n) => sel.includes(n));
   if (typeof sel === 'function') return !!sel(part);
-  return part.node === sel;
+  return names.includes(sel);
 }
 
 /** Total triangles across a `PARTS` array — for the budget line in a summary. */

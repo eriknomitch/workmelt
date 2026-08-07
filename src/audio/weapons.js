@@ -94,7 +94,10 @@ export function resolveProfile(name) {
   if (/suppress|silenc/.test(k)) return WEAPON_PROFILES.suppressed;
   if (/ak|7\.?62|akm|scar/.test(k)) return WEAPON_PROFILES.ak;
   if (/mp5|mp7|smg|ump|vector|uzi/.test(k)) return WEAPON_PROFILES.smg;
-  if (/pistol|glock|m19|deagle|handgun|sidearm/.test(k)) return WEAPON_PROFILES.pistol;
+  // `g31`: the imported competition 9 mm. Named for the model it was built
+  // from rather than its class, so it needs to be spelled out here or it falls
+  // through to the default profile and quietly sounds like the wrong gun.
+  if (/pistol|glock|g31|m19|deagle|handgun|sidearm/.test(k)) return WEAPON_PROFILES.pistol;
   if (/shot|pump|12g|benelli|spas/.test(k)) return WEAPON_PROFILES.shotgun;
   if (/snip|dmr|awp|barrett|338|intervention|marksman/.test(k)) return WEAPON_PROFILES.sniper;
   if (/lmg|mg4|m249|pkm|saw|minigun/.test(k)) return WEAPON_PROFILES.lmg;

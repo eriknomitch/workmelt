@@ -25,7 +25,7 @@ import { DEG } from './mathx.js';
  *   weapon  dmg   torso STK   rpm    TTK (upper torso)   head
  *   rifle    33      4        800        225 ms          1 shot (132)
  *   smg      26      4        950        189 ms          1 shot (104)
- *   pistol   29      4        480        375 ms          1 shot (116)
+ *   g31      29      4        480        375 ms          1 shot (116)
  *   sniper  115      1         50        one shot        1 shot (460)
  *
  * The SMG wins inside ~18 m and the carbine everywhere past it — which is what
@@ -278,16 +278,21 @@ export const WEAPON_DEFS = {
     magLen: 0.192,
   },
 
-  pistol: {
-    id: 'pistol',
-    label: 'P-19',
+  g31: {
+    id: 'g31',
+    label: 'G31',
     class: 'pistol',
     caliber: '9x19',
-    /* 480, not 460: a striker-fired 9 mm is trigger-limited, and four hits at
-     * 460 was 391 ms — far enough behind the carbine that the sidearm was never
-     * worth drawing over a reload. 375 ms plus the fastest draw in the game
-     * (0.42 s against the carbine's 2.1 s tactical reload) is what makes the
-     * swap a real decision. */
+    /* TERMINAL BALLISTICS ARE THE P-19'S, DELIBERATELY.
+     *
+     * This weapon replaced the P-19 in the sidearm slot, and the slot's job in
+     * the balance contract is a four-hit kill at 375 ms — slower than either
+     * primary, bought back with the fastest draw in the game. Damage, falloff
+     * and rate of fire are therefore unchanged: a competition pistol is a gun
+     * that is EASIER TO SHOOT, not one that hits harder, so every difference
+     * below is in recoil, bloom and handling. Moving `damage` or `rpm` here
+     * would move the shots-to-kill matrix and re-open the dominance question
+     * for a cosmetic reason. */
     rpm: 480,
     modes: ['semi'],
     burstCount: 1,
@@ -295,9 +300,7 @@ export const WEAPON_DEFS = {
     burstDelay: 0.1,
     magSize: 17,
     reserve: 68,
-    muzzleVelocity: 360,
-    /* 29 keeps the four-hit kill intact through the whole ramp (29 x 0.52 x 4 =
-     * 60 at 55 m+), so the sidearm degrades in TIME, never in shot count. */
+    muzzleVelocity: 375,
     damage: 29,
     penetration: 0.35,
     falloffStart: 20,
@@ -306,51 +309,59 @@ export const WEAPON_DEFS = {
     maxRange: 180,
     dragK: 0.46,
     tracerEvery: 5,
+    /* The compensator and the red dot are worth about 15 % of the bloom: the
+     * gun climbs less per shot and settles sooner, which is what a comp does. */
     spreadHip: 2.6,
-    spreadAds: 0.5,
-    spreadPerShot: 0.42,
-    spreadMax: 4.6,
-    spreadDecay: 5.2,
+    spreadAds: 0.45,
+    spreadPerShot: 0.36,
+    spreadMax: 4.1,
+    spreadDecay: 5.6,
     spreadAirAdd: 0.55,
     recoil: {
-      pitch: 0.0125,
-      yaw: 0.0032,
+      /* 0.0102 against the P-19's 0.0125: ported gas venting upward is the one
+       * thing a compensator measurably does, so the climb comes off the pitch
+       * and the roll rather than the horizontal drift. */
+      pitch: 0.0102,
+      yaw: 0.003,
       kickBack: 0.012,
-      kickUp: 0.0105,
-      roll: 0.018,
+      kickUp: 0.0082,
+      roll: 0.014,
       punch: 0.3,
       freq: 9.0,
       damping: 0.45,
       patternLength: 17,
-      patternSeed: 0x1f77bc,
+      patternSeed: 0x31c0de,
       climbShape: [1.0],
-      drift: 1.2,
+      drift: 0.95,
     },
-    adsTime: 0.16,
+    /* A dot is faster to pick up than irons, but this is a longer, heavier gun
+     * than the P-19: quicker to aim, a shade slower out of the holster. It must
+     * still draw faster than everything else, and at 0.45 s it does. */
+    adsTime: 0.15,
     adsFov: 0.86,
     viewFov: 0.92,
-    /* Irons and a mini reflex over a 183 mm slide: almost no zoom, all speed. */
+    /* A 1x red dot: no magnification at all, only a cleaner sight picture. */
     adsFovScale: 0.86,
     reloadTac: 1.6,
     reloadEmpty: 2.2,
     inspectTime: 2.6,
-    drawTime: 0.42,
+    drawTime: 0.45,
     holsterTime: 0.3,
-    /* A pistol is held out on the arms rather than braced on the shoulder, so
-     * the hip pose is FURTHER from the eye than a carbine's and the ADS eye
-     * relief is most of an arm's length. 0.34 m keeps both elbows visibly bent;
-     * past ~0.40 m the two-bone solve hits full extension and they lock. */
-    hipPos: [0.115, -0.15, -0.34],
+    /* Held out on the arms like the P-19, but 75 mm longer overall, so it sits
+     * 20 mm closer to the eye or the compensator runs off the top of the frame.
+     * Both elbows stay visibly bent at 0.33 m; past ~0.40 m the two-bone solve
+     * hits full extension and they lock. */
+    hipPos: [0.115, -0.15, -0.32],
     hipRot: [-0.05, 0.066, -0.115],
     adsCant: [0, 0, 0.003],
-    eyeRelief: 0.34,
+    eyeRelief: 0.33,
     sprintPos: [0.09, -0.25, -0.28],
     sprintRot: [-0.42, 0.5, 0.14],
     lowReadyPos: [0.1, -0.26, -0.32],
     lowReadyRot: [-0.44, 0.105, -0.07],
     swayScale: 1.15,
     bobScale: 1.1,
-    magLen: 0.108,
+    magLen: 0.104,
   },
 
   /**

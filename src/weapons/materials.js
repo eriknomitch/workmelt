@@ -1080,3 +1080,25 @@ export class WeaponMaterials {
 }
 
 export const MATERIAL_KEYS = Object.keys(WEAPON_MATERIALS);
+
+/**
+ * Keys `WeaponMaterials.get()` answers itself instead of deriving from the
+ * library — optic glass, the reticle rings, the cavity black. They are valid
+ * anywhere a material key is taken, but they are NOT in `WEAPON_MATERIALS`,
+ * so anything validating against `MATERIAL_KEYS` alone will reject them.
+ *
+ * `glass` is the one that matters most and the one that fails worst: map an
+ * optic's lens to any other key and the sight still renders, still looks like
+ * a lens from outside, and is completely opaque the moment you aim through it.
+ */
+export const SPECIAL_MATERIAL_KEYS = [
+  'cavity',
+  'optic_tube',
+  'glass',
+  'lens_ring',
+  'lens_vig',
+  'lens_vig_soft',
+];
+
+/** Every key `get()` will accept. */
+export const ALL_MATERIAL_KEYS = [...MATERIAL_KEYS, ...SPECIAL_MATERIAL_KEYS];

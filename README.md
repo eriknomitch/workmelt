@@ -151,6 +151,12 @@ in-game voice. Sources and licenses are listed in
 CC0, and the footstep pack is **CC BY 3.0, so that credit has to stay with any
 build you ship**.
 
+Geometry is generated in code with one exception: the G31 sidearm's shell is
+baked from a downloaded model by `tools/glb-bake.mjs` into a committed source
+module, so nothing is loaded at runtime. That model is **CC BY 4.0 and its
+credit also has to ship** — see
+[public/models/CREDITS.md](public/models/CREDITS.md).
+
 ## Performance readout
 
 A live counter is on by default in the upper-left, below the minimap. **F3**

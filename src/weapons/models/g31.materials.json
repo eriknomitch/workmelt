@@ -1,0 +1,34 @@
+{
+  "_comment": "glb-bake material map for the G31. NOTE the slide is steel_soot, not steel_black: steel_black carries the highest wear amplitude in the library (0.24) and the curvature mask is per-vertex, so on faceted low-poly geometry — where every vertex sits on a hard edge — it bleaches whole panels to bare metal. steel_soot is near-black with 0.06 wear and holds up. Verified in .shots/g31-side.png before and after. Keys resolve most-specific first: '<group>/<node>', '<node>', '<group>', then the glTF material name. Per-part keys are used here because the source reuses one glTF material across parts made of different things — Material.001 covers both the red-dot housing and the polymer grip.",
+
+  "RMR_0": "alu_fine",
+  "RMR_0/Object_7": "glass",
+  "RMR CUT_2": "alu_fine",
+
+  "Object_12": "steel_soot",
+  "Object_13": "steel_soot",
+  "Object_14": "steel_soot",
+  "Object_16": "steel_soot",
+  "Object_18": "steel_bright",
+  "Object_19": "alu",
+  "Object_10": "polymer",
+  "Object_11": "polymer",
+  "Object_9": "steel",
+  "Object_15": "steel_bright",
+  "Object_17": "steel_bright",
+  "Object_20": "steel_bright",
+
+  "Material": "polymer",
+  "Material.001": "polymer",
+  "Material.002": "steel_bright",
+  "Material.003": "steel_black",
+  "Material.004": "steel_black",
+  "Material.005": "alu",
+  "Material.006": "steel_black",
+  "Material.007": "alu_fine",
+  "Material.009": "steel_bright",
+  "Material.010": "steel_black",
+  "Material.011": "steel_bright",
+  "Material.012": "steel_bright",
+  "Material.014": "steel_bright"
+}

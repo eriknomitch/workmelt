@@ -124,10 +124,10 @@ const MATRIX = [
   ['smg', 5, 'torso', 4],
   ['smg', 5, 'head', 1],
   ['smg', 46, 'torso', 9],
-  ['pistol', 5, 'torso', 4],
-  ['pistol', 5, 'torsoLow', 4],
-  ['pistol', 55, 'torso', 7],
-  ['pistol', 5, 'head', 1],
+  ['g31', 5, 'torso', 4],
+  ['g31', 5, 'torsoLow', 4],
+  ['g31', 55, 'torso', 7],
+  ['g31', 5, 'head', 1],
   ['sniper', 5, 'head', 1],
   ['sniper', 5, 'torso', 1],
   ['sniper', 5, 'torsoLow', 1],
@@ -145,7 +145,7 @@ for (const [id, range, zone, want] of MATRIX) {
 {
   const rifle = WEAPON_DEFS.rifle;
   const smg = WEAPON_DEFS.smg;
-  const pistol = WEAPON_DEFS.pistol;
+  const pistol = WEAPON_DEFS.g31;
   check('the SMG wins the close fight (10 m)', ttk(smg, 10, 'torso') < ttk(rifle, 10, 'torso'),
     `smg ${ttk(smg, 10, 'torso').toFixed(0)} ms vs rifle ${ttk(rifle, 10, 'torso').toFixed(0)} ms`);
   check('the carbine wins the long one (40 m)', ttk(rifle, 40, 'torso') < ttk(smg, 40, 'torso'),
@@ -160,7 +160,7 @@ for (const [id, range, zone, want] of MATRIX) {
   check('the sidearm is the slowest of the three to a kill',
     ttk(pistol, 10, 'torso') > ttk(rifle, 10, 'torso') && ttk(pistol, 10, 'torso') > ttk(smg, 10, 'torso'));
   check('the sidearm still draws fastest', LOADOUT.every(
-    (id) => id === 'pistol' || WEAPON_DEFS[id].drawTime > WEAPON_DEFS.pistol.drawTime));
+    (id) => id === 'g31' || WEAPON_DEFS[id].drawTime > WEAPON_DEFS.g31.drawTime));
   check('the sniper trades every other advantage for the one shot',
     WEAPON_DEFS.sniper.rpm === Math.min(...IDS.map((i) => WEAPON_DEFS[i].rpm)) &&
     WEAPON_DEFS.sniper.magSize === Math.min(...IDS.map((i) => WEAPON_DEFS[i].magSize)) &&

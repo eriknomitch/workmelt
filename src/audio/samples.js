@@ -49,6 +49,13 @@ const GROUP = {
   reload: { jitter: 0.03, send: 0.3 },
 };
 
+/**
+ * Weapon id -> foley family. Only needed when a weapon's id differs from the
+ * hardware its recorded takes are named after.
+ */
+const FOLEY_ALIASES = { g31: 'pistol' };
+const FOLEY_FAMILY = (id) => FOLEY_ALIASES[id] ?? id;
+
 export class SampleBank {
   constructor(actx) {
     this.actx = actx;
@@ -169,12 +176,19 @@ export class SampleBank {
    * That last rung is why an unrecognised weapon is not a bug. A new gun with
    * no recorded foley simply keeps the procedural voice until someone authors
    * one, and a weapon with only half its phases recorded is a valid state too.
+   *
+   * Which is also the trap: that state is SILENT. A gun whose id nothing
+   * recognises just sounds a little cheaper and nothing anywhere reports it.
+   * So when a new weapon is mechanically an existing one, say so in
+   * `FOLEY_ALIASES` rather than letting it fall off the end of the chain — the
+   * takes are named after the hardware, and the G31 is a 9 mm pistol that
+   * reloads like the P-19 because it is the same action in a different frame.
    */
   _lookupReload(o) {
     const phase = o.phase;
     if (!phase) return null;
     // Bots carry their own ids ('ai_rifle'); the hardware is the same hardware.
-    const weapon = String(o.weapon ?? '').toLowerCase().replace(/^ai_/, '');
+    const weapon = FOLEY_FAMILY(String(o.weapon ?? '').toLowerCase().replace(/^ai_/, ''));
     if (!weapon) return null;
     const set = this.sets.get('reload');
     if (!set) return null;
