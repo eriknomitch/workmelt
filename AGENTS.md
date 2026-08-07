@@ -103,6 +103,13 @@ either works: `test:quality` = `src/core/selftest.mjs`, `test:graphics` =
   start, and that a late arrival joins the countdown rather than the match. Set
   `RELAY_URL=ws://127.0.0.1:8788/ws` to run the same checks against the Cloudflare
   Durable Object under `npm run cf:dev`.
+- `node src/weapons/models/baked.selftest.mjs` checks the GLB bake pipeline end
+  to end: it writes a synthetic `.glb`, runs the real `tools/glb-bake.mjs` over
+  it and decodes the result. Every failure this guards is silent — a
+  position-only weld smooths every hard edge, a dropped winding flip turns a
+  mirrored part inside out, a selector that matches nothing leaves the slide
+  welded to the frame — so none of them throw and a still frame shows most of
+  them as fine. Mutation-checked.
 - `node src/weapons/loadout.selftest.mjs` checks that a spawn restocks the whole
   loadout — every magazine and reserve — so ammunition does not deplete across
   lives and matches. There are no ammo pickups; this is the only refill.
@@ -132,6 +139,14 @@ either works: `test:quality` = `src/core/selftest.mjs`, `test:graphics` =
   field with slices, plus `--yaw=<deg>` to square up a layout that sits at an
   angle to its own axes. Reference material for authoring a map by hand —
   nothing it reads is ever loaded at runtime, and `assets-src/*` is gitignored.
+- `node tools/glb-bake.mjs <file.glb> [--id --out --map --rot --scale --origin]`
+  is the same idea for weapons, but it produces geometry rather than
+  measurements: it converts a downloaded gun into a committed ES module of
+  quantised typed arrays that `src/weapons/models/` imports like source. With no
+  `--out` it only inspects, printing a part table and a material-map scaffold.
+  This is the SFX pipeline applied to meshes — the master stays untracked in
+  `assets-src/`, the OUTPUT is what ships, and the engine still loads nothing at
+  runtime. The `glb-weapon` skill drives the whole process.
 - `npm run goal` scores the open goals in `goals/`; `npm run goal:quick` is the
   faster iteration pass. Both are expensive — the `visual-check` skill has the
   scoping flags.
@@ -175,9 +190,10 @@ Read on demand, not loaded at session start:
 ## Verifying a change
 
 **Default to not rendering.** The Node-only self-tests carry most of the real
-coverage and are effectively free — all twenty-three of them (`physics`, `ai`,
-`ai/lod`, `ai/footstep`, `weapons/balance`, `weapons/throwables`,
-`weapons/loadout`, `weapons/autoreload`, `weapons/melee`, `audio/attenuation`,
+coverage and are effectively free — all twenty-five of them (`physics`, `ai`,
+`ai/lod`, `ai/footstep`, `ai/roo`, `weapons/balance`, `weapons/throwables`,
+`weapons/loadout`, `weapons/autoreload`, `weapons/melee`, `weapons/baked`,
+`audio/attenuation`,
 `audio/reload`,
 `core` × 4, `render/resolution`, `render/dof`, `ui/touch`, `match/bounds`,
 `match/streaks`, `world/maps`, `world/collision`, `world/spawns`) run in ~10 s
@@ -193,7 +209,7 @@ find src server \( -name 'selftest.*' -o -name '*.selftest.*' \) | sort
 
 Note both halves of that pattern — four suites are a bare `selftest.js`/`.mjs`
 (`physics`, `ai`, `core`, `audio`) and `-name '*.selftest.*'` alone silently
-misses them. It returns 28 files; the twenty-three above are the free ones. The
+misses them. It returns 30 files; the twenty-five above are the free ones. The
 other five are not: `server/{bounds,lobby,map,skin}.selftest.mjs` each stand up
 a real relay on a real socket, and `src/audio/selftest.js` is a library the audio
 probe drives from a page — run directly it exits 0 having asserted nothing.
