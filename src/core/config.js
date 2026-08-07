@@ -68,7 +68,13 @@ export const QUALITY_PRESETS = {
     ssr: false,
     volumetrics: false,
     motionBlur: false,
-    bloom: false,
+    // Bloom stays ON at the floor tier. Its cost scales with resolution, so at
+    // renderScale 0.3 the pass is close to free — and at night it is not a
+    // flourish: the perceived brightness of every emitter (lamps, windows, the
+    // neon) is mostly its halo, and cutting it made a tier drop read as the
+    // power going out on a fully powered map. The perf-visibility goal's V4
+    // says it directly: a cheap tier may be softer, not darker.
+    bloom: true,
     contactShadows: false,
     dof: false,
     viewSamples: 0,
