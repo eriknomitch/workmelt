@@ -33,6 +33,10 @@ BatchedMesh / LOD / Worker / DataArrayTexture uses    0
 CI workflows             0
 ```
 
+> **Status note.** Those numbers are from `7deacee`. See **§7 — Addendum
+> (2026-08-06)** for what has changed since: nothing in §5 has been executed, and
+> `three` has moved five releases. Read §7 before acting on §5's ordering.
+
 ---
 
 ## 0. What the rules actually forbid
@@ -583,3 +587,212 @@ Sources for the third-party claims: the
 [Vitest browser mode](https://vitest.dev/guide/browser/why),
 [TypeScript on JS projects](https://www.typescriptlang.org/docs/handbook/intro-to-js-ts.html),
 and [JS serialization benchmarks](https://github.com/Adelost/javascript-serialization-benchmark).
+
+---
+
+## 7. Addendum — 2026-08-06, re-researched at `7073a36`
+
+176 commits after `ba67754`. The question was asked again; this section records
+what changed rather than restating §§0–6, which still stand.
+
+### 7.1 Nothing in §5 has been executed
+
+Re-measured on this branch, same greps as the header block:
+
+```
+three addons imported    2   (RoundedBoxGeometry, BufferGeometryUtils)
+BatchedMesh uses         0        THREE.LOD uses            0
+new Worker uses          0        DataArrayTexture uses     0
+CI workflows             0        tools/contract.mjs        absent
+src/dev/tuning.js        absent   jsconfig.json             absent
+DataView in net path     0        meshopt vendored          no
+```
+
+Every one of §5's ten steps is still open. The `meshopt` string in
+`tools/glb-bake.mjs:142` is a glTF-extension *rejection* check, not a
+dependency — §4.1 remains an undecided proposal.
+
+The finding, then, is not that §5 picked the wrong libraries. It is that the
+constraint on this codebase was never library selection. Steps 1–3 are still
+hours of work each, still need no dependency decision, and still have no risk.
+
+Note also that both addon imports still use the legacy `three/examples/jsm/`
+path rather than the `three/addons/` export alias §1 assumes.
+
+### 7.2 `three` is five releases behind — this is the new step 0
+
+`package.json` pins `^0.180.0`; upstream is `r185`. The caret will not cross a
+minor here, so this is a deliberate edit, not an `npm update`.
+
+It matters because it lands directly on §1.1, the highest-leverage item in this
+document. **`BatchedMesh` was substantially revised in r183–r184** — wireframe
+material support, per-instance opacity, and corrected index/attribute handling
+during `optimize()`. Doing §1.1's world-batching work on r180 means doing it
+against a version missing those fixes.
+
+One caveat discovered while checking: `BatchedMesh` currently emulates
+instancing by repeating `multiDrawElements` parameters instead of using
+`multiDrawElementsInstanced`. The open issue measures the forgone speedup at
+~1.5× on integrated GPUs and ~2× on discrete. This does not change the
+recommendation — 1266 draw calls collapsing is still the prize — but it caps
+the expected win, so do §5 step 6 (measure with `SceneOptimizer`) before
+committing.
+
+**Upgrade cost, checked rather than assumed.** The documented r183/r185
+deprecations cost this repo nothing: `grep` finds no `THREE.Clock` and no
+deprecated `Matrix3.scale/rotate/translate` in `src/`.
+
+The real risk is elsewhere and is not an API break. Six files patch GLSL —
+`src/materials/shader.js`, `src/render/csm.js`, `src/render/materialpatch.js`,
+`src/render/prepass.js`, `src/fx/decals.js`, `src/ai/livery.js` — via
+`onBeforeCompile` and `#include` chunk surgery. `ShaderChunk` contents drift
+between releases with no deprecation warning, because they are not API. A chunk
+whose body changed shape will either fail to compile (loud, fine) or silently
+patch into something subtly different (quiet, and exactly what the pixel gate
+exists for). Gate the bump on `npm run build` plus `tools/baseline.mjs` and
+`tools/imagediff.mjs`.
+
+#### 7.2.1 The bump was attempted. It fails the pixel gate. — 2026-08-06
+
+Run, not predicted. `three@0.185.0` installed, then the full gate:
+
+```
+25 free self-tests      all pass            (identical to r180)
+npm run build           passes, 196 modules (identical module count)
+bundle boot chunk       508.44 → 516.06 kB gzip   (+7.6 kB, +1.5%)
+draw calls / triangles  IDENTICAL on all 12 shots
+shader programs         +1 on all 12 shots (e.g. hero 192→193, combat 199→200)
+tools/baseline.mjs      12/12 shots captured, zero pageerrors
+tools/imagediff.mjs     94.7–97.7% of pixels changed, maxDelta 137–198
+```
+
+**Every green signal is green and the picture is still wrong.** No API broke,
+no chunk name disappeared (all 28 `#include` targets patched by `src/` still
+exist in r185), nothing threw. This is precisely the silent-drift failure the
+paragraph above predicts, and it is why the gate is not optional.
+
+Control run first, because a 97% diff is equally consistent with a
+nondeterministic harness: **two consecutive r185 captures are bit-exact zero on
+all 12 shots.** The harness is sound; the difference is real.
+
+The uniform `+1` program on every single shot, with draw calls and triangle
+counts frozen, is itself the tell: nothing about what we submit changed, but
+every material compiles one additional permutation. That points at the lighting
+path, not at our geometry — and the chunk diff confirms it.
+
+Cause, isolated by diffing `ShaderChunk` bodies between the two versions —
+**9 of the 28 chunks this repo patches changed**, and they are almost entirely
+the lighting cluster:
+
+```
+common                  defaultnormal_vertex    normal_fragment_maps
+lights_pars_begin       lights_fragment_begin
+lights_fragment_maps    lights_fragment_end
+color_fragment          batching_pars_vertex
+```
+
+Wider context: `lights_physical_fragment`, `lights_physical_pars_fragment`,
+`envmap_physical_pars_fragment`, `shadowmap_pars_fragment` and
+`shadowmask_pars_fragment` also changed, and a **new `lightprobes_pars_fragment`
+chunk appeared** — i.e. §7.3's `LightProbeGrid` work refactored the diffuse
+irradiance path, which is exactly the path `src/materials/shader.js` and
+`src/render/materialpatch.js` splice into.
+
+Visually (read `.shots/three180/hero.png` against `.shots/three185/hero.png`):
+r185 is flatter — ambient lifted, direct shadows weakened, foliage
+desaturated, ground washed out. The diff image is magenta across the entire 3D
+scene and **black on the minimap and HUD text**, confirming geometry and UI are
+untouched and this is purely a shading difference.
+
+**Revised verdict on step 0: it is not a version bump, it is a port.** The work
+is to re-derive the nine patches in `src/materials/shader.js`,
+`src/render/{csm,materialpatch,prepass}.js`, `src/fx/decals.js` and
+`src/ai/livery.js` against the r185 chunk bodies, then drive the diff back to
+zero. Reverted to `^0.180.0` pending that work; do not re-attempt it as a
+one-line `package.json` edit.
+
+Reproduce with:
+
+```
+node tools/baseline.mjs --out=.shots/three180 --port=5273   # on r180
+npm install three@0.185.0
+node tools/baseline.mjs --out=.shots/three185 --port=5273
+node tools/imagediff.mjs --a=.shots/three180 --b=.shots/three185 --write-diff
+```
+
+### 7.3 Two new three.js features, correctly sized
+
+- **`LightProbeGrid` (r184)** — position-dependent diffuse GI. Genuinely
+  interesting for the maps. **Not recommended yet: WebGLRenderer support is
+  unconfirmed.** Many recent additions are node-material/WebGPU-only and the
+  release notes do not say which this is. Verify against
+  `node_modules/three` before planning around it.
+- **`RenderPipeline` (r183)** — widely written up as "the modern
+  `EffectComposer`". It is the WebGPU-side rename of `PostProcessing`, so it is
+  irrelevant here for the same reason §4.4 rejects the `postprocessing` package:
+  `src/render/` is not a stock pass stack, it is 5,853 LOC built against an MRT
+  prepass with its own `registerPass()` contract. Do not let the write-ups
+  reopen §4.4.
+
+### 7.4 §3's dev-tooling picks still hold, and `oxlint` got stronger
+
+Re-checked because §3 is ten months old. §3.4 recommended `oxlint` over
+`biome`; that call has aged well and is now better supported than it was:
+`oxlint` is v1-stable with ~787 rules, an ESLint-config migration tool, and
+type-aware linting via `tsgo`. The new fact is ecosystem alignment — **Vite 8
+ships `oxlint` as its default linter**, both being VoidZero projects.
+
+We are on `vite@^7.3.6`; Vite 8 (stable March 2026) defaults to Rolldown as its
+bundler. That is a separate and larger decision than a linter, and it is not
+recommended here — but it means choosing `oxlint` is now the
+path-of-least-resistance option rather than a side bet.
+
+§3.4's other half is unchanged and worth restating, because Vite 8 makes it
+tempting: **still do not enable a formatter.** A repo-wide reformat across
+fifteen agent-owned directories destroys `git blame` at exactly the moment
+`git blame` is how agents discover each other's intent.
+
+### 7.5 Revised sequence
+
+§5 stands as written, with one step inserted ahead of it:
+
+| # | change | buys | risk |
+|---|---|---|---|
+| **0** | `three` 0.180 → 0.185 — **attempted, blocked, see §7.2.1** | unblocks the fixed `BatchedMesh` before §5 step 7 builds on it | **higher than assumed.** No API break, but 9 patched lighting chunks changed bodies and the pixel gate fails at 94.7–97.7%. This is a port of `src/materials/shader.js` + `src/render/materialpatch.js`, not a bump. |
+
+Then §5 steps 1–10 unchanged.
+
+Because step 0 turned out to be a project rather than an afternoon, it should
+**not** block the rest. §5 steps 1–3 (CI, contract checker, `lil-gui` tuning
+panel) touch none of the render path and remain the correct next moves; step 0
+is a prerequisite only for step 7, which is far down the list.
+
+### 7.6 §5 step 1 has landed — `.github/workflows/ci.yml`
+
+Written 2026-08-06. `npm ci` → `npm run build` → the self-tests, on push to
+`main` and on every PR. `ARCHITECTURE.md` rule 7 is now enforced by a machine
+rather than by hope.
+
+It **discovers** the suites with the `find` incantation from `AGENTS.md` rather
+than listing them, because that list drifts — a new `selftest.mjs` is picked up
+the moment it lands, with no edit to the workflow. Currently 25. Two families
+are excluded deliberately and the file says why: `server/*.selftest.mjs` each
+bind a real socket, and `src/audio/selftest.js` asserts nothing when run
+directly.
+
+It renders nothing, per `AGENTS.md`'s "default to not rendering". GitHub runners
+have no GPU, so a capture would go through SwiftShader at minutes per shot to
+produce a frame no human reads — and the `visual-check` skill is explicit that
+this is worse than not capturing. Captures, playtests and the pixel gate stay a
+local step.
+
+Not verified: no Actions run has executed. The YAML parses, the discovery
+command returns the expected 25 locally, and every command in it was run green
+on this machine — but a green first run is still pending on the first push.
+
+Sources for this addendum:
+[three.js r184](https://github.com/mrdoob/three.js/releases/tag/r184),
+[r185](https://github.com/mrdoob/three.js/releases/tag/r185),
+[BatchedMesh multiDraw issue #31935](https://github.com/mrdoob/three.js/issues/31935),
+[Vite 8 / Rolldown / Oxc](https://www.alexcloudstar.com/blog/vite-8-rolldown-oxc-2026/),
+[Biome vs ESLint vs Oxlint 2026](https://www.pkgpulse.com/guides/biome-vs-eslint-vs-oxlint-2026).
