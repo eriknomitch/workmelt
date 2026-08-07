@@ -37,7 +37,7 @@ from the packs below — trimmed, normalized, downmixed to mono and encoded to
 - **Author:** generated for this project
 - **License:** no third-party rights — masters in assets-src/vox/
 - **Source:** assets-src/vox/
-- **Used for:** announcer: match begin, start, headshot, killstreak, game over
+- **Used for:** announcer: match begin, start, headshot, killstreak, game over; the Shivam roo's idle sayings
 
 ## Reload foley (text-to-sound)
 

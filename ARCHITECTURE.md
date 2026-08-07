@@ -106,6 +106,7 @@ Emit and listen via `ctx.events`. Payloads are plain objects. The canonical set:
 | `actor:death` | `{ actor, point, impulse }` | ai |
 | `actor:footstep` | `{ actor, position, surface, speed, running, crouched, left }` — a bot or a remote player planted a foot | ai |
 | ↳ | NOT interchangeable with `player:footstep`, which means *the local player* stepped and is what `ai` perception and `fx` dust read. Only `audio` consumes this one; anything that would react to the player moving must keep listening to `player:footstep`. `ai` gates emission on range, so an inaudible body is silent, not merely quiet. | |
+| `roo:speak` | `{ position }` — Shivam's kangaroo muttered something at a player who wandered up to him. `audio` answers with `audio.critter('roo', position)`: a recorded line from the `roo` vox key, spatialised from his head. The line is NOT in the payload — the sample bank picks among the takes and refuses an immediate repeat, and a build with no encoded vox simply says nothing. | ai |
 | `player:spawn` | `{ position, yaw, zone }` — the local player entered the map at a spawn point chosen by `world.spawns` | player |
 | `player:land` | `{ velocity, surface }` | player |
 | ↳ | Local only, and `audio` plays it head-locked rather than at a position. A landing is always directly under your own head, so panning it encodes nothing and 1.6 m sits inside `attenuation()`'s flat near field — the 3D path gave it maximum gain. | |

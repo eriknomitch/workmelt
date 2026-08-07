@@ -23,7 +23,7 @@
  */
 
 import { Rng } from '../core/rng.js';
-import { RooCore, ROO_STATE, HOP } from './roo.js';
+import { RooCore, ROO_STATE, HOP, VOICE } from './roo.js';
 import {
   SHIVAM_MAP,
   ROO,
@@ -166,6 +166,80 @@ console.log(B('\nthe pad ritual'));
   r = null;
   for (let i = 0; i < 600 && !r; i++) r = c.update(dt, near);
   ok(r === null, 'standing beside the pad does not count');
+}
+
+/* ──────────────────────────────────────────────────────────── idle chatter ── */
+/**
+ * The chatter is a radius AND a clock, and every one of these failures is
+ * inaudible in the way that matters: too-frequent reads as a bug only after
+ * the fourth line, and never-again reads as "no audio assets".
+ */
+console.log(B('\nidle chatter'));
+{
+  const dt = 1 / 60;
+  const at = (x, y = 0, z = 0) => ({ x, y, z });
+  const runFor = (c, secs, p) => {
+    let n = 0;
+    for (let i = 0; i < Math.round(secs / dt); i++) if (c.speak(dt, p)) n++;
+    return n;
+  };
+
+  {
+    const c = core();
+    ok(runFor(c, 3, at(1)) === 0, 'silent for the first seconds, even nose to nose');
+    ok(runFor(c, 12, at(1)) >= 1, 'he does say something to a player who stays');
+  }
+  {
+    const c = core();
+    const n = runFor(c, 120, at(1));
+    ok(n >= 5 && n <= 12, 'two minutes of loitering is a handful of lines, not a stream',
+      `${n} lines in 120 s`);
+  }
+  {
+    // Every gap the rng hands out has to sit inside the authored range: a
+    // single short one is a double-take that talks over itself.
+    const c = core();
+    const gaps = [];
+    let since = 0;
+    for (let i = 0; i < 60 * 600; i++) {
+      since += dt;
+      if (c.speak(dt, at(1))) { gaps.push(since); since = 0; }
+    }
+    ok(gaps.length > 20, 'enough lines to judge the spacing', `${gaps.length}`);
+    ok(gaps.slice(1).every((g) => g >= VOICE.gap[0] - 0.05 && g <= VOICE.gap[1] + 0.05),
+      'every gap is inside VOICE.gap',
+      `min ${Math.min(...gaps.slice(1)).toFixed(1)}s, max ${Math.max(...gaps.slice(1)).toFixed(1)}s`);
+  }
+  ok(runFor(core(), 300, at(VOICE.radius + 3)) === 0, 'a player out of earshot hears nothing');
+  ok(runFor(core(), 300, at(1, VOICE.height + 2)) === 0,
+    'a player on the terrace above him is not in earshot either');
+  ok(runFor(core(), 300, null) === 0, 'no player, no chatter');
+  {
+    // Walking away and coming back must not buy a line: the clock runs
+    // regardless of where the player is, so proximity cannot be pumped.
+    const c = core();
+    runFor(c, 30, at(1));           // get him talking and reset the clock
+    let pumped = 0;
+    for (let i = 0; i < 40; i++) {
+      pumped += runFor(c, 0.5, at(1));
+      runFor(c, 0.5, at(60));
+    }
+    ok(pumped <= 2, 'stepping in and out does not pump lines out of him', `${pumped} in 40 s`);
+  }
+  {
+    const c = core();
+    c.shot('player');
+    ok(runFor(c, 300, at(1)) === 0, 'a dead roo is silent');
+    // ... and the resurrection does not blurt one in the frame he lands.
+    let spoke = false;
+    for (let i = 0; i < 60 * 10; i++) {
+      const p = at(FLAT.pad.x, 0, FLAT.pad.z);
+      if (c.speak(dt, p)) spoke = true;
+      c.update(dt, p);
+      if (c.alive) break;
+    }
+    ok(c.alive && !spoke, 'and he does not greet the player the instant the pad brings him back');
+  }
 }
 
 /* ─────────────────────────────────────────────────────── the shivam wiring ── */

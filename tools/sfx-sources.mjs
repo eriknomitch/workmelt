@@ -142,6 +142,16 @@ export const SOURCES = [
   { group: 'vox', key: 'headshot', ...VOX, src: ['vox/headshot.wav'] },
   { group: 'vox', key: 'killstreak', ...VOX, src: ['vox/killstreak.wav'] },
   { group: 'vox', key: 'game_over', ...VOX, src: ['vox/game_over.wav'] },
+  /* The roo's idle chatter — eleven Australianisms he mutters when the player
+   * wanders up to him on Shivam. One KEY with eleven takes, not eleven keys:
+   * the bank's per-key variant pool already picks at random and refuses an
+   * immediate repeat, so "say a random one" costs nothing here. */
+  {
+    group: 'vox',
+    key: 'roo',
+    ...VOX,
+    src: Array.from({ length: 11 }, (_, i) => `vox/aussie-sayings/roo_${i}.mp3`),
+  },
 
   /* ── reload foley ──────────────────────────────────────────────────────
    * One file per *phase*, not per reload. `weapon:reload` fires four times
@@ -207,7 +217,7 @@ export const CREDITS = [
     authors: 'generated for this project',
     license: 'no third-party rights — masters in assets-src/vox/',
     url: 'assets-src/vox/',
-    used: 'announcer: match begin, start, headshot, killstreak, game over',
+    used: "announcer: match begin, start, headshot, killstreak, game over; the Shivam roo's idle sayings",
   },
   {
     pack: 'Reload foley (text-to-sound)',

@@ -39,6 +39,27 @@ export const HOP = {
   maxStep: 1.2,
 };
 
+/**
+ * Idle chatter. He mutters an Australianism when the player wanders up to
+ * him — see the `roo` vox key in tools/sfx-sources.mjs.
+ *
+ * The gate is a radius AND a cooldown, and the cooldown is what does the
+ * work: the radius alone would fire on the frame the player crosses it and
+ * then again the next time they sway across the boundary. It runs down
+ * whether or not anyone is nearby, so walking away and coming back does not
+ * earn a fresh line — "spaced out" is a property of the clock, not of the
+ * player's path.
+ *
+ * `height` keeps a player on the promenade above him out of it: he stands on
+ * the beach, and a voice from under the terrace you are walking on reads as a
+ * bug rather than as a kangaroo.
+ */
+export const VOICE = {
+  radius: 8,
+  height: 3,
+  gap: [11, 19],
+};
+
 export class RooCore {
   /**
    * `cfg` is the map descriptor's `critter` field: `home {x,z}`,
@@ -67,6 +88,10 @@ export class RooCore {
     /** Seconds the player has held the pad so far (only counts while GONE). */
     this.padHold = 0;
     this._exploded = false;
+
+    /** Seconds until he may speak again. He starts part-way through one so a
+     *  player who spawns near him is not greeted on frame one. */
+    this._speakIn = rng.range(...VOICE.gap) * 0.5;
   }
 
   get alive() {
@@ -106,6 +131,25 @@ export class RooCore {
       radius: e.radius,
       damage: e.damage,
     };
+  }
+
+  /**
+   * Advance the chatter clock. `playerLevel` is the player's position in
+   * LEVEL space or null. Returns true on the tick he should say something —
+   * WHICH line is not his decision: the sample bank picks among the takes
+   * under the `roo` key and refuses an immediate repeat.
+   *
+   * Kept out of update() on purpose: a dead roo is silent, and update()
+   * spends its GONE ticks running the pad ritual.
+   */
+  speak(dt, playerLevel) {
+    if (this._speakIn > 0) this._speakIn -= dt;
+    if (!this.alive || !playerLevel) return false;
+    if (this._speakIn > 0) return false;
+    const d = Math.hypot(playerLevel.x - this.x, playerLevel.z - this.z);
+    if (d > VOICE.radius || Math.abs(playerLevel.y - this.y) > VOICE.height) return false;
+    this._speakIn = this.rng.range(...VOICE.gap);
+    return true;
   }
 
   /**
@@ -203,6 +247,9 @@ export class RooCore {
     this.hopT = 0;
     this.padHold = 0;
     this._grazeTimer = this.rng.range(0.6, 1.4);
+    // The player is standing on the pad, well inside the chatter radius, so
+    // without this he would blurt a line in the same frame he reappears.
+    this._speakIn = this.rng.range(...VOICE.gap) * 0.5;
     return 'respawned';
   }
 }
@@ -263,6 +310,7 @@ export class Roo {
     this._wp2 = new THREE.Vector3();
     this._lp = new THREE.Vector3();
     this._explosionEvent = { position: new THREE.Vector3(), radius: 0, damage: 0, source: 'roo' };
+    this._speakEvent = { position: new THREE.Vector3() };
     this._lastHeading = null;
     this._worldYaw = 0;
 
@@ -349,6 +397,11 @@ export class Roo {
     const src = p?.position ?? null;
     if (src && Number.isFinite(src.x)) {
       playerLevel = this.world.worldToLevel(src.x, src.y, src.z, this._lp);
+    }
+    if (this.core.speak(dt, playerLevel)) {
+      this._speakEvent.position.copy(this.root.position);
+      this._speakEvent.position.y += 1.15; // his head, not his feet
+      this.ctx.events.emit('roo:speak', this._speakEvent);
     }
     const outcome = this.core.update(dt, playerLevel);
     if (outcome === 'respawned') {

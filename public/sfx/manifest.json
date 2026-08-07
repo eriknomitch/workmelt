@@ -244,6 +244,19 @@
     ],
     "game_over": [
       "vox/game_over_0.opus"
+    ],
+    "roo": [
+      "vox/roo_0.opus",
+      "vox/roo_1.opus",
+      "vox/roo_2.opus",
+      "vox/roo_3.opus",
+      "vox/roo_4.opus",
+      "vox/roo_5.opus",
+      "vox/roo_6.opus",
+      "vox/roo_7.opus",
+      "vox/roo_8.opus",
+      "vox/roo_9.opus",
+      "vox/roo_10.opus"
     ]
   },
   "reload": {

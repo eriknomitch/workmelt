@@ -586,6 +586,25 @@ export class AudioSystem {
     return this._playDry('announce', { line, level: opts.level ?? 0.85, extraDelay: at - now }, 'ui', 1);
   }
 
+  /**
+   * A recorded line spoken by something out in the world — the Shivam roo's
+   * idle Australianisms are the only user today.
+   *
+   * It is `announce`'s voice down the SPATIAL path: same recorded-or-nothing
+   * contract, but panned, delayed and occluded from a position, because this
+   * one is coming out of a body the player can see. Which is also why the
+   * `has()` guard is not optional — `announce` has no synthesized fallback,
+   * so an unguarded miss falls through _build()'s `default:` and plays a UI
+   * blip out of the kangaroo.
+   *
+   * @returns {boolean} whether a line was scheduled
+   */
+  critter(line, position, opts = {}) {
+    if (!this.running || !isVec(position) || !this.samples?.has('vox', line)) return false;
+    return this._playAt('announce', position.x, position.y, position.z,
+      { line, level: opts.level ?? 0.9 }, 'voice', 0.8);
+  }
+
   /** Adapter the `ui` subsystem probes for: playUi(id, gain). */
   playUi(id, gain = 1) {
     return this.ui(id, gain);
@@ -654,6 +673,7 @@ export class AudioSystem {
     on('actor:death', (p) => this._onDeath(p));
     // Optional: emitted by `ai` if it wants scripted chatter.
     on('ai:bark', (p) => this.bark(p?.kind ?? 'spot', p?.position, { voice: p?.voice ?? 0 }));
+    on('roo:speak', (p) => this.critter('roo', p?.position));
 
     /* ---- announcer ------------------------------------------------ */
     // The relay's pre-match signal, so the line runs under the countdown.
