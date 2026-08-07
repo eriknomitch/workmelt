@@ -121,60 +121,65 @@ console.log(B('\npower — the outage cannot be extended'));
 
 /* ──────────────────────────────────────────────────────────── self-repair ─── */
 /**
- * WHY GENERATORS HEAL. `bullet:impact` carries no shooter, so bot fire, exit
- * wounds from penetrating rounds and the player's own rounds all land the
- * same — and the plant room is the contested middle of the map, so stray fire
- * crosses it all match. Played without regen, chip damage accumulated until a
- * 21st stray round minutes later tripped an outage nobody had aimed at.
- * Regen is what makes the trigger DELIBERATE: a committed magazine beats the
- * delay, a match's worth of strays cannot.
+ * WHY GENERATORS HEAL. The plant room is the contested middle of the map, so
+ * stray fire crosses it all match, and the damage feed cannot tell an aimed
+ * round from a stray one. Played without regen, chip damage accumulated until
+ * some late stray round tripped an outage nobody had aimed at.
+ *
+ * Regen is what makes the trigger DELIBERATE, and it is a RATE rather than a
+ * delay after the last hit. The delay version is the failure these checks
+ * exist for: every hit restarted its clock, so any trickle with gaps shorter
+ * than the delay disabled healing outright and accumulated forever. It passed
+ * a stray test that happened to pick a gap just over the delay and blacked the
+ * map out at any gap just under it. A rate has no such cliff — the line is
+ * DAMAGE PER SECOND, and it is drawn where a magazine is above it and a
+ * firefight's spillover is below it.
  */
 console.log(B('\npower — self-repair'));
 {
-  const g = rig({ hp: 700, regenDelay: 4, regenRate: 140 });
+  const g = rig({ hp: 700, regenRate: 45 });
   g.damage(0, 1, 0, 300);
-  run(g, 2);
-  ok(g.generators[1].hp === 400, 'a wounded generator does not heal inside the delay',
-    `${g.generators[1].hp} hp after 2 s of a 4 s delay`);
-  run(g, 8);
-  ok(g.generators[1].hp === 700, 'and is back at full once the delay and the ramp have run',
-    `${g.generators[1].hp} hp`);
+  run(g, 4);
+  ok(Math.abs(g.generators[1].hp - 580) < 2, 'a wounded generator heals at the authored rate',
+    `${g.generators[1].hp.toFixed(0)} hp after 4 s at 45 hp/s`);
+  run(g, 4);
+  ok(g.generators[1].hp === 700, 'and returns to full', `${g.generators[1].hp} hp`);
 
-  // A fresh hit restarts the clock — suppressing a generator keeps it wounded.
-  g.damage(0, 1, 0, 300);
-  run(g, 3);
-  g.damage(0, 1, 0, 34);
-  run(g, 3);
-  ok(g.generators[1].hp < 700, 'a fresh hit restarts the delay', `${g.generators[1].hp.toFixed(0)} hp`);
-
-  // The split the numbers exist for: a magazine dump beats the delay outright…
-  const fast = rig({ hp: 700, regenDelay: 4, regenRate: 140 });
-  for (let i = 0; i < 21; i++) {
-    fast.damage(0, 1, 0, 34);
-    fast.update(0.1);
-  }
-  ok(fast.out, 'a committed magazine still trips the grid', `21 rounds in 2.1 s`);
+  // A committed magazine: 800 rpm x 33 = 440 dps, net 395 over the regen.
+  const fast = rig({ hp: 700, regenRate: 45 });
+  let rounds = 0;
+  while (!fast.out && rounds < 30) { fast.damage(0, 1, 0, 33); fast.update(60 / 800); rounds++; }
+  ok(fast.out && rounds <= 30, 'one rifle magazine still trips the grid',
+    `${rounds} rounds of 30, ${(rounds * 60 / 800).toFixed(1)} s`);
 
   /**
-   * …while STRAY fire — the thing that caused the mystery outages — cannot.
-   * Stray means sporadic: a bot round every few seconds as fights cross the
-   * room, each gap longer than the regen delay. Two minutes of that must end
-   * with the generator at full and the grid untouched.
+   * …while STRAY fire cannot, AT ANY GAP. This is the check the delay version
+   * failed: it is a sweep, not a single sample, because the bug lived entirely
+   * in the gaps the one sample did not take. Ten minutes of each.
    *
-   * (Deliberately NOT "any sustained fire": a player parked on the room
-   * hitting it every half-second is suppressing the generator on purpose, and
-   * the delay never elapsing is correct — that is aimed fire, and it should
-   * work. The line regen draws is deliberate-vs-incidental, not fast-vs-slow.)
+   * The boundary is arithmetic and stated, not discovered: 33 damage a round
+   * against 45 hp/s means anything sparser than a round every 0.73 s can never
+   * gain a point. A bot's spillover into the room is an order of magnitude
+   * sparser than that; a player parked on a generator is denser, and that is
+   * aimed fire which SHOULD work.
    */
-  const stray = rig({ hp: 700, regenDelay: 4, regenRate: 140 });
-  let tripped = false;
-  for (let t = 0; t < 120; t += 6) {
-    stray.damage(0, 1, 0, 34);
-    if (run(stray, 6).length || stray.out) tripped = true;
+  let worst = null;
+  for (const gap of [6, 5, 4, 3.9, 3, 2, 1.5, 1, 0.8]) {
+    const stray = rig({ hp: 700, regenRate: 45 });
+    for (let t = 0; t < 600 && !stray.out; t += gap) {
+      stray.damage(0, 1, 0, 33);
+      run(stray, gap);
+    }
+    if (stray.out && worst === null) worst = gap;
   }
-  ok(!tripped && stray.generators[1].hp === 700,
-    'two minutes of sporadic stray rounds never trips it',
-    `a hit every 6 s, ${stray.generators[1].hp.toFixed(0)} hp at the end`);
+  ok(worst === null, 'ten minutes of stray rounds never trips it, at any gap down to 0.8 s',
+    worst === null ? '9 gaps swept' : `blacked out at a round every ${worst} s`);
+
+  // And the other side of the same line: denser than the rate, and it works.
+  const aimed = rig({ hp: 700, regenRate: 45 });
+  for (let t = 0; t < 120 && !aimed.out; t += 0.5) { aimed.damage(0, 1, 0, 33); run(aimed, 0.5); }
+  ok(aimed.out, 'a player suppressing a generator every half-second still gets there',
+    'deliberate-vs-incidental is the line, and it has two sides');
 }
 
 /* ─────────────────────────────────────────────────────────────── the level ── */
@@ -289,15 +294,19 @@ console.log(B('\npower — site work'));
   ok(clash.length === 0, 'no two generators overlap', clash.join(' '));
 
   /**
-   * BALANCE, WRITTEN DOWN. The rifle does ~34 a round with a 30 round
-   * magazine, so a generator at 700 is a little over two thirds of one
-   * magazine — committed fire in a room somebody else wants, not a stray
-   * round. The outage is long enough to fight a whole engagement in and short
-   * enough that a match is not played in the dark.
+   * BALANCE, WRITTEN DOWN. The rifle does 33 a round at 800 rpm with a 30
+   * round magazine, and the generator heals at `regenRate` throughout, so the
+   * real cost is `hp / (33 - 45/13.3)` ≈ 24 rounds — committed fire in a room
+   * somebody else wants, and still inside one magazine. The outage is long
+   * enough to fight a whole engagement in and short enough that a match is not
+   * played in the dark.
    */
   const hp = spec.hp ?? POWER_DEFAULTS.hp;
-  ok(hp >= 300 && hp <= 1200, 'a generator costs real ammunition to break',
-    `${hp} hp ≈ ${(hp / 34).toFixed(0)} rifle rounds`);
+  const rate = spec.regenRate ?? POWER_DEFAULTS.regenRate;
+  const perRound = 33 - rate * (60 / 800);
+  const rounds = hp / perRound;
+  ok(rounds > 12 && rounds <= 30, 'a generator costs real ammunition to break, inside one magazine',
+    `${hp} hp ≈ ${rounds.toFixed(0)} rifle rounds net of ${rate} hp/s regen`);
   const out = spec.outage ?? POWER_DEFAULTS.outage;
   ok(out >= 10 && out <= 45, 'and the dark is a phase of the match, not the match',
     `${out} s`);

@@ -389,17 +389,21 @@ export class WorldSystem {
       if (!this.power || !p) return;
       if (e.exit || e.actor) return;
       if (e.trace != null && e.trace === this._powerTrace) return;
-      const r = this.power.damage(p.x, p.y, p.z, e.damage ?? 0);
+      const q = this.worldToLevel(p.x, p.y, p.z, this._powerPt);
+      const r = this.power.damage(q.x, q.y, q.z, e.damage ?? 0);
       // Stamped only on a hit, so a round that passes through a body and THEN
       // reaches the plant still counts — the body's impact scored nothing.
       if (!r.hit) return;
       this._powerTrace = e.trace ?? -1;
       if (r.destroyed) this._announcePower(r.generator);
     });
+    // Level space, like the impact handler. A radius survives the conversion
+    // unchanged — the transform is a yaw and an offset, never a scale.
     on('explosion', (e) => {
       const p = e?.position;
       if (!this.power || !p) return;
-      const killed = this.power.splash(p.x, p.y, p.z, e.radius ?? 0, e.damage ?? 0);
+      const q = this.worldToLevel(p.x, p.y, p.z, this._powerPt);
+      const killed = this.power.splash(q.x, q.y, q.z, e.radius ?? 0, e.damage ?? 0);
       if (killed.length) this._announcePower(killed[0]);
     });
 
@@ -453,26 +457,36 @@ export class WorldSystem {
     this._powerWasOut = false;
     /** Last bullet trace that scored on the grid — see the impact handler. */
     this._powerTrace = -1;
+    /** Scratch for the world -> level conversion the grid's hit test needs. */
+    this._powerPt = new THREE.Vector3();
 
     /**
      * THE POWER GRID, for a map that declares one. `world` owns it because
      * `world` already owns every light on the map and re-drives them every
      * frame; a separate subsystem would only have to reach back in here.
      *
-     * The boxes are converted LEVEL -> WORLD once, here, because
-     * `bullet:impact` reports world space and converting per round would be
-     * the same arithmetic thousands of times over.
+     * THE GRID HIT-TESTS IN LEVEL SPACE, and the impact point is what gets
+     * converted — not the boxes. That is the opposite of the obvious
+     * arrangement (convert three boxes once at build, never again) and it is
+     * the only one that is CORRECT on a rotated map.
      *
-     * `A.toWorld` returns a SHARED scratch array — the same trap `kit.js`'s
-     * `LL` sets — so the result is read out into a fresh object rather than
-     * held. Holding it gives every generator the last one's coordinates.
+     * `power.at()` is an axis-aligned test, and a box is only axis-aligned in
+     * the space it was authored in. Site Work stands at `transform.yaw = 0.26`,
+     * so converting the CENTRES to world while leaving the half-extents on
+     * level axes describes a machine rotated 15° away from the one that is
+     * actually drawn: measured over the footprint, 11% of the test volume is
+     * empty floor up to 0.40 m clear of the plant — where a stray round or a
+     * grenade fragment counted as a hit on the generator — and an equal slice
+     * of the real machine tested as a miss. Neither shows in a frame.
+     *
+     * The cost is one matrix multiply per impact on one map, against a hit
+     * test that already runs per impact.
      */
     const spec = this.map.power;
     if (spec) {
-      const boxes = spec.generators.map((g) => {
-        const w = A.toWorld(g.x, g.h / 2, g.z);
-        return { id: g.id, cx: w[0], cy: w[1], cz: w[2], hx: g.w / 2, hy: g.h / 2, hz: g.d / 2 };
-      });
+      const boxes = spec.generators.map((g) => (
+        { id: g.id, cx: g.x, cy: g.h / 2, cz: g.z, hx: g.w / 2, hy: g.h / 2, hz: g.d / 2 }
+      ));
       this.power = new PowerGrid({ ...spec, boxes });
       // The materials the mains feed, with the brightness they were authored
       // at — the grid reports a 0..1 level and this is what it multiplies.

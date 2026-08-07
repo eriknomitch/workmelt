@@ -18,8 +18,15 @@
  *
  * SPACE: the grid is agnostic. It hit-tests points against boxes and it is the
  * caller's job to hand it both in the same frame of reference — `WorldSystem`
- * converts the map's LEVEL-space boxes to world space once, at build, because
- * `bullet:impact` reports world space.
+ * keeps the boxes in LEVEL space and converts each impact point into it.
+ *
+ * That is the more expensive direction on purpose, and converting the three
+ * boxes once at build instead is WRONG on any map with a `transform.yaw`:
+ * `at()` is axis-aligned, a box is only axis-aligned in the space it was
+ * authored in, and a rotated centre carrying level-axis half-extents describes
+ * a machine standing at an angle to the one that is drawn. On Site Work (yaw
+ * 0.26) that mismatch made 11% of the test volume empty floor, up to 0.40 m
+ * clear of the plant, and hid an equal slice of the real machine.
  */
 
 /** Clamp helper — no dependency on the engine's maths for a two-line job. */
@@ -42,23 +49,33 @@ export const POWER_DEFAULTS = {
   /** Metres of slack around a generator box when hit-testing a bullet. */
   margin: 0.15,
   /**
-   * Self-repair: seconds a generator must go unhit before it starts healing,
-   * and hit points per second once it does.
+   * Self-repair, in hit points per second. ALWAYS ON — a wounded generator
+   * heals continuously, including while it is being shot.
    *
    * THIS IS WHAT MAKES THE TRIGGER DELIBERATE, and it exists because the
-   * damage feed cannot be filtered. `bullet:impact` carries no shooter — a
-   * bot's round, a penetrating round's exit wound and the player's own fire
-   * all land identically — and the generator room is the contested middle of
-   * the map BY DESIGN, so stray fire crosses it all match. Without regen that
-   * chip damage accumulates silently until some 21st stray round over three
-   * minutes trips an outage nobody asked for and nobody can explain.
+   * damage feed cannot be filtered by intent. The generator room is the
+   * contested middle of the map BY DESIGN, so stray fire crosses it all match.
+   * Without regen that chip damage accumulates silently until some late stray
+   * round trips an outage nobody asked for and nobody can explain.
    *
-   * With it, the arithmetic splits clean: a committed magazine (700 hp at
-   * ~34 a round inside a couple of seconds) beats the delay entirely, while
-   * anything slower than `regenRate` sustained can never get there.
+   * A CONTINUOUS RATE, NOT A DELAY AFTER THE LAST HIT, and the difference is
+   * the whole feature. The first version healed only once a generator had gone
+   * `regenDelay` seconds unhit — but every hit restarted that clock, so ANY
+   * trickle with gaps under the delay disabled regen outright and accumulated
+   * forever. Measured: one stray round every 3.9 s (8.5 dps) blacked the map
+   * out after 86 seconds having never healed a single point, which is exactly
+   * the mystery outage regen was added to prevent. The cliff sat between "a
+   * round every 6 s" — the case the self-test happened to pick — and "a round
+   * every 4 s", and nothing about the failure is visible in a frame.
+   *
+   * As a rate the contract states itself and has no cliff in it: sustained
+   * damage below `regenRate` can NEVER trip the grid however long it goes on,
+   * and anything above it takes `hp / (dps - regenRate)` seconds. At 45 the
+   * line falls between a bot's stray round every few seconds (~10 dps) and a
+   * rifle magazine (800 rpm x 33 = 440 dps, so 700 hp in 1.8 s — 24 rounds,
+   * comfortably inside one 30-round magazine).
    */
-  regenDelay: 4,
-  regenRate: 140,
+  regenRate: 45,
   /**
    * EV of extra metering compensation while the mains are down. POSITIVE IS
    * DARKER, the same sign the map's own `environment.exposureBias` uses.
@@ -87,12 +104,9 @@ export class PowerGrid {
     this.margin = s.margin;
     this.maxHp = s.hp;
     this.outageEv = s.outageEv;
-    this.regenDelay = s.regenDelay;
     this.regenRate = s.regenRate;
-    /** Internal clock, for the per-generator last-hit stamps. */
-    this._clock = 0;
 
-    this.generators = (spec.boxes ?? []).map((b) => ({ ...b, hp: s.hp, alive: true, hitAt: -Infinity }));
+    this.generators = (spec.boxes ?? []).map((b) => ({ ...b, hp: s.hp, alive: true }));
 
     /** Seconds left on the outage, 0 when the mains are up. */
     this.remaining = 0;
@@ -161,7 +175,6 @@ export class PowerGrid {
     const g = this.at(x, y, z);
     if (!g) return miss;
     g.hp -= amount;
-    g.hitAt = this._clock;
     if (g.hp > 0) return { hit: true, destroyed: false, generator: g, hp: g.hp };
     g.hp = 0;
     g.alive = false;
@@ -210,7 +223,6 @@ export class PowerGrid {
    */
   update(dt) {
     if (!(dt > 0)) return false;
-    this._clock += dt;
     let restored = false;
     if (this.remaining > 0) {
       this._since += dt;
@@ -233,11 +245,11 @@ export class PowerGrid {
     } else if (this._restore < this.restoreTime) {
       this._restore = Math.min(this.restoreTime, this._restore + dt);
     }
-    // Self-repair — see `POWER_DEFAULTS.regenDelay`. Only standing, only
-    // wounded, and only once the last hit is `regenDelay` behind us.
+    // Self-repair — see `POWER_DEFAULTS.regenRate`. Standing and wounded is
+    // the whole condition: there is deliberately no "has it been left alone"
+    // test, because that test is what a trickle defeats.
     for (const g of this.generators) {
       if (!g.alive || g.hp >= this.maxHp) continue;
-      if (this._clock - g.hitAt < this.regenDelay) continue;
       g.hp = Math.min(this.maxHp, g.hp + this.regenRate * dt);
     }
     this.level = this._envelope();
