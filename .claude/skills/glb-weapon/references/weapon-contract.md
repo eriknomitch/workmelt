@@ -139,28 +139,74 @@ C-clamp — because the C-clamp put the hand on top of the muzzle on screen.
 
 ## 5. Material keys
 
-From `src/weapons/materials.js` (`MATERIAL_KEYS` — the tool validates against
-it, so a typo fails the bake rather than shipping):
+`src/weapons/materials.js` exports **two** sets, and the difference has already
+cost one shipped bug.
+
+`MATERIAL_KEYS` — the library-derived surfaces:
 
 ```
 alu  alu_fine  steel  steel_soot  steel_bright  steel_black
 polymer  polymer_tan  rubber  brass  copper
 ```
 
-Rough mapping for a modern handgun: slide and barrel `steel_black` or `steel`,
-frame and grip `polymer`, controls and pins `steel_bright`, backstrap or
-grip inserts `rubber`, optic housing `alu_fine`, cartridge `brass`.
+`SPECIAL_MATERIAL_KEYS` — answered directly by `WeaponMaterials.get()`, in no
+library, and every bit as valid:
 
-The mask amplitudes are shaped per key in `viewmodel.addWeapon` — `polymer`,
-`polymer_tan` and `rubber` are treated as soft surfaces and get less edge wear.
-A gun mapped entirely to `steel` gets hard-surface wear everywhere and reads
-as a prop.
+```
+glass  optic_tube  lens_ring  lens_vig  lens_vig_soft  cavity
+```
 
-**One caveat for low-poly imports.** The wear mask is per-vertex and
-interpolates across a face. Chamfered procedural geometry has vertices along
-every edge; a low-poly import does not, so wear spreads further across each
-panel. If the result looks chalky, lower `edgeThreshold` from the 0.16 used
-today rather than turning the wear down.
+`ALL_MATERIAL_KEYS` is the union, and is what `glb-bake.mjs` validates against.
+
+### An optic lens is `glass`, and nothing else works
+
+**Map the lens panel to `glass`.** Any other key renders a sight that looks
+correct from every external angle and is *completely opaque the moment you aim
+through it*. There is no error, no warning, and no static three-quarter view
+that shows it — only `?view=ads` does.
+
+This is worth stating flatly because the obvious lookup is wrong: `glass` is
+absent from `MATERIAL_KEYS`, so anyone (or any tool) validating against that
+list alone concludes the correct answer is invalid and picks a metal instead.
+That is exactly what happened on the G31.
+
+### Rough mapping for a modern handgun
+
+| part | key |
+|---|---|
+| slide, barrel | `steel_soot` (see the wear note below), `steel` |
+| frame, grip | `polymer` |
+| controls, pins, trigger | `steel_bright` |
+| backstrap, grip inserts | `rubber` |
+| optic housing, comp | `alu_fine`, `alu` |
+| **optic lens** | **`glass`** |
+| cartridge | `brass` |
+
+### Wear amplitude is the lever, not `edgeThreshold`
+
+The curvature mask is **per-vertex**. Chamfered procedural geometry carries
+vertices along every edge; a faceted low-poly import has a vertex at *every*
+corner and nothing in between, so on an import essentially every vertex reads
+as a hard edge and the wear layer covers whole panels instead of their rims.
+
+The fix is to pick a key whose wear amplitude is low, because that is the term
+the mask is multiplied by. From `materials.js`:
+
+| key | wear amp | note |
+|---|---|---|
+| `steel_black` | **0.24** | the highest in the library — bleaches an imported slide to bare white metal |
+| `alu_fine` | 0.18 | |
+| `steel`, `steel_bright` | 0.16 | |
+| `steel_soot` | **0.06** | near-black tint, 4x less wear — the right slide key for an import |
+
+`polymer`, `polymer_tan` and `rubber` are additionally treated as soft surfaces
+in `viewmodel.addWeapon` and get their wear pulled down again, which is why an
+imported frame usually looks right on the first try and an imported slide does
+not.
+
+Do **not** reach for `edgeThreshold` first: raising it reduces how many vertices
+qualify as edges, lowering it increases them, and on geometry where every vertex
+is a corner neither helps much. Change the key.
 
 ---
 
@@ -229,20 +275,50 @@ four is a deliberate design, not an accident.
 
 Ask which one the user wants before writing the def. Do not silently pick.
 
+### The weapon id is a key into other subsystems
+
+This is the part that bites, because **every one of these degrades silently** —
+the gun works, sounds slightly wrong, and nothing reports anything.
+
+| what | where | failure if missed |
+|---|---|---|
+| reload foley | `FOLEY_ALIASES` in `src/audio/samples.js` | all four reload phases fall through to synthesis |
+| shot profile | the regex chain in `resolveProfile`, `src/audio/weapons.js` | fires with the default profile — the wrong gun |
+| balance matrix | the `MATRIX` rows + the `WEAPON_DEFS.<id>` references in the dominance block of `balance.selftest.mjs` | the suite fails loudly (the one that *does* shout) |
+| preview harness | the `builders` map in `src/weapons/preview.js` | `?w=<id>` cannot resolve |
+
+Reload foley and the shot profile are keyed on the **hardware**, not the weapon
+id, so a new gun that is mechanically an existing one should alias to it:
+`FOLEY_ALIASES = { g31: 'pistol' }`, and `g31` added to the pistol arm of the
+profile regex. `src/audio/reload.selftest.mjs` catches the first — it asserts
+every gun in `defs.js` resolves a sample for all four phases in both variants —
+which is why the full free sweep matters and the four weapon suites are not
+enough.
+
 ---
 
 ## 8. Verification
 
-Free, run always:
+**Run the whole free sweep, not just the weapon suites.** A new weapon id
+reaches into audio, and `src/audio/reload.selftest.mjs` is the suite that
+catches it — it failed on the G31 and none of the weapon suites did:
+
+```
+for f in $(find src server \( -name 'selftest.*' -o -name '*.selftest.*' \) \
+    | grep -v '^server/' | grep -v 'src/audio/selftest.js' | sort); do
+  node "$f" >/dev/null 2>&1 || echo "FAIL $f"
+done
+npm run build
+```
+
+The ones that speak directly to this work:
 
 ```
 node src/weapons/models/baked.selftest.mjs     # the bake pipeline itself
 node src/weapons/balance.selftest.mjs          # defs, STK matrix, dominance
 node src/weapons/loadout.selftest.mjs          # a spawn restocks every mag
 node src/weapons/autoreload.selftest.mjs       # the auto-reload contract
-node src/weapons/throwables.selftest.mjs
-node src/weapons/melee.selftest.mjs
-npm run build
+node src/audio/reload.selftest.mjs             # foley resolves for every def
 ```
 
 Visual — required for any model work, see the `visual-check` skill:
