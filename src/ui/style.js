@@ -621,6 +621,29 @@ const CSS = `
   color: var(--amber); text-shadow: var(--sh);
 }
 
+/* ================================================= calibration notice */
+/* Quiet pill under the compass while Auto measures the machine. HUD chrome,
+   so it keeps the in-world outlined treatment, not the brand tokens. */
+.ow-calib {
+  position:absolute; left:50%; top: calc(84px * var(--k));
+  transform: translateX(-50%);
+  display:flex; align-items:center; gap: calc(var(--u) * 1.6);
+  padding: calc(var(--u) * 1.2) calc(var(--u) * 2.4);
+  font-size: calc(10px * var(--k)); letter-spacing:.22em;
+  color: var(--ink-2); text-shadow: var(--sh);
+  border: 1px solid rgba(255,255,255,.18); border-radius: calc(2px * var(--k));
+  background: rgba(8,11,14,.42);
+}
+.ow-calib-dot {
+  width: calc(6px * var(--k)); height: calc(6px * var(--k)); border-radius:50%;
+  background: var(--amber);
+  animation: ow-calib-pulse 1.2s ease-in-out infinite;
+}
+@keyframes ow-calib-pulse {
+  0%, 100% { opacity: .25; }
+  50% { opacity: 1; }
+}
+
 /* ================================================================ banner */
 .ow-banner {
   position:absolute; left:50%; top:31%;

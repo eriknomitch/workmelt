@@ -9,6 +9,25 @@ import {
 const quantizeScale = (value) => Math.round(value * 20) / 20;
 const REFRESH_BUCKETS = [30, 60, 75, 90, 100, 120, 144, 165, 240, 360];
 const LOWER_TIER = { ultra: 'high', high: 'medium', medium: 'low', low: 'performance' };
+const HIGHER_TIER = { performance: 'low', low: 'medium', medium: 'high', high: 'ultra' };
+const TIER_ORDER = ['performance', 'low', 'medium', 'high', 'ultra'];
+// Calibration ignores the first stretch of active play entirely: shader
+// compilation, texture bakes and JIT warm-up all land there, and a p95 taken
+// over them scores the machine far below what it can actually hold.
+const CALIBRATION_WARMUP_MS = 5000;
+const CALIBRATION_WARMUP_FRAMES = 60;
+// Sustained headroom at the tier's max render scale before promoting a tier.
+// While no walk-down has ever proven a real limit (`tierCeiling` null), the
+// current tier is one-shot-calibration guesswork measured on whatever scene
+// happened to be on screen — so promotion is eager, and the system converges
+// from live gameplay evidence instead of trusting that first sample. A wrong
+// climb is self-correcting: the walk-down sets the ceiling, ending eagerness.
+const PROMOTE_SUSTAIN_MS = 60000;
+const PROMOTE_SUSTAIN_UNPROVEN_MS = 20000;
+const PROMOTE_HEADROOM = 0.7;
+// Sustained CPU-bound target misses before a tier walk-down (resolution cannot
+// help a CPU-bound frame, but a cheaper tier's draw/LOD budgets can).
+const CPU_LIMIT_MS = 15000;
 export const GRAPHICS_STORAGE_KEY = 'cod_graphics_v1';
 export const GRAPHICS_MODES = ['auto', 'low', 'medium', 'high', 'ultra'];
 export const FPS_TARGETS = [30, 60, 90, 120, 144, 165, 240];
@@ -20,6 +39,12 @@ const DEFAULT_GRAPHICS = Object.freeze({
   mode: 'auto',
   targetFps: 60,
   tier: null,
+  /**
+   * A live walk-down proved the tier above this one cannot hold the target, so
+   * promotion never climbs past it. Cleared when the target, mode or device
+   * changes — the evidence only holds for the conditions it was gathered under.
+   */
+  tierCeiling: null,
   renderScale: 1,
   refreshHz: null,
   signature: null,
@@ -55,9 +80,8 @@ export function loadGraphicsSettings(storage = browserStorage()) {
         ? 'display'
         : Number(raw.targetFps)
       : 60;
-  let tier = ['performance', 'low', 'medium', 'high', 'ultra'].includes(raw.tier)
-    ? raw.tier
-    : null;
+  let tier = TIER_ORDER.includes(raw.tier) ? raw.tier : null;
+  const tierCeiling = TIER_ORDER.includes(raw.tierCeiling) ? raw.tierCeiling : null;
   let renderScale = Number.isFinite(raw.renderScale)
     ? quantizeScale(Math.min(1, Math.max(0.2, raw.renderScale)))
     : 1;
@@ -96,6 +120,7 @@ export function loadGraphicsSettings(storage = browserStorage()) {
     mode,
     targetFps,
     tier,
+    tierCeiling,
     renderScale,
     refreshHz,
     signature,
@@ -131,6 +156,7 @@ export function prepareAutoSettings(settings, { signature, refreshHz }) {
     refreshHz: settings.targetFps === 'display' ? refreshHz : signatureChanged ? null : settings.refreshHz,
     calibrated: invalidated ? false : settings.calibrated,
     tier: invalidated ? null : settings.tier,
+    tierCeiling: invalidated ? null : settings.tierCeiling ?? null,
     renderScale: invalidated ? 1 : settings.renderScale,
   };
 }
@@ -254,6 +280,7 @@ export class AdaptiveQualityPolicy {
     this._misses = 0;
     this._headroom = 0;
     this._floorMissSinceMs = null;
+    this._cpuMissSinceMs = null;
     this._status = 'stable';
   }
 
@@ -264,26 +291,42 @@ export class AdaptiveQualityPolicy {
     this._misses = 0;
     this._headroom = 0;
     this._floorMissSinceMs = null;
+    this._cpuMissSinceMs = null;
     this._status = 'stable';
     return this.targetFps;
   }
 
-  update({ nowMs, p95FrameMs, bound = 'mixed', active = true }) {
+  update({ nowMs, p95FrameMs, p90FrameMs, bound = 'mixed', active = true }) {
     let changed = false;
     if (!active || !Number.isFinite(p95FrameMs) || nowMs - this._lastEvalMs < this.evaluateEveryMs)
       return this._result(changed, p95FrameMs);
     this._lastEvalMs = nowMs;
 
     const budget = 1000 / this.targetFps;
-    const missed = p95FrameMs > budget * 1.05;
+    // A miss is judged on p90, not p95: over a 240-frame window p95 clears its
+    // bar on ~12 bad frames, so a single GC hitch or compositor stall per window
+    // could ratchet resolution down on a machine that is otherwise perfect.
+    // Headroom stays on p95 — raising resolution should stay conservative.
+    const missFrameMs = Number.isFinite(p90FrameMs) ? p90FrameMs : p95FrameMs;
+    const missed = missFrameMs > budget * 1.05;
     const roomy = p95FrameMs < budget * 0.85;
     this._misses = missed ? this._misses + 1 : 0;
     this._headroom = roomy ? this._headroom + 1 : 0;
-    if (missed && this.renderScale <= this.minScale) {
+    if (missed && bound === 'cpu') {
+      // Resolution cannot help a CPU-bound frame, so the scaler stands down —
+      // but the miss is surfaced instead of silently reading as `stable`, and a
+      // sustained one escalates to `limited` so the tier walk-down (which also
+      // cuts CPU cost: draws, LOD and animation budgets) can act.
+      if (this._cpuMissSinceMs === null) this._cpuMissSinceMs = nowMs;
+      this._floorMissSinceMs = null;
+      this._status = nowMs - this._cpuMissSinceMs >= CPU_LIMIT_MS ? 'limited' : 'cpu-limited';
+    } else if (missed && this.renderScale <= this.minScale) {
+      this._cpuMissSinceMs = null;
       if (this._floorMissSinceMs === null) this._floorMissSinceMs = nowMs;
       if (nowMs - this._floorMissSinceMs >= 10000) this._status = 'limited';
     } else {
       this._floorMissSinceMs = null;
+      this._cpuMissSinceMs = null;
       this._status = 'stable';
     }
 
@@ -356,6 +399,12 @@ export class AdaptiveQualitySystem {
     this.ctx = null;
     this._unsubs = [];
     this._reloadPending = false;
+    this._deferredReload = false;
+    this._demotedThisSession = false;
+    this._promoteSinceMs = null;
+    this._warmedUp = false;
+    this._warmupStartMs = null;
+    this._warmupStartFrame = 0;
     this._adaptiveStartFrame = 0;
     this._nextSampleMs = 0;
     this._calibrationStartFrame = 0;
@@ -383,6 +432,14 @@ export class AdaptiveQualitySystem {
     // hand-built ctx that has no event bus.
     const offLost = ctx.events?.on?.('render:contextlost', (e) => this._onContextLost(e));
     if (offLost) this._unsubs.push(offLost);
+    // A tier change needs a page reload, and a reload mid-firefight is brutal.
+    // Requested reloads wait for a safe boundary instead: the local player's
+    // death, the match ending, or the player pausing / hiding the tab (the
+    // inactive case is caught at the top of lateUpdate).
+    for (const type of ['player:death', 'match:end']) {
+      const off = ctx.events?.on?.(type, () => this._fireDeferredReload());
+      if (off) this._unsubs.push(off);
+    }
     if (!this.enabled || this.settings.mode !== 'auto') {
       this._status.state = this.enabled ? 'manual' : 'override';
       this._status.mode = ctx.config.quality;
@@ -395,11 +452,19 @@ export class AdaptiveQualitySystem {
 
   lateUpdate(_dt, ctx) {
     if (!this.enabled || this.settings.mode !== 'auto' || this._reloadPending) return;
+    if (this._deferredReload) {
+      // The new tier is already persisted; the scaler stands down until the
+      // reload lands so it cannot write old-tier scales into new-tier settings.
+      if (!this.isActive(ctx)) this._fireDeferredReload();
+      return;
+    }
     const nowMs = this.now();
     if (!this.settings.calibrated || !this.settings.tier) {
       if (!this.isActive(ctx)) {
         this._calibrationStartFrame = ctx.perf.count;
         this._calibrationStartMs = null;
+        this._warmedUp = false;
+        this._warmupStartMs = null;
         return;
       }
       this._calibrate(nowMs, ctx);
@@ -417,6 +482,7 @@ export class AdaptiveQualitySystem {
     if (!active) {
       this._adaptiveStartFrame = ctx.perf.count;
       this._nextSampleMs = 0;
+      this._promoteSinceMs = null;
       return;
     }
     const adaptiveFrames = ctx.perf.count - this._adaptiveStartFrame;
@@ -428,6 +494,7 @@ export class AdaptiveQualitySystem {
     const result = this.policy.update({
       nowMs,
       p95FrameMs: stats.frameMs.p95,
+      p90FrameMs: stats.frameMs.p90,
       bound: stats.bound,
       active,
     });
@@ -438,16 +505,18 @@ export class AdaptiveQualitySystem {
       const tier = LOWER_TIER[this.settings.tier];
       if (tier) {
         const renderScale = QUALITY_PRESETS[tier]?.renderScale ?? result.renderScale;
-        this._persist({ tier, renderScale, calibrated: true });
+        // The tier we are leaving is proven unable to hold this target, so the
+        // promotion path may never climb back into it.
+        this._persist({ tier, tierCeiling: tier, renderScale, calibrated: true });
+        this._demotedThisSession = true;
         this._status.tier = tier;
         this._status.renderScale = renderScale;
-        this._status.state = 'reloading';
-        this._reloadPending = true;
-        this.location?.reload?.();
+        this._requestReload();
         return;
       }
     }
-    if (!result.changed) return;
+    this._maybePromote(nowMs, stats);
+    if (this._deferredReload || !result.changed) return;
 
     ctx.get('render').setRenderScale(result.renderScale);
     this._adaptiveStartFrame = ctx.perf.count;
@@ -455,6 +524,23 @@ export class AdaptiveQualitySystem {
   }
 
   _calibrate(nowMs, ctx) {
+    // The measurement window opens only after the warm-up stretch has fully
+    // elapsed — the frames spent warming up are discarded, not averaged in.
+    if (!this._warmedUp) {
+      if (this._warmupStartMs === null) {
+        this._warmupStartMs = nowMs;
+        this._warmupStartFrame = ctx.perf.count;
+      }
+      if (
+        nowMs - this._warmupStartMs < CALIBRATION_WARMUP_MS ||
+        ctx.perf.count - this._warmupStartFrame < CALIBRATION_WARMUP_FRAMES
+      )
+        return;
+      this._warmedUp = true;
+      this._calibrationStartFrame = ctx.perf.count;
+      this._calibrationStartMs = nowMs;
+      return;
+    }
     if (this._calibrationStartMs === null) this._calibrationStartMs = nowMs;
     const frames = ctx.perf.count - this._calibrationStartFrame;
     const elapsed = nowMs - this._calibrationStartMs;
@@ -472,12 +558,66 @@ export class AdaptiveQualitySystem {
     });
 
     if (tier !== ctx.config.quality && loadGraphicsSettings(this.storage).tier === tier) {
-      this._status.state = 'reloading';
-      this._reloadPending = true;
-      this.location?.reload?.();
+      this._requestReload();
       return;
     }
     this._activatePolicy();
+  }
+
+  /**
+   * Tier promotion: calibration and the walk-down can only ever move down, so a
+   * machine mis-scored once (a heavy first session, a background download)
+   * would otherwise stay pessimised forever. Sustained large headroom while
+   * already rendering at the tier's max scale is the evidence that the next
+   * tier up is worth trying. Blocked by the persisted ceiling (a tier a live
+   * walk-down proved out) and after a same-session demotion, so demote/promote
+   * cannot ping-pong.
+   */
+  _maybePromote(nowMs, stats) {
+    const next = HIGHER_TIER[this.settings.tier];
+    const ceiling = this.settings.tierCeiling;
+    const blocked =
+      !next ||
+      this._demotedThisSession ||
+      this.scaleLocked ||
+      (ceiling && TIER_ORDER.indexOf(next) > TIER_ORDER.indexOf(ceiling));
+    const budget = 1000 / this.policy.targetFps;
+    const headroom =
+      !blocked &&
+      this._status.state === 'stable' &&
+      this.policy.renderScale >= this.policy.maxScale &&
+      stats.frameMs.p95 < budget * PROMOTE_HEADROOM;
+    if (!headroom) {
+      this._promoteSinceMs = null;
+      return;
+    }
+    if (this._promoteSinceMs === null) {
+      this._promoteSinceMs = nowMs;
+      return;
+    }
+    const sustain = ceiling === null ? PROMOTE_SUSTAIN_UNPROVEN_MS : PROMOTE_SUSTAIN_MS;
+    if (nowMs - this._promoteSinceMs < sustain) return;
+    const renderScale = QUALITY_PRESETS[next]?.renderScale ?? 1;
+    this._persist({ tier: next, renderScale, calibrated: true });
+    this._status.tier = next;
+    this._status.renderScale = renderScale;
+    this._requestReload();
+  }
+
+  /** Ask for a reload at the next safe boundary; immediate if already at one. */
+  _requestReload() {
+    if (this._reloadPending || this._deferredReload) return;
+    this._deferredReload = true;
+    this._status.state = 'reload-pending';
+    if (!this.ctx || !this.isActive(this.ctx)) this._fireDeferredReload();
+  }
+
+  _fireDeferredReload() {
+    if (!this._deferredReload || this._reloadPending) return;
+    this._deferredReload = false;
+    this._reloadPending = true;
+    this._status.state = 'reloading';
+    this.location?.reload?.();
   }
 
   /**
@@ -534,8 +674,8 @@ export class AdaptiveQualitySystem {
     if (mode === this.settings.mode) return true;
     const patch =
       mode === 'auto'
-        ? { mode, tier: null, calibrated: false, renderScale: 1 }
-        : { mode, tier: mode, calibrated: true, renderScale: 1 };
+        ? { mode, tier: null, tierCeiling: null, calibrated: false, renderScale: 1 }
+        : { mode, tier: mode, tierCeiling: null, calibrated: true, renderScale: 1 };
     this._persist(patch);
     this._reloadPending = true;
     this.location?.reload?.();
@@ -549,7 +689,7 @@ export class AdaptiveQualitySystem {
     if (value === this.settings.targetFps) return true;
     const patch =
       this.settings.mode === 'auto'
-        ? { targetFps: value, tier: null, calibrated: false, renderScale: 1 }
+        ? { targetFps: value, tier: null, tierCeiling: null, calibrated: false, renderScale: 1 }
         : { targetFps: value };
     this._persist(patch);
     if (this.settings.mode === 'auto' && this.enabled) {
@@ -559,12 +699,27 @@ export class AdaptiveQualitySystem {
     return true;
   }
 
+  /**
+   * Player-triggered fresh start: forget the whole measured profile — tier,
+   * ceiling, scale — switch to Auto if not there already, and reload straight
+   * into a new calibration. Called from the settings menu, so the game is
+   * paused and the reload needs no deferral.
+   */
+  recalibrate() {
+    if (!this.enabled) return false;
+    this._persist({ mode: 'auto', tier: null, tierCeiling: null, calibrated: false, renderScale: 1 });
+    this._reloadPending = true;
+    this.location?.reload?.();
+    return true;
+  }
+
   resetDefaults() {
     if (!this.enabled) return false;
     this._persist({
       mode: 'auto',
       targetFps: 60,
       tier: null,
+      tierCeiling: null,
       calibrated: false,
       renderScale: 1,
       overrides: {},

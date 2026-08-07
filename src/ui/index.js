@@ -101,6 +101,16 @@ export class UiSystem {
     this.prompt = new Prompt(this.chromeLayer);
     this.banner = new Banner(this.chromeLayer);
 
+    // Auto-calibration notice: while the quality system is measuring this
+    // machine (its `calibrating` state), say so — a player who sees the game
+    // boot at medium and then shift should know why. Never shows in capture
+    // boots: adaptive quality is disabled there, so the state is `override`.
+    this.calib = el('div', 'ow-calib', this.chromeLayer);
+    el('i', 'ow-calib-dot', this.calib);
+    el('span', null, this.calib, 'AUTO-CALIBRATING GRAPHICS QUALITY');
+    this._calibShown = false;
+    setStyle(this.calib, 'display', 'none');
+
     // Performance readout gets its own layer above the game chrome and outside
     // the HUD opacity fade — see the rationale in perfhud.js. Suppressed
     // entirely in capture mode: the pixel gate (tools/imagediff.mjs) compares
@@ -598,7 +608,13 @@ export class UiSystem {
         this._lockGrace <= 0
     );
     this.touch?.update(rawDt, ctx);
-    if (this.menu.open) this.menu.setQualityStatus(ctx.peek('quality')?.getStatus());
+    const qStatus = ctx.peek('quality')?.getStatus();
+    if (this.menu.open) this.menu.setQualityStatus(qStatus);
+    const calibrating = qStatus?.mode === 'auto' && qStatus.state === 'calibrating';
+    if (calibrating !== this._calibShown) {
+      this._calibShown = calibrating;
+      setStyle(this.calib, 'display', calibrating ? '' : 'none');
+    }
     this.menu.update(rawDt);
 
     // ---- external state --------------------------------------------------

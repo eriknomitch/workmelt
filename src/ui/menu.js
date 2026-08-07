@@ -157,6 +157,13 @@ export class PauseMenu {
     const statusRow = this._row('Auto Status');
     this.qualityStatus = el('div', 'val ow-quality-status', statusRow, '--');
 
+    this.recalRow = this._row('Auto Setup');
+    this.recalBtn = el('button', 'ow-btn', this.recalRow, 'Recalibrate');
+    this.recalBtn.type = 'button';
+    this.recalBtn.title =
+      'Forget the measured graphics profile and measure this machine again. Switches to Auto and reloads.';
+    this.recalBtn.addEventListener('click', () => this.ctx.peek('quality')?.recalibrate());
+
     // ---- field of view ---------------------------------------------------
     // Mirrors the Visibility tab's entry and goes through the same option, so
     // the choice is persisted rather than lost on the next load. Live while
@@ -659,8 +666,12 @@ export class PauseMenu {
   setQualityStatus(status) {
     if (!status) {
       setText(this.qualityStatus, '--');
+      setStyle(this.recalRow, 'display', 'none');
       return;
     }
+    // `override` means a `?q=`/capture boot: the quality system is not driving,
+    // so a recalibrate that reloads into the same override would be a no-op.
+    setStyle(this.recalRow, 'display', status.state === 'override' ? 'none' : '');
     const rawState = status.state ?? 'manual';
     const scale = Math.round((status.renderScale ?? 1) * 100);
     const achieved = Math.round(status.achievedFps ?? 0);

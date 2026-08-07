@@ -8,6 +8,7 @@ import {
   bucketRefreshRate,
   chooseCalibrationTier,
   estimateRefreshRate,
+  GRAPHICS_STORAGE_KEY,
   loadGraphicsSettings,
   prepareAutoSettings,
   resolveGraphicsBoot,
@@ -99,6 +100,26 @@ check('reports limited after ten seconds missing the target at the quality floor
   assert.equal(result.status, 'limited');
 });
 
+check('tolerates rare frame spikes: a p95 miss with a clean p90 never downscales', () => {
+  const policy = new AdaptiveQualityPolicy({ targetFps: 60, initialScale: 1 });
+  // ~12 hitchy frames per 240-frame window (GC, compositor stalls) push p95
+  // over budget while p90 stays clean — the picture must not get blurrier.
+  for (let nowMs = 0; nowMs <= 8000; nowMs += 2000)
+    policy.update({ nowMs, p95FrameMs: 25, p90FrameMs: 15, bound: 'gpu-or-vsync' });
+  assert.equal(policy.renderScale, 1);
+});
+
+check('surfaces a CPU-bound miss and escalates it to limited after fifteen seconds', () => {
+  const policy = new AdaptiveQualityPolicy({ targetFps: 60, initialScale: 1 });
+  let result = policy.update({ nowMs: 0, p95FrameMs: 25, bound: 'cpu' });
+  for (let nowMs = 2000; nowMs <= 14000; nowMs += 2000)
+    result = policy.update({ nowMs, p95FrameMs: 25, bound: 'cpu' });
+  assert.equal(result.status, 'cpu-limited', 'a CPU miss is never silently "stable"');
+  assert.equal(policy.renderScale, 1, 'resolution is left alone');
+  result = policy.update({ nowMs: 16000, p95FrameMs: 25, bound: 'cpu' });
+  assert.equal(result.status, 'limited', 'sustained CPU misses hand over to the tier walk-down');
+});
+
 check('buckets clean animation-frame samples to a common display rate', () => {
   const intervals = [8.2, 8.4, 8.3, 8.5, 8.2, 8.3, 8.4];
   assert.equal(bucketRefreshRate(intervals), 120);
@@ -147,6 +168,7 @@ check('loads versioned per-browser settings and rejects corrupt values', () => {
     mode: 'auto',
     targetFps: 144,
     tier: null,
+    tierCeiling: null,
     renderScale: 1,
     refreshHz: null,
     signature: null,
@@ -200,6 +222,12 @@ check('invalidates calibration when the device or measured refresh changes', () 
   assert.equal(changed.calibrated, false);
   assert.equal(changed.tier, null);
   assert.equal(changed.renderScale, 1);
+  assert.equal(
+    prepareAutoSettings({ ...settings, tierCeiling: 'low' }, { signature: 'device-b', refreshHz: 60 })
+      .tierCeiling,
+    null,
+    'a new device clears the promotion ceiling'
+  );
 });
 
 check('capture and explicit quality overrides bypass Auto deterministically', () => {
@@ -255,13 +283,22 @@ await checkAsync('calibrates once, persists the tier, and reloads when the pipel
   });
 
   await system.init(ctx);
-  system.lateUpdate(0, ctx);
+  system.lateUpdate(0, ctx); // warm-up opens
   nowMs = 5001;
   perf.count = 60;
-  system.lateUpdate(0, ctx);
+  system.lateUpdate(0, ctx); // warm-up complete — frames so far are DISCARDED
+  assert.equal(reloads, 0, 'warm-up frames must not be measured');
+  nowMs = 10002;
+  perf.count = 300;
+  system.lateUpdate(0, ctx); // measurement window: 240 fresh frames
 
   assert.equal(loadGraphicsSettings(storage).tier, 'low');
   assert.equal(loadGraphicsSettings(storage).renderScale, 0.7);
+  assert.equal(reloads, 0, 'the tier switch waits for a safe boundary');
+  assert.equal(system.getStatus().state, 'reload-pending');
+
+  ctx.time.scale = 0; // player pauses — that is the safe boundary
+  system.lateUpdate(0, ctx);
   assert.equal(reloads, 1);
   assert.equal(location.href, 'http://localhost:5173/?room=ABC123');
 });
@@ -304,9 +341,16 @@ await checkAsync('discards hidden calibration frames before choosing a tier', as
   assert.equal(reloads, 0);
 
   active = true;
-  system.lateUpdate(0, ctx);
+  system.lateUpdate(0, ctx); // warm-up opens
   perf.count = 120;
   nowMs = 10001;
+  system.lateUpdate(0, ctx); // warm-up complete, window opens
+  perf.count = 360;
+  nowMs = 15002;
+  system.lateUpdate(0, ctx); // measured — reload deferred while active
+  assert.equal(reloads, 0);
+
+  active = false;
   system.lateUpdate(0, ctx);
   assert.equal(reloads, 1);
 });
@@ -395,7 +439,136 @@ await checkAsync('demotes a limited Auto pipeline and reloads at the next tier',
   const saved = loadGraphicsSettings(storage);
   assert.equal(saved.tier, 'performance');
   assert.equal(saved.renderScale, 0.3);
+  assert.equal(saved.tierCeiling, 'performance', 'the demotion caps future promotion');
+  assert.equal(system.getStatus().state, 'reload-pending');
+  assert.equal(reloads, 0, 'no reload under the player mid-match');
+
+  ctx.time.scale = 0;
+  system.lateUpdate(0, ctx);
   assert.equal(system.getStatus().state, 'reloading');
+  assert.equal(reloads, 1);
+});
+
+const promotionHarness = ({ settings = {}, frameMs = 8 } = {}) => {
+  const values = new Map();
+  const storage = {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, value),
+  };
+  let reloads = 0;
+  const handlers = new Map();
+  const perf = {
+    count: 240,
+    stats: () => ({
+      fps: { p95: +(1000 / frameMs).toFixed(1) },
+      frameMs: { p90: frameMs, p95: frameMs },
+      bound: 'gpu-or-vsync',
+    }),
+  };
+  const ctx = {
+    perf,
+    time: { scale: 1 },
+    config: { quality: 'high', q: { renderScale: 1 } },
+    events: {
+      on: (type, fn) => (handlers.set(type, fn), () => handlers.delete(type)),
+      emit: (type, payload) => handlers.get(type)?.(payload),
+    },
+    get: () => ({ setRenderScale() {} }),
+  };
+  let nowMs = 0;
+  const system = new AdaptiveQualitySystem({
+    settings: { mode: 'auto', targetFps: 60, tier: 'high', renderScale: 1, calibrated: true, ...settings },
+    storage,
+    location: { reload: () => reloads++ },
+    now: () => nowMs,
+  });
+  const run = (untilMs) => {
+    for (; nowMs <= untilMs; nowMs += 2000) {
+      perf.count += 240;
+      system.lateUpdate(0, ctx);
+    }
+  };
+  return { system, storage, ctx, run, reloads: () => reloads };
+};
+
+await checkAsync('promotes an unproven tier after 20 s of headroom, at a safe boundary', async () => {
+  // No walk-down has ever set a ceiling, so the tier is one-shot-calibration
+  // guesswork and promotion is eager — the profile converges from live play.
+  const h = promotionHarness();
+  await h.system.init(h.ctx);
+  h.run(22000);
+
+  const saved = loadGraphicsSettings(h.storage);
+  assert.equal(saved.tier, 'ultra');
+  assert.equal(saved.renderScale, QUALITY_PRESETS.ultra.renderScale);
+  assert.equal(h.system.getStatus().state, 'reload-pending');
+  assert.equal(h.reloads(), 0, 'promotion also waits for a safe boundary');
+
+  h.ctx.events.emit('player:death', {});
+  assert.equal(h.reloads(), 1, 'the local death is the safe boundary');
+});
+
+await checkAsync('the persisted ceiling from a past walk-down blocks promotion', async () => {
+  const h = promotionHarness({ settings: { tierCeiling: 'high' } });
+  await h.system.init(h.ctx);
+  h.run(122000);
+  assert.equal(h.system.settings.tier, 'high', 'never climbs past proven failure');
+  assert.equal(h.storage.getItem(GRAPHICS_STORAGE_KEY), null, 'nothing persisted');
+  assert.equal(h.reloads(), 0);
+});
+
+await checkAsync('a wobbly stretch resets the promotion clock', async () => {
+  const h = promotionHarness();
+  await h.system.init(h.ctx);
+  h.run(10000); // 10 s of headroom…
+  h.ctx.perf.stats = () => ({
+    fps: { p95: 74 },
+    frameMs: { p90: 13.5, p95: 13.5 },
+    bound: 'gpu-or-vsync',
+  });
+  h.run(14000); // …interrupted (on target, but no promotion headroom) — the clock starts over
+  h.ctx.perf.stats = () => ({
+    fps: { p95: 125 },
+    frameMs: { p90: 8, p95: 8 },
+    bound: 'gpu-or-vsync',
+  });
+  h.run(30000); // only ~14 s of fresh headroom — not enough yet
+  assert.equal(loadGraphicsSettings(h.storage).tier, null, 'nothing persisted yet');
+  h.run(40000);
+  assert.equal(loadGraphicsSettings(h.storage).tier, 'ultra');
+});
+
+await checkAsync('a proven machine (ceiling set) promotes within it on the slow clock', async () => {
+  // tier medium under a high ceiling: promotion to high is allowed, but this
+  // machine has real walk-down history, so it takes the full minute of proof.
+  const h = promotionHarness({ settings: { tier: 'medium', tierCeiling: 'high' } });
+  await h.system.init(h.ctx);
+  h.run(30000);
+  assert.equal(h.storage.getItem(GRAPHICS_STORAGE_KEY), null, 'eager clock must not apply');
+  h.run(62000);
+  assert.equal(loadGraphicsSettings(h.storage).tier, 'high');
+});
+
+check('recalibrate forgets the whole measured profile and reloads into Auto', () => {
+  const values = new Map();
+  const storage = {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, value),
+  };
+  let reloads = 0;
+  const system = new AdaptiveQualitySystem({
+    settings: { mode: 'high', targetFps: 60, tier: 'high', tierCeiling: 'high', calibrated: true },
+    storage,
+    location: { reload: () => reloads++ },
+  });
+  assert.equal(system.recalibrate(), true);
+  const saved = loadGraphicsSettings(storage);
+  assert.equal(saved.mode, 'auto');
+  assert.equal(saved.tier, null);
+  assert.equal(saved.tierCeiling, null);
+  assert.equal(saved.calibrated, false);
+  assert.equal(saved.renderScale, 1);
+  assert.equal(saved.targetFps, 60, 'the chosen target survives');
   assert.equal(reloads, 1);
 });
 
