@@ -379,7 +379,7 @@ export class AdaptiveQualitySystem {
   static id = 'quality';
   static deps = ['render'];
 
-  constructor({ settings, enabled = true, storage, location, now, isActive } = {}) {
+  constructor({ settings, enabled = true, storage, location, now, isActive, logger } = {}) {
     this.settings = { ...defaultGraphics(), ...settings };
     this.settings.overrides = sanitizeOverrides(this.settings.overrides);
     this.enabled = enabled;
@@ -391,10 +391,29 @@ export class AdaptiveQualitySystem {
     this.scaleLocked = this.settings.overrides.renderScale !== undefined;
     /** Set by `setOption` when the change cannot land without a reload. */
     this.pendingRestart = false;
+    /**
+     * Decision log, `[quality]`-prefixed, console.info by default. Every tier
+     * choice, scale step, deferral and state flip goes through this — it is
+     * the only way to debug a policy whose failures are all timing. Pass
+     * `logger: null` for silence (the selftests do).
+     */
+    this._log = logger === null ? () => {} : logger ?? ((msg) => console.info(`[quality] ${msg}`));
+    this._loggedState = null;
     this.storage = storage ?? browserStorage();
     this.location = location ?? globalThis.location;
     this.now = now ?? (() => performance.now());
-    this.isActive = isActive ?? ((ctx) => !globalThis.document?.hidden && ctx.time.scale > 0);
+    // `hidden` catches a minimised window or another tab; `hasFocus()` catches
+    // the window that is visible but occluded or unfocused, where Chrome
+    // throttles rendering to ~30 fps. Measuring a throttled tab scores the
+    // throttle, not the machine — an unfocused stretch pauses measurement
+    // (calibration window resets, sampler stands down) rather than poisoning
+    // it. Node tests have no document; they inject their own isActive anyway.
+    this.isActive =
+      isActive ??
+      ((ctx) =>
+        !globalThis.document?.hidden &&
+        (globalThis.document?.hasFocus?.() ?? true) &&
+        ctx.time.scale > 0);
     this.policy = null;
     this.ctx = null;
     this._unsubs = [];
@@ -405,6 +424,7 @@ export class AdaptiveQualitySystem {
     this._warmedUp = false;
     this._warmupStartMs = null;
     this._warmupStartFrame = 0;
+    this._calibIdle = false;
     this._adaptiveStartFrame = 0;
     this._nextSampleMs = 0;
     this._calibrationStartFrame = 0;
@@ -427,6 +447,12 @@ export class AdaptiveQualitySystem {
 
   async init(ctx) {
     this.ctx = ctx;
+    this._log(
+      `boot: mode=${this.settings.mode} target=${this.settings.targetFps} ` +
+        `tier=${this.settings.tier ?? '(uncalibrated)'} ceiling=${this.settings.tierCeiling ?? 'none'} ` +
+        `scale=${this.settings.renderScale} calibrated=${this.settings.calibrated} ` +
+        `enabled=${this.enabled}${this.scaleLocked ? ' scale-locked' : ''}`
+    );
     this._calibrationStartFrame = ctx.perf.count;
     this._adaptiveStartFrame = ctx.perf.count;
     // Context-loss recovery lives here rather than in `render` because this is
@@ -466,11 +492,19 @@ export class AdaptiveQualitySystem {
     const nowMs = this.now();
     if (!this.settings.calibrated || !this.settings.tier) {
       if (!this.isActive(ctx)) {
+        if (!this._calibIdle) {
+          this._calibIdle = true;
+          this._log('calibration paused — window hidden, unfocused or time stopped');
+        }
         this._calibrationStartFrame = ctx.perf.count;
         this._calibrationStartMs = null;
         this._warmedUp = false;
         this._warmupStartMs = null;
         return;
+      }
+      if (this._calibIdle) {
+        this._calibIdle = false;
+        this._log('calibration resumed — restarting warm-up');
       }
       this._calibrate(nowMs, ctx);
       return;
@@ -506,12 +540,24 @@ export class AdaptiveQualitySystem {
     this._status.achievedFps = result.achievedFps;
     this._status.renderScale = result.renderScale;
     this._status.state = result.status;
+    if (this._status.state !== this._loggedState) {
+      this._loggedState = this._status.state;
+      this._log(
+        `state → ${this._status.state}: p95 ${stats.frameMs.p95} ms / p90 ${stats.frameMs.p90} ms ` +
+          `vs ${(1000 / this.policy.targetFps).toFixed(1)} ms budget, bound=${stats.bound}, ` +
+          `scale ${result.renderScale}`
+      );
+    }
     if (result.status === 'limited') {
       const tier = LOWER_TIER[this.settings.tier];
       if (tier) {
         const renderScale = QUALITY_PRESETS[tier]?.renderScale ?? result.renderScale;
         // The tier we are leaving is proven unable to hold this target, so the
         // promotion path may never climb back into it.
+        this._log(
+          `walk-down: ${this.settings.tier} cannot hold ${this.policy.targetFps} fps at its ` +
+            `resolution floor → ${tier}, ceiling pinned at ${tier}`
+        );
         this._persist({ tier, tierCeiling: tier, renderScale, calibrated: true });
         this._demotedThisSession = true;
         this._status.tier = tier;
@@ -523,6 +569,10 @@ export class AdaptiveQualitySystem {
     this._maybePromote(nowMs, stats);
     if (this._deferredReload || !result.changed) return;
 
+    this._log(
+      `render scale → ${result.renderScale} (p95 ${stats.frameMs.p95} ms vs ` +
+        `${(1000 / this.policy.targetFps).toFixed(1)} ms budget, achieved ${result.achievedFps} fps)`
+    );
     ctx.get('render').setRenderScale(result.renderScale);
     this._adaptiveStartFrame = ctx.perf.count;
     this._persist({ renderScale: result.renderScale });
@@ -535,6 +585,10 @@ export class AdaptiveQualitySystem {
       if (this._warmupStartMs === null) {
         this._warmupStartMs = nowMs;
         this._warmupStartFrame = ctx.perf.count;
+        this._log(
+          `calibration warm-up: discarding ${CALIBRATION_WARMUP_MS / 1000} s / ` +
+            `${CALIBRATION_WARMUP_FRAMES} frames of shader/JIT jank`
+        );
       }
       if (
         nowMs - this._warmupStartMs < CALIBRATION_WARMUP_MS ||
@@ -544,6 +598,7 @@ export class AdaptiveQualitySystem {
       this._warmedUp = true;
       this._calibrationStartFrame = ctx.perf.count;
       this._calibrationStartMs = nowMs;
+      this._log('calibration warm-up done — measuring (240 frames or 5 s, whichever is later)');
       return;
     }
     if (this._calibrationStartMs === null) this._calibrationStartMs = nowMs;
@@ -554,6 +609,11 @@ export class AdaptiveQualitySystem {
     const stats = ctx.perf.stats(Math.min(frames, 240));
     const targetFps = this._resolveTarget(this.settings.targetFps);
     const tier = chooseCalibrationTier(stats.fps.p95, targetFps);
+    this._log(
+      `calibrated: p95 ${stats.fps.p95} fps over ${Math.min(frames, 240)} frames against ` +
+        `target ${targetFps} (ratio ${(stats.fps.p95 / targetFps).toFixed(2)}) → tier ${tier}` +
+        `${tier !== ctx.config.quality ? ` (booted on ${ctx.config.quality} — reload needed)` : ''}`
+    );
     this._status.achievedFps = stats.fps.p95;
     this._status.tier = tier;
     this._persist({
@@ -608,6 +668,11 @@ export class AdaptiveQualitySystem {
     const sustain = ceiling === null ? PROMOTE_SUSTAIN_UNPROVEN_MS : PROMOTE_SUSTAIN_MS;
     if (nowMs - this._promoteSinceMs < sustain) return;
     const renderScale = QUALITY_PRESETS[next]?.renderScale ?? 1;
+    this._log(
+      `promotion: ${this.settings.tier} → ${next} after ${Math.round(sustain / 1000)} s of ` +
+        `headroom at max scale (p95 ${stats.frameMs.p95} ms, ` +
+        `${ceiling === null ? 'unproven machine, eager clock' : `ceiling ${ceiling}`})`
+    );
     this._persist({ tier: next, renderScale, calibrated: true });
     this._status.tier = next;
     this._status.renderScale = renderScale;
@@ -620,6 +685,7 @@ export class AdaptiveQualitySystem {
     this._deferredReload = true;
     this._status.state = 'reload-pending';
     if (!this.ctx || !this.isActive(this.ctx)) this._fireDeferredReload();
+    else this._log('reload queued — waiting for a safe boundary (death, match end, or pause)');
   }
 
   _fireDeferredReload() {
@@ -627,6 +693,7 @@ export class AdaptiveQualitySystem {
     this._deferredReload = false;
     this._reloadPending = true;
     this._status.state = 'reloading';
+    this._log('reloading into the persisted profile');
     this.location?.reload?.();
   }
 
@@ -682,6 +749,7 @@ export class AdaptiveQualitySystem {
   setMode(mode) {
     if (!this.enabled || !GRAPHICS_MODES.includes(mode)) return false;
     if (mode === this.settings.mode) return true;
+    this._log(`mode ${this.settings.mode} → ${mode} — reloading`);
     const patch =
       mode === 'auto'
         ? { mode, tier: null, tierCeiling: null, calibrated: false, renderScale: 1 }
@@ -697,6 +765,10 @@ export class AdaptiveQualitySystem {
       target === 'display' ? 'display' : FPS_TARGETS.includes(Number(target)) ? Number(target) : null;
     if (value === null) return false;
     if (value === this.settings.targetFps) return true;
+    this._log(
+      `target ${this.settings.targetFps} → ${value}` +
+        (this.settings.mode === 'auto' ? ' — recalibrating' : '')
+    );
     const patch =
       this.settings.mode === 'auto'
         ? { targetFps: value, tier: null, tierCeiling: null, calibrated: false, renderScale: 1 }
@@ -717,6 +789,7 @@ export class AdaptiveQualitySystem {
    */
   recalibrate() {
     if (!this.enabled) return false;
+    this._log('recalibrate requested — forgetting the measured profile and reloading');
     this._persist({ mode: 'auto', tier: null, tierCeiling: null, calibrated: false, renderScale: 1 });
     this._reloadPending = true;
     this.location?.reload?.();

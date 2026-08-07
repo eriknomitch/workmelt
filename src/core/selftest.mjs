@@ -276,6 +276,7 @@ await checkAsync('calibrates once, persists the tier, and reloads when the pipel
     get: () => ({ setRenderScale() {} }),
   };
   const system = new AdaptiveQualitySystem({
+    logger: null,
     settings: { mode: 'auto', targetFps: 120, refreshHz: 120, calibrated: false },
     storage,
     location,
@@ -325,6 +326,7 @@ await checkAsync('discards hidden calibration frames before choosing a tier', as
     get: () => ({ setRenderScale() {} }),
   };
   const system = new AdaptiveQualitySystem({
+    logger: null,
     settings: { mode: 'auto', targetFps: 120, calibrated: false },
     storage,
     location: { reload: () => reloads++ },
@@ -367,6 +369,7 @@ await checkAsync('applies adaptive render scale through the renderer interface',
     get: () => ({ setRenderScale: (scale) => (appliedScale = scale) }),
   };
   const system = new AdaptiveQualitySystem({
+    logger: null,
     settings: {
       mode: 'auto',
       targetFps: 60,
@@ -412,6 +415,7 @@ await checkAsync('demotes a limited Auto pipeline and reloads at the next tier',
     get: () => ({ setRenderScale() {} }),
   };
   const system = new AdaptiveQualitySystem({
+    logger: null,
     settings: {
       mode: 'auto',
       targetFps: 120,
@@ -471,6 +475,7 @@ const promotionHarness = ({ settings = {}, frameMs = 8 } = {}) => {
   };
   let nowMs = 0;
   const system = new AdaptiveQualitySystem({
+    logger: null,
     settings: { mode: 'auto', targetFps: 60, tier: 'high', renderScale: 1, calibrated: true, ...settings },
     storage,
     location: { reload: () => reloads++ },
@@ -551,6 +556,7 @@ check('recalibrate forgets the whole measured profile and reloads into Auto', ()
   };
   let reloads = 0;
   const system = new AdaptiveQualitySystem({
+    logger: null,
     settings: { mode: 'high', targetFps: 60, tier: 'high', tierCeiling: 'high', calibrated: true },
     storage,
     location: { reload: () => reloads++ },
@@ -569,6 +575,7 @@ check('recalibrate forgets the whole measured profile and reloads into Auto', ()
 check('the calibrating flag tracks the measurement phase and nothing else', () => {
   // Uncalibrated Auto boot: calibrating from construction…
   const auto = new AdaptiveQualitySystem({
+    logger: null,
     settings: { mode: 'auto', targetFps: 60, calibrated: false },
     storage: { getItem: () => null, setItem() {} },
     location: { reload() {} },
@@ -576,6 +583,7 @@ check('the calibrating flag tracks the measurement phase and nothing else', () =
   assert.equal(auto.calibrating, true);
   // …a calibrated profile is not…
   const done = new AdaptiveQualitySystem({
+    logger: null,
     settings: { mode: 'auto', targetFps: 60, tier: 'high', calibrated: true },
     storage: { getItem: () => null, setItem() {} },
   });
@@ -583,6 +591,7 @@ check('the calibrating flag tracks the measurement phase and nothing else', () =
   // …and neither is a capture/`?q=` boot, whatever the stored profile says —
   // the player pan and damage immunity must never leak into those runs.
   const off = new AdaptiveQualitySystem({
+    logger: null,
     settings: { mode: 'auto', calibrated: false },
     enabled: false,
     storage: { getItem: () => null, setItem() {} },
@@ -602,6 +611,7 @@ check('manual graphics selection persists and reloads exactly once', () => {
   };
   let reloads = 0;
   const system = new AdaptiveQualitySystem({
+    logger: null,
     settings: { mode: 'auto', targetFps: 'display' },
     storage,
     location: { reload: () => reloads++ },
@@ -647,6 +657,7 @@ const optionHarness = ({ settings = {}, render } = {}) => {
     peek: (id) => (id === 'render' ? renderStub : null),
   };
   const system = new AdaptiveQualitySystem({
+    logger: null,
     settings: { mode: 'auto', targetFps: 'display', ...settings },
     storage,
     location: { reload: () => reloads++ },
@@ -758,6 +769,7 @@ await checkAsync('a lost GL context persists a smaller pixel budget and reloads'
     get: () => ({ setRenderScale() {} }),
   };
   const system = new AdaptiveQualitySystem({
+    logger: null,
     settings: { mode: 'auto', targetFps: 120, refreshHz: 120, tier: 'high', calibrated: true },
     storage,
     location: { reload: () => reloads++ },
@@ -792,6 +804,7 @@ check('a lost context is handled even with adaptive quality switched off', () =>
   };
   const handlers = new Map();
   const system = new AdaptiveQualitySystem({
+    logger: null,
     settings: { mode: 'auto' },
     enabled: false,
     storage,
