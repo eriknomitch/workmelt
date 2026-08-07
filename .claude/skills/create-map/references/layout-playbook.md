@@ -5,7 +5,7 @@ good Workmelt FFA map. The game is a fast room-based free-for-all for up to
 ~8 players plus bots, on maps 55–120 m across, fought at every range with
 mantling (~0.5 m) but no ladder climbing.
 
-## 0. If the reference is a 3D model, measure it
+## 0. If the reference is a 3D model, measure it *and look at it*
 
 `node tools/glb-plan.mjs <file.glb> --scale=0.01 --depth=3 --cell=1` prints a
 model's true extent, its named parts, and a top-down ASCII height field with
@@ -15,6 +15,13 @@ exists to catch up front: downloaded models are routinely **not in metres**
 you know before copying a single coordinate) and routinely **not axis-aligned**
 (`--yaw=<deg>` spins the sampling grid until the layout squares up into the
 rectangles a map module is authored in).
+
+`node tools/glb-render.mjs <file.glb> --scale=<s> --out=.shots/<id>-ref` then
+renders it: an aspect-corrected orthographic plan, three 3/4 angles and an
+eye-level view. Read them back and describe them. `SKILL.md` step 1 lists what
+the height field structurally cannot answer and the renders can — what a mass
+is, the palette, building vs. prop, and whether the source has interiors at
+all (`--cut=<m>`, which reports how many meshes it hid).
 
 The model is a measuring tape and nothing else. Nothing from it is loaded,
 imported or sampled — see the hard rules in `SKILL.md`. Keep the file out of
@@ -28,10 +35,26 @@ known size in the assets: doors ≈ 1 m wide, storey height ≈ 3 m, cars
 source is a real place, its true dimensions may be findable; if it is a game
 map, published dimensions are usually paced in-game — treat them as ±20 %.
 
+For a 3D model, calibrate off a **small object with a standard size** from the
+`glb-plan` part table — an oil drum is 0.58 m across and 0.88 m tall, a pallet
+1.2 × 0.8 m — and confirm the answer from two of them independently before
+trusting it. Do NOT calibrate off the eye-level render: a camera dropped at
+1.7 m usually lands with its nose in a crate, and "everything looks huge" is
+then a fact about the camera, not the scale. The eye view is for confirming a
+scale you already derived, not deriving one.
+
 Then fit to the Workmelt band. If the source is larger than ~130 m,
 **crop to its best fighting core** rather than shrinking uniformly —
 compressed layouts lose their cover rhythm (doorways shrink below shoulder
 width, lanes below two bodies). State the crop in your summary.
+
+If the source is **smaller** than the band — a tight arena from another game
+often measures 20–40 m — scale the **positions**, not the props. Multiply the
+layout coordinates up, keep barrels, crates and doorways at their real sizes
+by reusing the existing prototypes, and then re-densify: tripling positions
+triples the *gaps between cover* too, and an accurate transcription at 3×
+becomes a set of empty courtyards. Re-walk the lane rhythm below (cover every
+8–12 m) after scaling, not before. State the factor in your summary.
 
 ## 2. Transcribe, then adjust — keep the two passes separate
 

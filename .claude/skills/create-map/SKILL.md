@@ -63,6 +63,34 @@ is in the pictures. For each asset note:
 If there are no assets, work from the description alone; ask nothing the
 description or genre conventions can answer.
 
+**If an asset is a 3D model (`.glb`/`.gltf`), run both readers over it.** They
+answer different questions and you need both before step 2:
+
+```
+node tools/glb-plan.mjs   <file.glb> --scale=<s> --depth=3   # measurements
+node tools/glb-render.mjs <file.glb> --scale=<s> --out=.shots/<id>-ref
+```
+
+`glb-plan` gives extent, the named part table and a top-down ASCII height
+field — the numbers the layout tables are transcribed from. `glb-render`
+writes an aspect-corrected orthographic **plan**, three **iso** angles and an
+**eye**-level view into `.shots/`. Read every PNG back with the Read tool and
+say what you saw; a `.png` nobody looked at is not a reference render.
+
+The renders are not a nicety — the height field genuinely cannot tell you:
+
+- **what a mass is.** A block of tall cells reads identically whether it is a
+  tower block, a container stack or a stand of trees. The plan module needs to
+  know which.
+- **the palette.** Every colour you map onto a `palette.js` key comes from
+  looking, and step 5 of the playbook depends on it.
+- **building vs. prop.** Which masses become `STRUCTURES` entries and which
+  are dressing is a judgement made by eye.
+- **whether the source has interiors at all.** Add `--cut=<m>` for a roofs-off
+  plan. It reports how many meshes it hid: if that is 0, or the image is
+  unchanged, the model's buildings are single floor-to-roof masses and every
+  interior is yours to invent — do not report the rooftop plan as the interior.
+
 ### 2. Establish scale and draft the plan
 
 Calibrate metres from known objects in the assets (a door ≈ 1 m, a car
