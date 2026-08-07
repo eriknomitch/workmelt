@@ -136,7 +136,7 @@ Emit and listen via `ctx.events`. Payloads are plain objects. The canonical set:
 | `player:footstep` | `{ position, surface, running }` | player |
 | `player:state` | `{ stance, sprinting, sliding, ads }` | player |
 | `explosion` | `{ position, radius, damage }` | any |
-| `power:out` | `{ mapId, generator, seconds }` — a map's destructible power grid has been tripped: the mains fall to `power.dim` for `seconds` and the sky stops down. Only emitted by a map that declares a `power` block (Site Work). `world` owns the grid and the lights; this is purely the announcement, so `ui`, `audio` and `fx` can react without `world` knowing they exist. | world |
+| `power:out` | `{ mapId, generator, seconds }` — a map's destructible power grid has been tripped: for `seconds`, the `power.mains` keys fall to `power.dim`, the `power.emergency` keys come UP from dark, and the sky stops down. Two circuits driven from one level so they cannot disagree. Only emitted by a map that declares a `power` block (Site Work). `world` owns the grid and the lights; this is purely the announcement, so `ui`, `audio` and `fx` can react without `world` knowing they exist. | world |
 | `power:restored` | `{ mapId }` — the outage ended and the mains are ramping back. Every generator is repaired with them, so the feature is repeatable rather than spent. | world |
 | `equipment:flash` | `{ position, radius, duration, source }` — a stun grenade detonated. Every listener folds in its own range / line-of-sight / facing falloff rather than trusting a pre-scaled intensity, so the player's whiteout (`ui`) and the bots' blindness (`ai`) stay consistent with each other. | weapons |
 | `resize` | `{ width, height }` | engine |

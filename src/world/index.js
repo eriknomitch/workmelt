@@ -263,6 +263,7 @@ export class WorldSystem {
     this.lampLens = null;
     this.power = null;
     this._mains = null;
+    this._emergency = null;
 
     // The ballast pool survives (it belongs to the system, not to the level),
     // but the scan of everybody else's point lights is stale and the adopted
@@ -412,7 +413,15 @@ export class WorldSystem {
     }
     this.lampLens = A.mat('lamp_lens');
     this._lampMix = -1;
-    this._powerLevel = 1;
+    /**
+     * -1, not 1: `update` only writes the circuits when the level MOVES, and
+     * at rest it never does. The emergency strips are authored at their lit
+     * intensity and have to be switched OFF for the powered state, so the
+     * first frame has to count as a change. Starting this at the resting level
+     * left the neon burning at full on a map with its power on — which is the
+     * whole thing this circuit exists not to do.
+     */
+    this._powerLevel = -1;
     this._powerWasOut = false;
 
     /**
@@ -437,15 +446,26 @@ export class WorldSystem {
       this.power = new PowerGrid({ ...spec, boxes });
       // The materials the mains feed, with the brightness they were authored
       // at — the grid reports a 0..1 level and this is what it multiplies.
-      this._mains = (spec.mains ?? [])
-        .map((key) => {
-          const m = A.mat(key);
-          return { key, mat: m, base: m?.emissiveIntensity ?? 0 };
-        })
-        .filter((e) => e.mat);
+      const circuit = (keys) =>
+        (keys ?? [])
+          .map((key) => {
+            const m = A.mat(key);
+            return { key, mat: m, base: m?.emissiveIntensity ?? 0 };
+          })
+          .filter((e) => e.mat);
+      this._mains = circuit(spec.mains);
+      /**
+       * The EMERGENCY circuit, wired the other way up: dark while the mains
+       * are healthy, full once they are not. `world` drives both from the one
+       * level so they can never disagree — the alternative, a second timer for
+       * the emergency lights, is two clocks that drift apart in exactly the
+       * frames anybody is looking.
+       */
+      this._emergency = circuit(spec.emergency);
     } else {
       this.power = null;
       this._mains = null;
+      this._emergency = null;
     }
   }
 
@@ -627,6 +647,15 @@ export class WorldSystem {
         for (let i = 0; i < this.lamps.length; i++) this.lamps[i].intensity = 14 * lit * level;
         if (this.lampLens) this.lampLens.emissiveIntensity = 9 * lit * level;
         for (const e of this._mains) e.mat.emissiveIntensity = e.base * level;
+        /**
+         * NORMALISED, not simply inverted. The mains bottom out at `dim`
+         * rather than at zero, so a bare `1 - level` would only ever reach
+         * `1 - dim` and the emergency lights would sit at 90% of the
+         * brightness they were authored for, forever, with nothing to say so.
+         */
+        const span = Math.max(1e-3, 1 - this.power.dim);
+        const emg = Math.min(1, Math.max(0, (1 - level) / span));
+        for (const e of this._emergency) e.mat.emissiveIntensity = e.base * emg;
       }
     }
   }

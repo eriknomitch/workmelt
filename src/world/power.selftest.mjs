@@ -256,15 +256,27 @@ console.log(B('\npower — site work'));
     `mains fall to ${(dim * 100).toFixed(0)}% of authored`);
 
   /**
-   * THE NEON STAYS ON. It is what the map is read by once the mains go — the
-   * hoarding outline, the lane edges, the core. If a later edit adds `sw_neon`
-   * to the mains list the map goes properly black and stops being playable,
-   * and nothing else in the suite would notice.
+   * TWO CIRCUITS, WIRED OPPOSITE WAYS, AND NEITHER IS OPTIONAL.
+   *
+   * The neon is the EMERGENCY circuit: dark while the site has power, and the
+   * only thing lit once it does not. Put it on the mains instead and a
+   * blacked-out site is a black rectangle; leave it off both lists and it
+   * never lights at all and the outage has nothing to read by. Both mistakes
+   * build, draw and pass every other check in the suite.
    */
-  ok(!spec.mains.includes('sw_neon'), 'the neon is not on the mains — it is what you see by',
-    spec.mains.join(' '));
-  ok(spec.mains.length > 0, 'but something is', spec.mains.join(' '));
-  ok(spec.mains.every((k) => k.startsWith('sw_')), 'and only this map’s own keys go dark',
+  ok(!spec.mains.includes('sw_neon'), 'the neon is not on the mains', spec.mains.join(' '));
+  ok((spec.emergency ?? []).includes('sw_neon'),
+    'it is on the emergency circuit — dark with power, lit without',
+    (spec.emergency ?? []).join(' ') || 'nothing declared');
+  ok(spec.mains.length > 0, 'and something is actually on the mains', spec.mains.join(' '));
+
+  // The two circuits must not share a key: one would fight the other every
+  // frame and the last write would win, which is a coin flip on list order.
+  const both = spec.mains.filter((k) => (spec.emergency ?? []).includes(k));
+  ok(both.length === 0, 'and no key is on both circuits', both.join(' '));
+
+  ok([...spec.mains, ...(spec.emergency ?? [])].every((k) => k.startsWith('sw_')),
+    'only this map’s own keys are switched',
     'a shared key would black out every other map that uses it');
 }
 

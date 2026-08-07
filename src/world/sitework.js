@@ -1130,11 +1130,19 @@ export const SITEWORK_MAP = {
    * THE POWER GRID. Optional on the descriptor — a map without one never
    * builds a grid at all, and Site Work is the only map that carries one.
    *
-   * `mains` names the palette keys that go dark. `sw_neon` is deliberately
-   * NOT among them: the green strips are the map's emergency lighting and the
-   * only reason a blacked-out site is still a place you can fight in rather
-   * than a black rectangle. They are also the fiction — a hoarding strip runs
-   * off its own battery, a lamp mast does not.
+   * TWO CIRCUITS, WIRED OPPOSITE WAYS.
+   *
+   * `mains` names the keys that go dark when a generator drops: the lamp
+   * masts, the lit windows, the hazard drums, the generators' own panels.
+   *
+   * `emergency` names the keys that come UP. The green strips are exactly
+   * that — dead while the site has power, and the only thing lit once it does
+   * not. It is the better read in both directions: a working site at night is
+   * lit by its floods, and the moment they die the building's own emergency
+   * circuit picks out the hoarding line, the lane edges and the core. It is
+   * also the fiction, which is why the strips and not something else: a
+   * battery-backed strip is what actually stays on in a power cut, and a
+   * flood mast is what does not.
    *
    * The numbers, and why: 700 hp is a bit over two thirds of a rifle magazine
    * at ~34 a round, so breaking one is a commitment made inside a room two
@@ -1150,6 +1158,7 @@ export const SITEWORK_MAP = {
     outage: 22,
     dim: 0.1,
     mains: ['sw_window', 'sw_glow'],
+    emergency: ['sw_neon'],
   },
   spawnPoints: SITEWORK_SPAWNS,
   standable: standableAtSitework,
