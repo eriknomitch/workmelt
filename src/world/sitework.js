@@ -246,6 +246,23 @@ export const CABINS = [
 ];
 
 /**
+ * The lamp masts: `[x, z]`. Six is what covers a 56 x 84 m site without turning
+ * it into a stadium — the corners plus a long-side mid-point each way.
+ *
+ * A TABLE rather than a literal inside the build, because a mast is solid: it
+ * has to reach `BLOCKERS` or the occupancy tests believe its square metre is
+ * empty and the spawn director can put somebody inside one. The two mid-masts
+ * are off the gate centre lines on purpose — the first pass had them at z = 0,
+ * which is exactly where each gate cabin is parked.
+ */
+export const MASTS = [
+  [-26, -38], [26, -38], [-26, 12], [26, -12], [-26, 38], [26, 38],
+];
+
+/** How tall a mast stands, and how far its head leans in over the yard. */
+export const MAST = { h: 7.4, reach: 0.55, post: 0.3 };
+
+/**
  * Background masses beyond the hoarding: the half-built blocks this site is one
  * of. Without them the frame roof and the core deck — both of which see over a
  * 4.4 m hoarding — look out at a bare terrain/sky line.
@@ -361,6 +378,9 @@ const BLOCKERS = (() => {
   for (const [x, z, ry, len] of TIMBER) out.push(rowRect(x, z, ry, len, 1.1));
   // The stairs. A flight is solid from the side, and dressing dropped on one is
   // how a deck quietly stops being reachable.
+  for (const [x, z] of MASTS) {
+    out.push([x - MAST.post / 2, z - MAST.post / 2, x + MAST.post / 2, z + MAST.post / 2]);
+  }
   for (const s of STAIRS) {
     const len = s.steps * s.run;
     const [dx, dz] = stairDir(s.ry);
@@ -535,25 +555,14 @@ function buildGround(A, rng) {
   A.box('dirt', 0, -0.25, 0, W, 0.5, D);
   slab.dispose();
 
-  // ---------------------------------------------------------- haul road --
-  // Compacted stone down the west lane and across both yards, laid 1 cm over
-  // the slab rather than cut into it: two overlapping planes cost one extra
-  // draw call, and cutting the slab would put a seam exactly where players
-  // spend the whole match.
-  const road = new THREE.PlaneGeometry(15, D, 8, 42);
-  road.rotateX(-Math.PI / 2);
-  const ra = road.getAttribute('position');
-  for (let i = 0; i < ra.count; i++) {
-    ra.setY(i, 0.05 + (fbm3(ra.getX(i) * 0.5, 8.6, ra.getZ(i) * 0.5, 2) - 0.5) * 0.03);
-  }
-  road.computeVertexNormals();
-  paintMasks(road, (x, y, z, nx, ny, nz, out) => {
-    out[0] = 0.18;
-    out[1] = 0.3 + fbm3(x * 0.7, 1.9, z * 0.7, 2) * 0.35;
-  });
-  road.translate(-20.5, 0, 0);
-  A.add('sw_dark', road, null);
-  road.dispose();
+  /**
+   * NO SEPARATE HAUL ROAD. The daylight version laid a gravel strip down the
+   * west lane for readability; at night, under six lamps and a wet floor, the
+   * two surfaces were indistinguishable and the overlay only stopped the
+   * slab's reflections reaching the lane where most of the fighting is. One
+   * ground, one draw call fewer, and the lane reads from its cover rhythm and
+   * its neon-capped hoarding instead.
+   */
 }
 
 /**
@@ -573,7 +582,9 @@ function buildPerimeter(A, rng) {
   for (const sz of [-1, 1]) {
     A.add(key, BOX(A), LL(IDENT, 0, wallH / 2, sz * halfZ, 0, halfX * 2 + wallT, wallH, wallT), { masks });
     A.box('metal', 0, wallH / 2, sz * halfZ, halfX * 2 + wallT, wallH, wallT);
-    A.add(key, BOX(A), LL(IDENT, 0, wallH + 0.08, sz * halfZ, 0, halfX * 2 + wallT, 0.16, wallT + 0.18), {
+    // The capping course is the map's longest neon run: 56 m of green along the
+    // top of the hoarding, which is what draws the site's outline in the dark.
+    A.add('sw_neon', BOX(A), LL(IDENT, 0, wallH + 0.08, sz * halfZ, 0, halfX * 2 + wallT, 0.1, wallT + 0.2), {
       masks: [0.9, 0.3, 0.1],
     });
   }
@@ -584,7 +595,7 @@ function buildPerimeter(A, rng) {
       const cz = sz * (gateHalf + span / 2);
       A.add(key, BOX(A), LL(IDENT, sx * halfX, wallH / 2, cz, 0, wallT, wallH, span), { masks });
       A.box('metal', sx * halfX, wallH / 2, cz, wallT, wallH, span);
-      A.add(key, BOX(A), LL(IDENT, sx * halfX, wallH + 0.08, cz, 0, wallT + 0.18, 0.16, span), {
+      A.add('sw_neon', BOX(A), LL(IDENT, sx * halfX, wallH + 0.08, cz, 0, wallT + 0.2, 0.1, span), {
         masks: [0.9, 0.3, 0.1],
       });
     }
@@ -626,6 +637,21 @@ function buildPerimeter(A, rng) {
     for (let i = 1; i <= 3; i++) {
       A.add('sw_grey', BOX_THIN(A),
         LL(IDENT, x, gy + h * (i / 4), z, 0.24, w + 0.5, 0.24, d + 0.5), { masks: [0.7, 0.4, 0.2] });
+      /**
+       * Rooms still on, on the two faces that look back at the site. These are
+       * the only thing that says the blocks past the hoarding are BUILDINGS
+       * rather than massing — at night an unlit backdrop block is a hole in the
+       * sky. Deterministic from the block's own coordinates, never `rng`, so a
+       * capture reproduces: the same window is lit every run.
+       */
+      for (let k = 0; k < 4; k++) {
+        if ((Math.abs(Math.round(x * 7 + z * 3 + i * 11 + k * 5)) % 5) > 2) continue;
+        const u = (k / 3 - 0.5) * (w - 2.2);
+        const wy = gy + h * (i / 4) + h * 0.1;
+        A.add('sw_window', BOX_THIN(A),
+          LL(IDENT, x + Math.cos(0.24) * u, wy, z - Math.sin(0.24) * u, 0.24, 1.5, 1.0, d + 0.56),
+          { masks: [0.9, 0.2, 0.1] });
+      }
     }
   }
 }
@@ -677,6 +703,13 @@ function buildFrame(A, rng) {
     masks: [0.5, 0.5, 0.3],
   });
   A.box('concrete', s.x, s.h - 0.15, s.z, s.w + 0.6, 0.3, s.d + 0.6);
+  // A strip under the deck's nose on both long faces. It marks the roof edge
+  // from the ground, which on a map whose middle IS that roof is a readability
+  // job as much as a lighting one.
+  for (const sz of [-1, 1]) {
+    A.add('sw_neon', BOX_THIN(A),
+      LL(IDENT, s.x, s.h - 0.34, s.z + sz * (hd + 0.31), 0, s.w + 0.5, 0.07, 0.07), { masks: [0.9, 0.2, 0.1] });
+  }
 
   /**
    * The parapet. 1.0 m, which is cover from the deck but does NOT stop a player
@@ -745,6 +778,14 @@ function buildCore(A, rng) {
   for (const sx of [-1, 1]) {
     A.add('sw_dark', BOX_THIN(A),
       LL(IDENT, c.x + sx * (mh + 0.35), c.mastTop - 1.4, c.z, 0, 0.16, 2.8, 0.16), { masks: [0.8, 0.5, 0.25] });
+    // The mast's own strips, running its full height. The core is the landmark
+    // and at night a dark tower is not one — this is what makes it findable
+    // from the far yard, which is the entire job the height was buying.
+    for (const sz of [-1, 1]) {
+      A.add('sw_neon', BOX_THIN(A),
+        LL(IDENT, c.x + sx * (mh + 0.04), (c.h + c.mastTop) / 2, c.z + sz * (mh + 0.04), 0, 0.08, c.mastTop - c.h, 0.08),
+        { masks: [0.9, 0.2, 0.1] });
+    }
   }
 
   /**
@@ -842,6 +883,7 @@ function buildContainers(A, rng) {
     // centimetre of settle is the difference between "parked" and "snapped".
     const j = ((x * 31 + z * 17 + tier * 7) % 11) / 11 - 0.5;
     A.put(proto, x, y, z, ry + j * 0.045, 1);
+    A.put('sw_cabin_neon', x, y, z, ry + j * 0.045, 1);
     const hx = (ry === 0 ? L : W) / 2;
     const hz = (ry === 0 ? W : L) / 2;
     A.box('metal', x, y + CH / 2, z, hx * 2, CH, hz * 2);
@@ -936,10 +978,41 @@ function dress(A, rng, feet) {
   for (let i = 0; i < barrels.length; i++) {
     const [x, z] = barrels[i];
     if (!free(x, z, 0.45)) continue;
-    A.put(i % 3 === 0 ? 'sw_barrel_b' : 'sw_barrel', x, 0.02, z, turn(), 1);
+    const ry = turn();
+    A.put(i % 3 === 0 ? 'sw_barrel_b' : 'sw_barrel', x, 0.02, z, ry, 1);
+    A.put('sw_barrel_glow', x, 0.02, z, ry, 1);
   }
 
   // ---- low blocks: cover between the authored barrier lines ---------------
+  /**
+   * THE LAMP MASTS — the only punctual lights on the map, and the only reason
+   * the yard is fightable rather than merely pretty.
+   *
+   * Six, at the corners and the two long mid-points, which is what covers a
+   * 56 x 84 m site without turning it into a stadium. `A.lampAnchors` rather
+   * than `A.light`: the world builds these as street lamps whose intensity it
+   * re-drives every frame off SOLAR ALTITUDE, so they come up for this map's
+   * hour on their own and go out if the hour ever changes — and they are
+   * counted by the light ballast in `world/index.js`, which exists because a
+   * varying visible-light count recompiles every lit material in the frame.
+   * Six anchors sit inside that budget; six hand-rolled `PointLight`s would
+   * not be ballasted at all.
+   *
+   * The mast is static geometry, not a prototype: six of them is a handful of
+   * boxes, and a prototype would cost a draw call to save nothing.
+   */
+  for (const [x, z] of MASTS) {
+    const mh = MAST.h;
+    A.add('sw_dark', BOX(A), LL(IDENT, x, mh / 2, z, 0, 0.26, mh, 0.26), { masks: [0.7, 0.5, 0.3] });
+    A.box('metal', x, mh / 2, z, MAST.post, mh, MAST.post);
+    // The head leans in over the yard, so the mast reads as aimed at the site
+    // rather than as a post with a light stuck on top.
+    const dx = Math.sign(-x) * MAST.reach;
+    A.add('sw_dark', BOX(A), LL(IDENT, x + dx, mh + 0.1, z, 0, 1.5, 0.16, 0.5), { masks: [0.7, 0.5, 0.3] });
+    A.add('sw_glow', BOX_THIN(A), LL(IDENT, x + dx, mh - 0.03, z, 0, 1.2, 0.1, 0.36), { masks: [0.9, 0.2, 0.1] });
+    A.lampAnchors.push({ x: x + dx, y: mh - 0.1, z });
+  }
+
   scatter('sw_block', [
     [-15, -17], [17, -20], [-11, 11], [9, -6], [-24, -22], [23, 6],
     [-12, -30], [14, -14], [-22, 8], [6, 31], [24, -4], [-1, -35],
@@ -975,7 +1048,7 @@ export function buildSitework(A, rng) {
 
 export const SITEWORK_MAP = {
   id: 'sitework',
-  blurb: 'A half-built concrete frame across a live site, with the lift core watching everything. Three ways past the middle and none of them quiet.',
+  blurb: 'Ten at night on a live site: neon down the hoarding, hazard drums burning in the dark, and a lift core watching every lane. Three ways past the middle and none of them quiet.',
   size: '56 × 84 m',
   /**
    * LEVEL -> WORLD. A few tenths off the axes on purpose: every mass here is a
@@ -994,15 +1067,37 @@ export const SITEWORK_MAP = {
   groundY: groundYSitework,
   isOpen: isOpenSitework,
   build: buildSitework,
-  // No `environment`: clean daylight, the cheap and safe choice, and the sky
-  // restores its own defaults for a map without one.
-  //
-  // An `exposureBias` was tried here to push the floor toward the near-black of
-  // the reference art and is deliberately NOT kept: it made no measurable
-  // difference to the frame, and the premise was wrong anyway. `sw_ground` is
-  // already at the palette's 0.02 reflectance floor and the shader receives it
-  // as 0.027 linear (measured, not assumed) — a 2.4% surface under an open sky
-  // tonemaps to a mid grey, which is what dark asphalt does in a photograph
-  // too. The reference renders near-black because it is flat-shaded in a viewer
-  // with no sky, not because its albedo is lower than this one.
+  /**
+   * TEN AT NIGHT, AND EVERYTHING BELOW IS DRESSED FOR IT.
+   *
+   * `maps.js` is explicit that a map without an `environment` gets clean
+   * daylight and that a night map's emitters must be PLACED FOR ITS HOUR. That
+   * is the whole of the work here: the hoarding capping, the cabin edges, the
+   * deck lines and the core mast are green strips, the barrels carry lit bands,
+   * the blocks past the perimeter have rooms still on, and six lamp masts stand
+   * where the yard needs to be fightable. Take the hour away and the map is a
+   * grey blockout wearing fairy lights; take the fittings away and it is a
+   * black rectangle.
+   *
+   * `exposureBias` is EV and POSITIVE IS DARKER. Stopping down a stop is what
+   * hands the top of the tone curve to the emitters instead of to a wall — the
+   * Loop carries exactly this for exactly this reason.
+   *
+   * `fogDensity` is doing double duty: it is the yard haze the reference has
+   * hanging in it, and it is what gives the neon something to bloom into.
+   */
+  environment: {
+    hour: 22.0,
+    exposureBias: 1.0,
+    weather: {
+      turbidity: 1.9,
+      cloudCoverage: 0.18,
+      cloudDensity: 2.0,
+      cirrusCoverage: 0.1,
+      cirrusOpacity: 0.2,
+      horizonMurk: 0.22,
+      fogDensity: 1.5,
+      fogHeight: 16,
+    },
+  },
 };

@@ -132,7 +132,7 @@ const REGISTRY = [
     order: 39.5,
     enabled: true,
     name: 'Site Work',
-    description: 'Live construction site behind orange hoarding',
+    description: 'Neon-lit construction site, after dark',
   },
   {
     map: MARKET_MAP,

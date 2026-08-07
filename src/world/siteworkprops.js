@@ -11,8 +11,10 @@ import { PB } from './props.js';
  * other maps that did not ask to be restyled. (`Assembler.proto` returns early
  * on a duplicate id, so a remap is not available even if it were wanted.)
  *
- * EIGHT PROTOTYPES COVER THE WHOLE MAP, and that is not a shortcut, it is the
- * look. The reference this map is styled after is built from a crate, a brick
+ * ELEVEN PROTOTYPES COVER THE WHOLE MAP, and that is not a shortcut, it is the
+ * look. Three of the eleven are emissive companions — barrel bands and cabin
+ * edge strips — drawn at the same transform as the object they light, which is
+ * how a night map gets two materials onto a single merged mesh. The reference this map is styled after is built from a crate, a brick
  * pallet, an empty pallet, a barrel and a barrier, repeated — no scrap piles,
  * no pipe runs, no generators, no rebar. The first pass at this map dressed it
  * with twenty-six of the shared industrial props and it read as a detailed
@@ -124,6 +126,37 @@ function flatBarrel(r = 0.29, h = 0.88) {
   return p.build();
 }
 
+/**
+ * The barrel's three bands, as a SEPARATE prototype so they can carry the
+ * emissive key. Same trick Nuketown uses for its crate bracing: two instances
+ * at one transform is one extra draw call and buys a second material on an
+ * object that is otherwise a single merged mesh.
+ *
+ * This is what makes the barrels read as the reference's lit hazard drums
+ * rather than as red cylinders standing in the dark.
+ */
+function flatBarrelBands(r = 0.29, h = 0.88) {
+  const p = new PB();
+  for (const y of [h * 0.2, h * 0.5, h * 0.8]) p.cyl(r * 1.06, 0.075, 0, y, 0, { radial: 14 });
+  return p.build();
+}
+
+/**
+ * The cabin's edge lighting, again a separate prototype for the emissive key:
+ * a strip down each vertical corner and one along the roof line. Two instances
+ * at one transform.
+ */
+function flatCabinNeon() {
+  const { l, h, w } = CABIN;
+  const p = new PB();
+  for (const sx of [-1, 1])
+    for (const sz of [-1, 1])
+      p.box(0.06, h - 0.1, 0.06, sx * (l / 2 - 0.05), h / 2, sz * (w / 2 + 0.06), { bevel: 0.003 });
+  for (const sz of [-1, 1]) p.box(l - 0.1, 0.06, 0.06, 0, h - 0.06, sz * (w / 2 + 0.06), { bevel: 0.003 });
+  for (const sx of [-1, 1]) p.box(0.06, 0.06, w - 0.1, sx * (l / 2 + 0.06), h - 0.06, 0, { bevel: 0.003 });
+  return p.build();
+}
+
 /** A low cover cube: the blockout's unit of "something to crouch behind". */
 function flatBlock(w = 1.3, h = 0.85, d = 0.95) {
   const p = new PB();
@@ -179,8 +212,10 @@ export function registerSiteworkProps(A, rng) {
   P('sw_timber', 'sw_tan', flatTimber());
   P('sw_barrel', 'sw_red', flatBarrel());
   P('sw_barrel_b', 'sw_blue', flatBarrel());
+  P('sw_barrel_glow', 'sw_glow', flatBarrelBands());
   P('sw_block', 'sw_grey', flatBlock());
   P('sw_cabin', 'sw_orange', flatCabin());
   P('sw_cabin_b', 'sw_blue', flatCabin());
+  P('sw_cabin_neon', 'sw_neon', flatCabinNeon());
   return A;
 }

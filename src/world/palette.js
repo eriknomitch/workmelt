@@ -936,8 +936,15 @@ export const PALETTE = {
        * fresh asphalt photographs mid-grey in sunlight. Do not chase a darker
        * floor with a lower tint — below 0x2b it is out of band, and the thing
        * actually setting the on-screen value is the sky, not the albedo.
+       *
+       * `roughness` is the one place this key departs from `FLAT`: the array is
+       * (scale, offset, detile), so 0.3 in the offset slot with a zero scale
+       * pins the whole surface at 0.3 — a wet yard rather than a dry one. That
+       * is what gives the neon and the barrels a long smeared reflection down
+       * the ground instead of dying at the fitting, and on a night map the
+       * reflections are most of the light you can actually see by.
        */
-      sw_ground: { name: 'flat_matte', surface: 'concrete', opts: { ...FLAT, tint: 0x2e3134 } },
+      sw_ground: { name: 'flat_matte', surface: 'concrete', opts: { ...FLAT, roughness: [0, 0.3, 0.85], tint: 0x2e3134 } },
       /** The hoarding, the frame columns, the core mast — the bright accent. */
       sw_orange: { name: 'flat_matte', surface: 'metal', opts: { ...FLAT, tint: 0xd98a38 } },
       /** The deeper structural orange: the frame walls and both core shafts. */
@@ -950,7 +957,7 @@ export const PALETTE = {
        * Light concrete, for SMALL objects only: barriers, cover blocks, the
        * backdrop's slab edges.
        */
-      sw_grey: { name: 'flat_matte', surface: 'concrete', opts: { ...FLAT, tint: 0xb9bcbe } },
+      sw_grey: { name: 'flat_matte', surface: 'concrete', opts: { ...FLAT, tint: 0x8f9398 } },
       /**
        * Mid concrete, for the BIG poured surfaces: the frame deck, the core
        * deck, the stairs, the two end sheds.
@@ -960,12 +967,51 @@ export const PALETTE = {
        * it read as a white table top that pulled the eye off everything else.
        * A barrier is bright because it is small; a deck at the same value is
        * just the brightest thing in the frame.
+       *
+       * BOTH GREYS WERE DROPPED A STOP when the map went to night. Concrete
+       * that reads correctly under a midday sun is the brightest thing in a
+       * frame lit by six lamps, and the barriers were competing with the neon
+       * they are meant to sit under.
        */
-      sw_concrete: { name: 'flat_matte', surface: 'concrete', opts: { ...FLAT, tint: 0x8e9296 } },
+      sw_concrete: { name: 'flat_matte', surface: 'concrete', opts: { ...FLAT, tint: 0x6b7075 } },
       /** The dark value that keeps the oranges and the tans apart. */
       sw_dark: { name: 'flat_matte', surface: 'metal', opts: { ...FLAT, tint: 0x4a4e54 } },
       /** The one cool note: half the cabins, some barrels, the shed glazing. */
       sw_blue: { name: 'flat_matte', surface: 'metal', opts: { ...FLAT, tint: 0x4a7ba8 } },
+
+      /*
+       * ── the night fittings ────────────────────────────────────────────────
+       *
+       * Site Work is set at ten at night, so these three are not decoration —
+       * they are most of what the map is lit by, and every one of them is
+       * EMISSIVE ONLY. No punctual light, no shader permutation, following the
+       * Loop's shopfronts and blade sign for the reason `world/index.js` spells
+       * out at length: three bakes the number of VISIBLE point lights into the
+       * program cache key, so a map that scatters practicals recompiles every
+       * lit material in the frame as you walk past them. Emissive geometry
+       * costs a draw call and nothing else.
+       *
+       * The actual illumination comes from six lamp anchors, which the world
+       * ramps on solar altitude and which the light ballast already counts.
+       */
+      /** The green edge strip: hoarding capping, cabin lines, deck edges. */
+      sw_neon: {
+        name: 'flat_matte',
+        surface: 'glass',
+        opts: { ...FLAT, tint: 0x8ef0a8, three: { emissive: 0x35ff70, emissiveIntensity: 9, toneMapped: true } },
+      },
+      /** The hazard barrels' bands, and the heads of the six lamp masts. */
+      sw_glow: {
+        name: 'flat_matte',
+        surface: 'glass',
+        opts: { ...FLAT, tint: 0xf0b060, three: { emissive: 0xff8a2a, emissiveIntensity: 6, toneMapped: true } },
+      },
+      /** Somebody is still working in the blocks going up past the hoarding. */
+      sw_window: {
+        name: 'flat_matte',
+        surface: 'glass',
+        opts: { ...FLAT, tint: 0xf0dcb4, three: { emissive: 0xffd9a0, emissiveIntensity: 3.2, toneMapped: true } },
+      },
     };
   })(),
 

@@ -58,6 +58,8 @@ import {
   CORE,
   FRAME_DOORS,
   STAIRS as SITE_STAIRS,
+  MASTS as SITE_MASTS,
+  MAST as SITE_MAST,
   stairDir,
   BARRIERS as SITE_BARRIERS,
   TIMBER as SITE_TIMBER,
@@ -1745,6 +1747,9 @@ const swRowRect = (label, x, z, ry, len, t) => {
 for (const s of SITE_STRUCTURES) swRects.push([s.id, s.x - s.w / 2, s.z - s.d / 2, s.x + s.w / 2, s.z + s.d / 2]);
 for (const [x, z, ry, len] of SITE_BARRIERS) swRects.push(swRowRect(`barrier(${x},${z})`, x, z, ry, len, 0.6));
 for (const [x, z, ry, len] of SITE_TIMBER) swRects.push(swRowRect(`timber(${x},${z})`, x, z, ry, len, 1.1));
+for (const [x, z] of SITE_MASTS) {
+  swRects.push([`mast(${x},${z})`, x - SITE_MAST.post / 2, z - SITE_MAST.post / 2, x + SITE_MAST.post / 2, z + SITE_MAST.post / 2]);
+}
 for (const [x, z, ry, tier] of SITE_CABINS) {
   if (tier !== 0) continue;
   const hx = (ry === 0 ? CABIN.l : CABIN.w) / 2;
@@ -1838,6 +1843,72 @@ ok(swOut.length === 0, 'everything solid is inside the hoarding', swOut.map((r) 
   const brightest = Math.max(...sw.filter(([k]) => k !== 'sw_ground').map(([, v]) => lum(v.opts.tint)));
   ok(floor < brightest * 0.5, 'and the site floor sits a value below everything standing on it',
     `floor ${floor.toFixed(3)} vs brightest ${brightest.toFixed(3)}`);
+}
+
+/**
+ * THE NIGHT CONTRACT.
+ *
+ * `maps.js` says it plainly: a map without an `environment` gets clean daylight
+ * back, and a night map's emitters must be PLACED FOR ITS HOUR. Site Work is
+ * the second map in the game to take that bargain, and both halves of it can
+ * be broken independently and silently.
+ *
+ * Delete the `environment` and the fittings become fairy lights on a grey
+ * blockout in full sun. Delete the fittings and the hour turns the map into a
+ * black rectangle you cannot fight in. Neither throws, neither moves a triangle
+ * count, and neither is visible in a headless run — so both are asserted here.
+ */
+{
+  const env = sitework.environment;
+  ok(env !== undefined && env.hour > 20, 'site work is set after dark', `hour ${env?.hour}`);
+  /**
+   * POSITIVE IS DARKER. Stopping down is what hands the top of the tone curve
+   * to the emitters instead of to a wall — the Loop carries the same sign for
+   * the same reason, and a negative value here would blow the neon out to flat
+   * white while the yard stayed unreadable.
+   */
+  ok(env.exposureBias > 0, 'and stops down so the fittings carry the frame',
+    `exposureBias ${env.exposureBias}`);
+  ok((env.weather?.fogDensity ?? 0) > 0.5, 'with haze for the neon to bloom into',
+    `fogDensity ${env.weather?.fogDensity}`);
+
+  // Every weather key must be one the sky actually accepts — `maps.js` lists
+  // them, and a typo is silently ignored rather than rejected.
+  const ALLOWED = new Set(['turbidity', 'cloudCoverage', 'cloudDensity', 'cirrusCoverage',
+    'cirrusOpacity', 'windSpeed', 'windAngle', 'horizonMurk', 'fogDensity', 'fogHeight', 'shaftGain']);
+  const unknown = Object.keys(env.weather ?? {}).filter((k) => !ALLOWED.has(k));
+  ok(unknown.length === 0, 'and every weather key is one the sky reads', unknown.join(' '));
+
+  /**
+   * The emitters themselves. All three are EMISSIVE ONLY — no punctual light,
+   * following the Loop's shopfronts, because `world/index.js` bakes the visible
+   * point-light count into three's program cache key and a map that scatters
+   * practicals recompiles every lit material as you walk past them.
+   */
+  for (const k of ['sw_neon', 'sw_glow', 'sw_window']) {
+    const e = PALETTE[k]?.opts?.three;
+    ok(e?.emissive !== undefined && e.emissiveIntensity > 0, `${k} actually emits`,
+      `#${e?.emissive?.toString(16)} at ${e?.emissiveIntensity}`);
+  }
+
+  /**
+   * The lamp masts are the map's ONLY punctual lights, and they go through
+   * `A.lampAnchors` so the world ramps them on solar altitude and the light
+   * ballast counts them. Six sits inside that budget; the number is asserted
+   * because "add a few more lights" is the most natural edit in the world and
+   * the cost of it is invisible until the frame hitches.
+   */
+  ok(SITE_MASTS.length >= 4 && SITE_MASTS.length <= 8,
+    'the site is lit by a handful of masts, not a stadium', `${SITE_MASTS.length} masts`);
+  ok(SITE_MASTS.every(([x, z]) => Math.abs(x) < SITE.halfX && Math.abs(z) < SITE.halfZ),
+    'and all of them stand inside the hoarding');
+  /**
+   * A mast parked in a gate mouth is the specific mistake the first pass made:
+   * two of them sat at z = 0, which is exactly where each gate cabin is.
+   */
+  const inGate = SITE_MASTS.filter(([, z]) => Math.abs(z) < SITE.gateHalf + 0.6);
+  ok(inGate.length === 0, 'and none is standing in a gate mouth',
+    inGate.map(([x, z]) => `(${x},${z})`).join(' '));
 }
 
 /**
