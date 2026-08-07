@@ -283,7 +283,7 @@ section('Bullet penetration');
 {
   const impacts = [];
   const off = events.on('bullet:impact', (e) =>
-    impacts.push({ surface: e.surface, exit: e.exit, damage: e.damage, x: e.point.x })
+    impacts.push({ surface: e.surface, exit: e.exit, damage: e.damage, x: e.point.x, trace: e.trace })
   );
 
   // 6 cm wooden partition at x = -4 — should punch through.
@@ -341,16 +341,65 @@ section('Bullet penetration');
     phys.rebuildStatic();
   }
 
-  // determinism: identical seeds produce identical results
+  /**
+   * THE TRACE ID. One `fireBullet` is one id, shared by every crossing it
+   * reports, and the next call is a different one.
+   *
+   * This is the only handle a listener has on "per ROUND", and the failure it
+   * guards is silent and was live: `world`'s power grid counted crossings, so
+   * a solid generator — three crossings a round, because a 3.2 m machine is
+   * thicker than EXIT_PROBE and falls back to the sheet model — took triple
+   * damage and Site Work blacked out on a burst nobody aimed at it. Nothing
+   * threw, no frame looked wrong, and the balance comment in power.js still
+   * said 21 rounds while the real number was 12.
+   */
+  {
+    const scene = new THREE.Scene();
+    // A generator-sized solid: thicker than EXIT_PROBE, so it is exactly the
+    // case that reports more crossings than it has faces.
+    const solid = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2, 3.2), new THREE.MeshBasicMaterial());
+    solid.position.set(40, 1, 0);
+    solid.name = 'plant_metal';
+    scene.add(solid);
+    scene.updateMatrixWorld(true);
+    const ids = phys.addStaticGroup(scene);
+    phys.rebuildStatic();
+
+    impacts.length = 0;
+    // Its own rng: deflection draws off the shared stream would shift every
+    // later check, and the determinism pair below would fail for no reason.
+    const traceRng = new Rng(0xdecaf);
+    const shoot = () => phys.fireBullet({
+      origin: { x: 40, y: 1.2, z: 8 }, dir: { x: 0, y: 0, z: -1 },
+      damage: 34, penetration: 1.0, maxDist: 60, mask: MASK.BULLET, rng: traceRng,
+    });
+    shoot();
+    const one = [...impacts];
+    ok(one.length > 1, 'a thick solid reports more than one crossing per round', `${one.length}`);
+    ok(one.every((i) => i.trace === one[0].trace), 'every crossing of one round shares a trace id',
+      one.map((i) => i.trace).join(','));
+    impacts.length = 0;
+    shoot();
+    ok(impacts.length > 0 && impacts[0].trace !== one[0].trace,
+      'the next round gets a new trace id', `${one[0].trace} -> ${impacts[0]?.trace}`);
+
+    for (const id of ids) phys.removeStatic(id);
+    phys.rebuildStatic();
+  }
+
+  // determinism: identical seeds produce identical results.
+  // `trace` is deliberately excluded — it is a monotonic counter, so it is the
+  // one field that MUST differ between two otherwise identical traces.
+  const shape = (list) => JSON.stringify(list.map(({ trace, ...rest }) => rest));
   const seedA = new Rng(1234);
   phys.ballistics.rng = seedA;
   impacts.length = 0;
   phys.fireBullet({ origin: { x: 0, y: 1.5, z: 0 }, dir: { x: -1, y: 0.02, z: 0.01 }, damage: 40, penetration: 2, maxDist: 60 });
-  const runA = JSON.stringify(impacts);
+  const runA = shape(impacts);
   phys.ballistics.rng = new Rng(1234);
   impacts.length = 0;
   phys.fireBullet({ origin: { x: 0, y: 1.5, z: 0 }, dir: { x: -1, y: 0.02, z: 0.01 }, damage: 40, penetration: 2, maxDist: 60 });
-  ok(runA === JSON.stringify(impacts), 'penetration is deterministic off the rng');
+  ok(runA === shape(impacts), 'penetration is deterministic off the rng');
   phys.ballistics.rng = phys.rng;
   off();
 }

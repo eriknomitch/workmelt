@@ -214,9 +214,18 @@ export class PhysicsSystem {
         body: null,
         actor: null,
         part: null,
+        trace: -1,
       });
     }
     this._impactCursor = 0;
+    /**
+     * Monotonic id, one per `fireBullet` trace, stamped on every impact that
+     * trace emits. A round crosses several surfaces and reports each of them,
+     * so a listener that means "per ROUND" rather than "per surface" — the
+     * power grid is the one today — cannot get there by counting events. This
+     * is the only thing that tells it two impacts came from one bullet.
+     */
+    this._traceId = 0;
     this._impactResult = [];
 
     this._raw = makeHitRecord();
@@ -712,6 +721,7 @@ export class PhysicsSystem {
     // (both arrive here; projectile flight time breaks any event-ordering
     // inference). 'player' | 'ai' | null.
     this._bulletSource = opts.source ?? null;
+    this._traceId++;
     const n = this.ballistics.fire({ rng: this.rng, ...opts });
     this._bulletSource = null;
     const res = this._impactResult;
@@ -734,6 +744,7 @@ export class PhysicsSystem {
     p.body = hit?.body ?? null;
     p.actor = hit?.actor ?? null;
     p.part = hit?.part ?? null;
+    p.trace = this._traceId;
     this.ctx.events.emit('bullet:impact', p);
 
     if (p.actor && !exit) {

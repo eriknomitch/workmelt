@@ -363,10 +363,37 @@ export class WorldSystem {
      * check. Gating the subscription on it instead would silently wire nothing
      * for every map, because this runs first.
      */
+    /**
+     * ONE ROUND IS ONE HIT, and none of these three filters is optional —
+     * without them the grid takes roughly TRIPLE the damage the balance in
+     * `power.js` is written against, and Site Work blacks out on the burst
+     * that kills a bot near the plant rather than on a burst aimed at a
+     * generator.
+     *
+     * `bullet:impact` reports every SURFACE CROSSING, not every round. A round
+     * into a generator reports three of them: the entry, an "exit" 18 mm later
+     * and a second entry on the far face from inside the machine. (The last
+     * two are `penetration.js` failing to find the backface — `EXIT_PROBE` is
+     * 1.6 m and a generator is 2.4-3.2 m thick — and falling back to
+     * `SHEET_THICKNESS`. That fallback is right for the sheet metal it was
+     * written for and it is not this module's to change.) At ~34 a crossing
+     * the authored 700 hp is 12 rounds, not the 21 the comment claims.
+     *
+     * `e.actor` is the one that produces the reported symptom. A bot standing
+     * against a generator has its BODY inside the box's `margin`, so the
+     * rounds that kill it land in the grid's hit test — the player never shot
+     * the generator and the lights go out anyway. A body does not conduct.
+     */
     on('bullet:impact', (e) => {
       const p = e?.point;
       if (!this.power || !p) return;
+      if (e.exit || e.actor) return;
+      if (e.trace != null && e.trace === this._powerTrace) return;
       const r = this.power.damage(p.x, p.y, p.z, e.damage ?? 0);
+      // Stamped only on a hit, so a round that passes through a body and THEN
+      // reaches the plant still counts — the body's impact scored nothing.
+      if (!r.hit) return;
+      this._powerTrace = e.trace ?? -1;
       if (r.destroyed) this._announcePower(r.generator);
     });
     on('explosion', (e) => {
@@ -424,6 +451,8 @@ export class WorldSystem {
      */
     this._powerLevel = -1;
     this._powerWasOut = false;
+    /** Last bullet trace that scored on the grid — see the impact handler. */
+    this._powerTrace = -1;
 
     /**
      * THE POWER GRID, for a map that declares one. `world` owns it because
