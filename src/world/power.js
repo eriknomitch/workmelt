@@ -283,3 +283,24 @@ export class PowerGrid {
     return this.dim;
   }
 }
+
+/**
+ * The CITY circuit's transfer function: what fraction of authored emissive the
+ * set-dressing past the playable area keeps, for a given mains `level`.
+ *
+ * The mains bottom out at `dim` because a fight next to a lamp mast has to
+ * stay winnable in the dark — a NEAR-FIELD property, asserted in the selftest.
+ * The lit rooms in the backdrop blocks are not near anything, and at even 6%
+ * of authored they still read as lit windows once the night meter adapts up.
+ * So their wire renormalises the level's [dim, 1] onto [0, 1]: full at full
+ * mains, actual zero at the floor, riding the same envelope (and the same
+ * restore ramp) as everything else so the city can never disagree with the
+ * site about whether the power is on.
+ *
+ * Pure on purpose, like the rest of this module: `world` owns the materials,
+ * this owns the arithmetic, and the selftest drives it without a renderer.
+ */
+export function cityLevel(level, dim) {
+  const span = Math.max(1e-3, 1 - dim);
+  return clamp01((level - dim) / span);
+}

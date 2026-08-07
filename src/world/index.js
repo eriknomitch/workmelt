@@ -3,7 +3,7 @@ import { Assembler } from './builder.js';
 import { BUILDINGS, STREET, SET_PIECES, GATE } from './layout.js';
 import { Rng } from '../core/rng.js';
 import { SpawnDirector, buildSpawnPoints } from './spawns.js';
-import { PowerGrid } from './power.js';
+import { PowerGrid, cityLevel } from './power.js';
 import { MAPS, DEFAULT_MAP_ID, getMap, isMapId, mapSummaries, resolveBootMap, saveMapPreference } from './maps.js';
 
 /**
@@ -671,7 +671,7 @@ export class WorldSystem {
         const emg = Math.min(1, Math.max(0, (1 - level) / span));
         for (const e of this._emergency) e.mat.emissiveIntensity = e.base * emg;
         // 1 at full mains, 0 at the dim floor — the city goes truly dark.
-        const city = Math.min(1, Math.max(0, (level - this.power.dim) / span));
+        const city = cityLevel(level, this.power.dim);
         for (const e of this._city) e.mat.emissiveIntensity = e.base * city;
       }
     }

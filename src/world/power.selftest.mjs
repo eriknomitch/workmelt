@@ -15,7 +15,7 @@
  * `THREE` in it, and this drives a whole outage in about a millisecond.
  */
 
-import { PowerGrid, POWER_DEFAULTS } from './power.js';
+import { PowerGrid, POWER_DEFAULTS, cityLevel } from './power.js';
 import { SITEWORK_MAP, GENERATORS, FRAME } from './sitework.js';
 
 let pass = 0;
@@ -357,6 +357,50 @@ console.log(B('\npower — site work'));
   ok([...spec.mains, ...(spec.emergency ?? [])].every((k) => k.startsWith('sw_')),
     'only this map’s own keys are switched',
     'a shared key would black out every other map that uses it');
+}
+
+console.log(B('\npower — the city circuit'));
+{
+  const spec = SITEWORK_MAP.power;
+  const dim = spec.dim ?? POWER_DEFAULTS.dim;
+
+  /**
+   * THE CITY GOES ACTUALLY DARK. The dim floor is a near-field gameplay
+   * property; the backdrop rooms are set dressing for a city in blackout, and
+   * at 6% of authored they still read as lit windows once the night meter
+   * adapts up — which is invisible to every other check: the level is right,
+   * the materials are right, and the thing that is wrong is a rectangle 60 m
+   * outside the playable area. So the transfer function is asserted at both
+   * ends and in between, against the map's own dim rather than a fixture's.
+   */
+  ok(cityLevel(1, dim) === 1, 'full mains — the city is at authored brightness');
+  ok(cityLevel(dim, dim) === 0, 'the dim floor — the city is at ZERO, not at the floor',
+    `mains keep ${(dim * 100).toFixed(0)}%, the city keeps nothing`);
+  ok(cityLevel(0, dim) === 0, 'below the floor still clamps to zero');
+  // Monotonic along the restore ramp, so the rooms come back up with the
+  // grid rather than popping.
+  let mono = true;
+  for (let a = dim, prev = -1; a <= 1 + 1e-9; a += 0.01) {
+    const v = cityLevel(a, dim);
+    if (v < prev - 1e-9) mono = false;
+    prev = v;
+  }
+  ok(mono, 'and the ramp back up is monotonic — no pop, no flicker of its own');
+  // Degenerate dim must not divide by zero. dim=1 is a grid whose "outage"
+  // changes nothing; the city should simply stay dark rather than NaN.
+  ok(Number.isFinite(cityLevel(1, 1)), 'a degenerate dim of 1 stays finite');
+
+  // The wiring, in the same spirit as the mains/emergency checks above: the
+  // backdrop windows are on the city wire, and no key rides two circuits.
+  ok((spec.city ?? []).includes('sw_window'),
+    'the backdrop windows are on the city circuit', (spec.city ?? []).join(' '));
+  ok(!spec.mains.includes('sw_window'),
+    'and not still on the mains — two wires on one key is a fight');
+  const overlap = (spec.city ?? []).filter(
+    (k) => spec.mains.includes(k) || (spec.emergency ?? []).includes(k));
+  ok(overlap.length === 0, 'the city shares a key with no other circuit', overlap.join(' '));
+  ok((spec.city ?? []).every((k) => k.startsWith('sw_')),
+    'and switches only this map’s own keys');
 }
 
 console.log(
