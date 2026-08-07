@@ -490,9 +490,18 @@ export class NetSystem {
     // Body recoil on the shooter's puppet.
     p?.puppet?.onFire();
 
+    // The reported ray stays authoritative for where the round LANDS, but the
+    // visuals are rooted at the drawn body's muzzle: the puppet renders
+    // ~INTERP_MS in the past, so the reported origin sits where the shooter
+    // will be, not where anyone sees them — a tracer from it starts in the air
+    // beside the body. Fall back to the wire origin if the two have diverged
+    // wildly (a puppet mid-teleport) or the puppet is not built yet.
+    let muzzle = p?.puppet && !p.puppet.dead ? p.puppet.muzzleWorld : null;
+    if (muzzle && muzzle.distanceToSquared(this._origin) > 9) muzzle = null;
+
     // Muzzle flash + light straight through fx (bypasses the local crosshair).
     this.fx?.onWeaponFire?.({
-      origin: this._origin,
+      origin: muzzle ?? this._origin,
       dir: this._dir,
       weapon: 'rifle',
       intensity: 0.55,
@@ -502,7 +511,7 @@ export class NetSystem {
     });
 
     // Tracer to the first world hit (or into the distance).
-    this._from.copy(this._origin);
+    this._from.copy(muzzle ?? this._origin);
     const hit = this.physics.raycast(
       this._origin.x, this._origin.y, this._origin.z,
       this._dir.x, this._dir.y, this._dir.z, 260, this.physics.MASK.WORLD
@@ -529,6 +538,17 @@ export class NetSystem {
     if (this.player.dead) return;
     this._origin.copy(e.origin);
     this._dir.copy(e.dir).normalize();
+
+    // Replicate the shot so everyone else draws our muzzle flash and tracer —
+    // this is the packet `_onRemoteFire` consumes on their side. The relay
+    // keeps a warm-up's fire out of the match, so no client-side gate here.
+    this._send({
+      t: 'fire',
+      o: [round2(this._origin.x), round2(this._origin.y), round2(this._origin.z)],
+      d: [round3(this._dir.x), round3(this._dir.y), round3(this._dir.z)],
+      w: typeof e.weapon === 'string' ? e.weapon : e.weapon?.id ?? 'rifle',
+      seed: e.seed >>> 0,
+    });
 
     let best = null;
     let bestT = Infinity;
