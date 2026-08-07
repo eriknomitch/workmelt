@@ -35,7 +35,7 @@
  * weapon:reload, weapon:shell, bullet:impact, bullet:tracer, damage:dealt,
  * damage:taken, actor:death, player:land, player:footstep, actor:footstep,
  * player:state,
- * explosion. If `ai` emits the optional `ai:bark {kind, position, voice}` it is
+ * explosion, power:out, power:restored. If `ai` emits the optional `ai:bark {kind, position, voice}` it is
  * picked up as well.
  */
 
@@ -47,7 +47,7 @@ import { DEFAULT_GAME_CONFIG, loadGameConfig } from '../core/gameConfig.js';
 import { WEAPON_PROFILES, resolveProfile, weaponShot, bulletWhizz, dryFire } from './weapons.js';
 import {
   surfaceImpact, footstep, shellCasing, reloadPhase, explosion, bodyFall, uiSound,
-  heartbeat, cloth,
+  heartbeat, cloth, powerDown, powerUp,
 } from './foley.js';
 import { bark as voxBark, barkFor } from './vox.js';
 import { classifySpace } from './ir.js';
@@ -448,6 +448,8 @@ export class AudioSystem {
       case 'bodyfall': return bodyFall(actx, bank, rng, { when, level: o.level });
       case 'cloth': return cloth(actx, bank, rng, { when, level: o.level });
       case 'heartbeat': return heartbeat(actx, bank, rng, { when, level: o.level });
+      case 'powerdown': return powerDown(actx, bank, rng, { when, level: o.level });
+      case 'powerup': return powerUp(actx, bank, rng, { when, level: o.level });
       case 'bark': return voxBark(actx, bank, rng, { when, bark: o.bark, f0: o.f0, tract: o.tract, level: o.level, radio: o.radio });
       case 'ambient': return ambientOneShot(actx, bank, rng, o.which, { when, level: o.level });
       default: return uiSound(actx, bank, rng, kind, { when, level: o.level });
@@ -674,6 +676,12 @@ export class AudioSystem {
     // Optional: emitted by `ai` if it wants scripted chatter.
     on('ai:bark', (p) => this.bark(p?.kind ?? 'spot', p?.position, { voice: p?.voice ?? 0 }));
     on('roo:speak', (p) => this.critter('roo', p?.position));
+    // The grid going down and coming back (Site Work). Neither payload
+    // carries a position — a blackout is map-wide — so both play head-locked,
+    // but on the ambience bus, not ui: they are diegetic, so they duck under
+    // fire and muffle with concussion like the world they belong to.
+    on('power:out', () => this._playDry('powerdown', {}, 'ambience', 0.25));
+    on('power:restored', () => this._playDry('powerup', {}, 'ambience', 0.25));
 
     /* ---- announcer ------------------------------------------------ */
     // The relay's pre-match signal, so the line runs under the countdown.

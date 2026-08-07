@@ -659,6 +659,94 @@ export function bodyFall(actx, bank, rng, o = {}) {
   return { node: out, end: t0 + 0.6, send: 0.4 };
 }
 
+/**
+ * The mains going down: a breaker clunk, then the transformer hum winding
+ * out of pitch and dying. Fallback for the sampled `world/powerdown` take —
+ * the blackout is a gameplay signal (the map goes dark, `power:out`), so it
+ * must sound even in a build with no encoded assets.
+ */
+export function powerDown(actx, bank, rng, o = {}) {
+  const t0 = o.when ?? actx.currentTime;
+  const lvl = o.level ?? 1;
+  const out = gain(actx, 0.55); // VOICE TRIM
+
+  // The breaker: a blunt mechanical thud, no ring — switchgear, not a bell.
+  const th = osc(actx, 'sine', 68);
+  const tg = gain(actx, 0);
+  th.connect(tg); tg.connect(out);
+  sweep(th.frequency, t0, 110, 46, 0.09);
+  ad(tg.gain, t0, 0.7 * lvl, 0.003, 0.12);
+  th.start(t0); th.stop(t0 + 0.3);
+  const cl = bank.source('white', rng, 0.9);
+  const clp = biquad(actx, 'lowpass', 1200, 0.7);
+  const cg = gain(actx, 0);
+  series(cl, clp, cg).connect(out);
+  ad(cg.gain, t0, 0.3 * lvl, 0.002, 0.08);
+  cl.start(t0, cl._offset, 0.2);
+
+  // The hum: 50 Hz saw pair a few cents apart (a transformer beats, a clean
+  // oscillator does not), sagging to sub-audio over two seconds as the
+  // rotating mass runs down, level dying with the pitch.
+  const DUR = 2.1;
+  const drv = shaper(actx, saturationCurve(2.0, 0.3), '2x');
+  const hg = gain(actx, 0);
+  for (const f of [50, 50.7]) {
+    // Constructed at the sweep's own start pitch so the first 100 ms hold,
+    // before the ramp begins, is not a different note.
+    const h = osc(actx, 'sawtooth', f * 2);
+    h.connect(hg);
+    sweep(h.frequency, t0 + 0.1, f * 2, f * 0.28, DUR);
+    h.start(t0); h.stop(t0 + 0.15 + DUR);
+  }
+  const hlp = biquad(actx, 'lowpass', 480, 0.9);
+  series(hg, drv, hlp).connect(out);
+  ad(hg.gain, t0 + 0.05, 0.5 * lvl, 0.03, DUR);
+
+  return { node: out, end: t0 + 0.2 + DUR, send: 0.25 };
+}
+
+/**
+ * The mirror: `power:restored`. Same breaker, hum climbing back to pitch and
+ * then releasing — a one-shot voice cannot sustain the mains forever, so the
+ * swell hands off to the (visual) lights it just brought back.
+ */
+export function powerUp(actx, bank, rng, o = {}) {
+  const t0 = o.when ?? actx.currentTime;
+  const lvl = o.level ?? 1;
+  const out = gain(actx, 0.55); // VOICE TRIM
+
+  const th = osc(actx, 'sine', 68);
+  const tg = gain(actx, 0);
+  th.connect(tg); tg.connect(out);
+  sweep(th.frequency, t0, 110, 46, 0.09);
+  ad(tg.gain, t0, 0.7 * lvl, 0.003, 0.12);
+  th.start(t0); th.stop(t0 + 0.3);
+  const cl = bank.source('white', rng, 0.9);
+  const clp = biquad(actx, 'lowpass', 1200, 0.7);
+  const cg = gain(actx, 0);
+  series(cl, clp, cg).connect(out);
+  ad(cg.gain, t0, 0.3 * lvl, 0.002, 0.08);
+  cl.start(t0, cl._offset, 0.2);
+
+  // Rotating mass spinning up: the powerDown sweep run backwards, and the
+  // envelope inverted — a slow attack up the swell, then a release once the
+  // hum reaches pitch.
+  const DUR = 2.1;
+  const drv = shaper(actx, saturationCurve(2.0, 0.3), '2x');
+  const hg = gain(actx, 0);
+  for (const f of [50, 50.7]) {
+    const h = osc(actx, 'sawtooth', f * 0.28);
+    h.connect(hg);
+    sweep(h.frequency, t0 + 0.1, f * 0.28, f * 2, DUR * 0.7);
+    h.start(t0); h.stop(t0 + 0.15 + DUR);
+  }
+  const hlp = biquad(actx, 'lowpass', 480, 0.9);
+  series(hg, drv, hlp).connect(out);
+  ad(hg.gain, t0 + 0.05, 0.5 * lvl, DUR * 0.6, DUR * 0.4);
+
+  return { node: out, end: t0 + 0.2 + DUR, send: 0.25 };
+}
+
 /* ------------------------------------------------------------------ */
 /* UI                                                                 */
 /* ------------------------------------------------------------------ */

@@ -33,6 +33,11 @@ const VOX = { whole: true, bitrate: '56k' };
  * spoken — voip would smear exactly the metallic attack that carries them —
  * and `fade` because a whole-file encode has no window to fade it out. */
 const RELOAD = { whole: true, fade: true, app: 'audio', bitrate: '64k' };
+/* World one-shots (blackouts and the like) are generated clips, already tight
+ * end to end like the reload foley — so `whole` + `fade` rather than a peak
+ * window, and a slightly higher bitrate because a descending transformer hum
+ * is all low-frequency tonal content, which Opus spends bits on. */
+const WORLD = { whole: true, fade: true, app: 'audio', bitrate: '72k' };
 
 const fa = (dir, ...files) => files.map((f) => `firearms/${dir}/${f}.wav`);
 const fs = (dir, n) => Array.from({ length: n }, (_, i) => `footsteps/${dir}/${i}.ogg`);
@@ -133,6 +138,16 @@ export const SOURCES = [
   // dryfire / lowhealth stay procedural: the synthesized versions are already
   // mechanically right and nothing in these packs beats them.
 
+  /* ── world one-shots ───────────────────────────────────────────────────
+   * Map-wide diegetic events. `powerdown` plays head-locked on `power:out`
+   * (the Site Work generator blackout) — the event carries no position, a
+   * blackout is everywhere. One take: like a hitmarker, a blackout that
+   * changes timbre outage to outage reads as a bug, not variety. Master is
+   * ElevenLabs-generated; prompt in assets-src/eleven/prompts.md. */
+  { group: 'world', key: 'powerdown', ...WORLD, src: ['eleven/powerdown_0.mp3'] },
+  // The mirror: `power:restored`, the hum spinning back up.
+  { group: 'world', key: 'powerup', ...WORLD, src: ['eleven/powerup_0.mp3'] },
+
   /* ── announcer ─────────────────────────────────────────────────────────
    * Text-to-speech lines, one take each, kept as masters in assets-src/vox/
    * (committed — unlike the packs above, they are not fetchable). Keys are the
@@ -232,5 +247,12 @@ export const CREDITS = [
     license: 'no third-party rights — masters in assets-src/shot/',
     url: 'assets-src/shot/',
     used: 'the rifle, smg, pistol and sniper shot profiles',
+  },
+  {
+    pack: 'ElevenLabs generated SFX',
+    authors: 'Generated with ElevenLabs sound-generation (prompts in assets-src/eleven/prompts.md)',
+    license: 'ElevenLabs commercial licence (paid plan) — verify the account tier',
+    url: 'https://elevenlabs.io/terms-of-use',
+    used: 'the power-grid blackout and restore (world/powerdown, world/powerup)',
   },
 ];

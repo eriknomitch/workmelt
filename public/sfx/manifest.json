@@ -332,5 +332,13 @@
     "sniper_empty_end": [
       "reload/sniper_empty_end_0.opus"
     ]
+  },
+  "world": {
+    "powerdown": [
+      "world/powerdown_0.opus"
+    ],
+    "powerup": [
+      "world/powerup_0.opus"
+    ]
   }
 }

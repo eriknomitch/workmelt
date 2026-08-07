@@ -47,6 +47,10 @@ const GROUP = {
   // `send` matches what foley.js reloadPhase() asks for, so swapping a sampled
   // phase for a synthesized one does not move it in the room.
   reload: { jitter: 0.03, send: 0.3 },
+  // World one-shots (the blackout): one take per key, so no jitter — a
+  // detuned mains hum reads as a different, wrong voltage. A touch of room
+  // because the event is diegetic, unlike the ui group's send of 0.
+  world: { jitter: 0, send: 0.25 },
 };
 
 /**
@@ -157,6 +161,7 @@ export class SampleBank {
     // nothing, which is why AudioSystem.announce() checks has() before playing.
     else if (kind === 'announce') { group = 'vox'; key = o.line; }
     else if (kind === 'reload') return this._lookupReload(o);
+    else if (kind === 'powerdown' || kind === 'powerup') { group = 'world'; key = kind; }
     else { group = 'ui'; key = kind; }
     if (!key) return null;
     const set = this.sets.get(group)?.get(key);

@@ -20,6 +20,8 @@ assets-src/*
 # not downloaded, so there is no fetch-sfx.sh step that could bring them back.
 !assets-src/reload/
 !assets-src/shot/
+# ...and the ElevenLabs-generated masters (prompts recorded beside them).
+!assets-src/eleven/
 
 # Goal scorecard output — measurements and their PNGs. Regenerate with
 # `node tools/goal.mjs`; the criteria themselves live in tools/lib/criteria.mjs.
