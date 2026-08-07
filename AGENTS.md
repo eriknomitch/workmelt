@@ -139,6 +139,15 @@ either works: `test:quality` = `src/core/selftest.mjs`, `test:graphics` =
   field with slices, plus `--yaw=<deg>` to square up a layout that sits at an
   angle to its own axes. Reference material for authoring a map by hand —
   nothing it reads is ever loaded at runtime, and `assets-src/*` is gitignored.
+- `node tools/glb-render.mjs <file.glb> [--scale --out --views --cut]` is the
+  other half of that: it *looks* at the same model, writing an aspect-corrected
+  orthographic plan plus 3/4 and eye-level views into `.shots/`. The height
+  field cannot tell you what a mass IS (tower block or container stack — the
+  plan reads the same), what the palette is, or whether something is a building
+  or a prop, and those are what the map module needs. `--cut=<m>` drops meshes
+  sitting entirely above a height for a roofs-off plan, and reports how many it
+  hid so a model with floor-to-roof meshes does not silently look unchanged.
+  Needs a browser; SwiftShader covers a GPU-less sandbox.
 - `node tools/glb-bake.mjs <file.glb> [--id --out --map --rot --scale --origin]`
   is the same idea for weapons, but it produces geometry rather than
   measurements: it converts a downloaded gun into a committed ES module of
