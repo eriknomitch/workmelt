@@ -18,13 +18,23 @@ reload and kill with: a committed geometry module, a builder in
 `src/weapons/models/`, a balanced entry in `defs.js`, and a green set of
 self-tests.
 
-## The premise: bake, never load
+## The premise: bake, because a weapon is static geometry
 
-**Nothing is loaded from disk at runtime, ever.** `AGENTS.md` forbids runtime
+**For a weapon, nothing is loaded from disk at runtime.** That is a decision
+about weapons, not a blanket ban — see "Importing a 3D model" in `AGENTS.md`.
+A rigged, animated character is the other case and takes the `GLTFLoader` +
+`MeshoptDecoder` path, because the bake discards skins and clips by design.
+
+A weapon is static single-material geometry whose animation comes from
+`clips.js` driving named attachment nodes, so it loses nothing to the bake and
+gains everything below. If you are here for a gun, bake it.
+
+`AGENTS.md` forbids runtime
 dependencies and CDN fetches — "every asset the game needs ships in the
-bundle, so it runs fully offline" — and `assets-src/*` is gitignored precisely
-because nothing in it is shippable. There is no `GLTFLoader` in the client and
-there must not be one.
+bundle, so it runs fully offline" — and `assets-src/*` is gitignored because
+the master is never the shipped artefact. Baking satisfies that with no loader
+in the bundle at all, which is strictly cheaper than the alternative for
+geometry that carries nothing a loader would preserve.
 
 Instead, `tools/glb-bake.mjs` converts the model **offline** into a plain ES
 module of quantised typed arrays that `src/weapons/models/` imports like any

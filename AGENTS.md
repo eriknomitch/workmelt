@@ -153,9 +153,54 @@ either works: `test:quality` = `src/core/selftest.mjs`, `test:graphics` =
 
 ## Coding Style & Naming Conventions
 
-Use modern ES modules, two-space indentation, semicolons, and single-quoted strings, matching surrounding code. Use `camelCase` for functions and variables, `PascalCase` for classes, and lowercase subsystem IDs and file names. No formatter or linter is configured, so keep edits consistent and focused. Do not add runtime dependencies; meshes, textures, and animation are generated in code. Use seeded `ctx.rng`, never `Math.random()`. Avoid per-frame allocations, respect quality budgets, and dispose GPU/audio resources.
+Use modern ES modules, two-space indentation, semicolons, and single-quoted strings, matching surrounding code. Use `camelCase` for functions and variables, `PascalCase` for classes, and lowercase subsystem IDs and file names. No formatter or linter is configured, so keep edits consistent and focused. Do not add runtime dependencies. Textures are generated in code, always. Geometry and animation are generated in code *by default* — see "Importing a 3D model" below for the two cases where a premade model is allowed and which path each takes. Use seeded `ctx.rng`, never `Math.random()`. Avoid per-frame allocations, respect quality budgets, and dispose GPU/audio resources.
 
 Menu surfaces — the lobby (`src/match/ui.js`), the pause/settings menu (`src/ui/menu.js` + the menu block of `src/ui/style.js`) and the multiplayer overlay (`src/net/ui.js`) — follow `DESIGN.md` and take every colour, font, radius and duration from the CSS custom properties in `src/ui/brand.js`. Do not introduce a literal hex there. The in-world HUD is deliberately exempt: it is drawn over a live scene and keeps its own outlined, viewport-scaled treatment. Note that these stylesheets are template literals, so a backtick in a CSS comment is a syntax error.
+
+## Importing a 3D model
+
+Two paths. Pick by what the model carries, not by preference.
+
+**Static, single-material geometry → bake it.** This is the default and it does
+not change: `node tools/glb-bake.mjs` converts the model offline into a
+committed ES module of quantised typed arrays that `src/weapons/models/`
+imports like source. No loader, no fetch, no parse cost, deterministic for
+`tools/baseline.mjs`, and reviewable in a diff. The `glb-weapon` skill drives
+it end to end. Weapons and static props belong here.
+
+**Skinned, morphed or animated content → load a bundled `.glb`.** The bake
+discards skins, morph targets and animation by design, so a rigged character
+cannot come through it at all. For those, `GLTFLoader` +
+`MeshoptDecoder` are the path.
+
+This is **not** a rule change. `ARCHITECTURE.md` rule 3 forbids new npm
+dependencies and CDN fetches; both loaders are `three` addons — the one
+dependency already allowed — and a `.glb` imported through vite is emitted into
+`dist/` and served from our own origin, so the game still runs fully offline.
+`vite.config.js` already lists `**/*.glb` in `assetsInclude`.
+
+Measured cost of the two addons in the boot chunk: **+18.91 kB gzip (+3.7%)**,
+508.44 → 527.35 kB. Import them only from the module that needs them so a build
+without an imported model does not pay it.
+
+Rules for the loader path, all of them load-bearing:
+
+1. **Compress with meshopt, never Draco.** `meshopt_decoder.module.js` is a
+   single 24.8 KB ES module that bundles. Draco needs `draco_decoder.wasm` plus
+   worker files fetched from a path at runtime, which reintroduces exactly the
+   external fetch rule 3 forbids. Meshopt also preserves morph targets and
+   animation, which Draco drops.
+2. **The load must complete before `window.__READY__`.** `tools/baseline.mjs`
+   and every capture harness gate on that flag; an async load that resolves
+   after it makes the pixel gate race, and a racing gate is worse than none.
+3. **Animation is driven by the engine clock**, never `performance.now()` or a
+   wall clock, or captures stop being reproducible (rule 4's real intent).
+4. **Geometry, skins and clips come in — the look does not.** glTF materials
+   are still mapped to keys in the procedural material library, the same
+   contract `tools/glb-bake.mjs` uses. We do not ship authored textures.
+5. **The master stays untracked in `assets-src/`**; the shipped `.glb` is the
+   optimised output, committed, with its source hash recorded — the same
+   provenance rule the bake and SFX pipelines already follow.
 
 ## Testing Guidelines
 

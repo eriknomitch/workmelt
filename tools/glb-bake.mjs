@@ -11,16 +11,23 @@
  * can assemble — so a premade mesh becomes a weapon without the engine ever
  * loading a file at runtime.
  *
- * WHY A BAKE AND NOT A LOADER
- * ---------------------------
- * AGENTS.md: no runtime dependencies, no CDN fetches, "every asset the game
- * needs ships in the bundle, so it runs fully offline". A GLTFLoader in the
- * client bundle plus a .glb fetched at boot breaks the second clause and adds
- * parse cost to a boot that TEXTURE-PERF.md already measures at 3.27 s of
- * blocking work. Baking offline keeps the shipped artefact a plain ES module:
- * no loader, no fetch, no decode, deterministic for `tools/baseline.mjs`, and
- * reviewable in a diff (part names, materials and triangle counts are plain
- * text at the top of the file).
+ * WHY A BAKE AND NOT A LOADER, FOR THIS KIND OF MODEL
+ * ---------------------------------------------------
+ * Scope first: this is the right answer for STATIC, SINGLE-MATERIAL geometry.
+ * Skinned or animated content cannot use it — see "Importing a 3D model" in
+ * AGENTS.md for the GLTFLoader + MeshoptDecoder path that case takes.
+ *
+ * For static geometry the bake wins on every axis. It keeps the shipped
+ * artefact a plain ES module: no loader in the bundle (measured at +18.91 kB
+ * gzip), no fetch, no decode, no parse cost added to a boot that
+ * TEXTURE-PERF.md already measures at 3.27 s of blocking work, no async step to
+ * race `window.__READY__` and the capture harness, and a diff a human can
+ * review (part names, materials and triangle counts are plain text at the top
+ * of the file).
+ *
+ * The trade is source size — g31 is 5,171 triangles and 150 KB of committed
+ * JS. That is fine for a handful of weapons and is the reason this is not the
+ * answer for everything.
  *
  * This is the SFX pipeline applied to geometry: `assets-src/` holds the
  * untracked master, a tool converts it, the OUTPUT is what gets committed.

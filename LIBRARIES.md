@@ -767,6 +767,48 @@ Because step 0 turned out to be a project rather than an afternoon, it should
 panel) touch none of the render path and remain the correct next moves; step 0
 is a prerequisite only for step 7, which is far down the list.
 
+### 7.5.1 Model import: the restriction was doctrine, not the rule
+
+Asked 2026-08-07: how should premade 3D models come in?
+
+The repo's answer was "bake, never load — there is no `GLTFLoader` in the
+client and there must not be one" (`glb-weapon` skill, `tools/glb-bake.mjs`).
+Checked against rule 3, that is **stricter than the rule requires**:
+
+- `GLTFLoader` and `MeshoptDecoder` are `three/addons` — the one dependency
+  already allowed. Not a new npm dependency.
+- A `.glb` imported through vite is emitted into `dist/` and served from our
+  own origin. Not a CDN fetch; the game still runs fully offline.
+- `vite.config.js` already lists `**/*.glb` in `assetsInclude` — the build was
+  configured for this before anyone asked.
+
+So no hard rule needed amending. The restriction lived in `AGENTS.md`'s
+"meshes, textures, and animation are generated in code" and in the skill's
+doctrine, and those are what changed.
+
+**The decision rule now recorded in `AGENTS.md`:** static single-material
+geometry bakes (unchanged default — cheaper on every axis and reviewable in a
+diff); skinned, morphed or animated content loads a bundled meshopt-compressed
+`.glb`. The bake discards skins and clips *by design*, so a rigged character
+was never expressible in it — that gap, not a preference, is what justifies the
+second path.
+
+Measured cost of the two addons in the boot chunk: **508.44 → 527.35 kB gzip,
++18.91 kB (+3.7%)**. Import them only where needed so a build with no imported
+model does not pay it.
+
+Meshopt over Draco, for a reason specific to our rules: `meshopt_decoder.module.js`
+is a single 24.8 KB ES module that bundles, while Draco needs `draco_decoder.wasm`
+plus worker files fetched from a path at runtime — reintroducing exactly the
+external fetch rule 3 forbids. Meshopt also preserves morph targets and
+animation; Draco drops them.
+
+Three guardrails carried into the doc, because they are where this can go
+wrong silently: the load must complete before `window.__READY__` or the pixel
+gate races; animation runs off the engine clock, never wall clock; and glTF
+materials still map to the procedural library, because geometry and clips come
+in but the look does not.
+
 ### 7.6 §5 step 1 has landed — `.github/workflows/ci.yml`
 
 Written 2026-08-06. `npm ci` → `npm run build` → the self-tests, on push to
