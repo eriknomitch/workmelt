@@ -17,9 +17,12 @@ const HEIGHT_RANGE = CAM_Y; // metres of vertical range mapped into the height r
  * a height ramp for structures, and a Sobel pass for crisp roof outlines.
  * After that one bake, per-frame cost is a single drawImage plus blips.
  *
- * Player arrow stays centred and rotates (map is north-up, matching the
- * compass strip); enemy blips are drawn from whatever the ai subsystem
- * publishes via `getHudActors()`.
+ * The map is forward-up: the whole picture rotates about the centre so the
+ * player's facing direction is always the top of the widget, and the player
+ * arrow stays fixed pointing up. World north therefore moves — an 'N' marker
+ * orbits the rim so the map and the compass strip can still be read against
+ * each other. Enemy blips are drawn from whatever the ai subsystem publishes
+ * via `getHudActors()`.
  */
 export class Minimap {
   constructor(parent, rng) {
@@ -27,7 +30,6 @@ export class Minimap {
     this.canvas = el('canvas', null, this.root);
     this.g = this.canvas.getContext('2d');
     for (const c of ['tl', 'tr', 'bl', 'br']) el('div', 'ow-mm-corner ' + c, this.root);
-    el('div', 'ow-mm-n', this.root, 'N');
     const tag = el('div', 'ow-mm-tag', this.root);
     el('span', null, tag, 'ZONE 07');
     this.scaleTag = el('span', null, tag, '60M');
@@ -109,7 +111,7 @@ export class Minimap {
         });
         const h = this.span * 0.5;
         this._cam = new THREE.OrthographicCamera(-h, h, h, -h, NEAR, FAR);
-        this._cam.up.set(0, 0, -1); // north (-Z) points up on the map
+        this._cam.up.set(0, 0, -1); // bake is north-up; draw() rotates it forward-up
       }
 
       const scene = ctx.scene;
@@ -486,42 +488,62 @@ export class Minimap {
     const cx = s.x ?? 0;
     const cz = s.z ?? 0;
 
+    // Forward-up: rotate the world by -heading about the widget centre so the
+    // facing direction is always the top of the map. Everything positional —
+    // bitmap, grid, blips, objectives — goes through this one rotation.
+    const heading = ((s.heading ?? 0) * Math.PI) / 180;
+    const rot = -heading;
+    const cosR = Math.cos(rot);
+    const sinR = Math.sin(rot);
+
     if (this.baked) {
       const bppm = BAKE / this.span;
-      const srcW = this.viewSpan * bppm;
-      const sx = (cx - this.centre.x) * bppm + BAKE * 0.5 - srcW * 0.5;
-      const sy = (cz - this.centre.y) * bppm + BAKE * 0.5 - srcW * 0.5;
+      g.save();
+      g.translate(half, half);
+      g.rotate(rot);
+      g.scale(ppm / bppm, ppm / bppm);
+      g.translate(
+        -((cx - this.centre.x) * bppm + BAKE * 0.5),
+        -((cz - this.centre.y) * bppm + BAKE * 0.5)
+      );
       g.imageSmoothingEnabled = true;
       g.imageSmoothingQuality = 'high';
-      g.drawImage(this.baked, sx, sy, srcW, srcW, 0, 0, S, S);
+      g.drawImage(this.baked, 0, 0);
+      g.restore();
     } else {
       g.fillStyle = '#2b333b';
       g.fillRect(0, 0, S, S);
     }
 
-    // 10m grid, phase-locked to world space so it scrolls with the player
+    // 10m grid, phase-locked to world space so it scrolls with the player.
+    // Drawn under the same rotation; the reach is the widget's half-diagonal
+    // so the corners stay gridded at every heading.
     const u = S / this.cssSize; // canvas pixels per css reference pixel
+    const reach = this.viewSpan * 0.5 * Math.SQRT2;
+    g.save();
+    g.translate(half, half);
+    g.rotate(rot);
     g.lineWidth = 1;
     g.strokeStyle = 'rgba(10,17,23,.20)';
     g.beginPath();
-    const n0x = Math.floor((cx - this.viewSpan * 0.5) / 10);
-    const n1x = Math.ceil((cx + this.viewSpan * 0.5) / 10);
+    const n0x = Math.floor((cx - reach) / 10);
+    const n1x = Math.ceil((cx + reach) / 10);
     for (let n = n0x; n <= n1x; n++) {
-      const X = Math.round((n * 10 - cx) * ppm + half) + 0.5;
-      g.moveTo(X, 0);
-      g.lineTo(X, S);
+      const X = (n * 10 - cx) * ppm;
+      g.moveTo(X, -reach * ppm);
+      g.lineTo(X, reach * ppm);
     }
-    const n0z = Math.floor((cz - this.viewSpan * 0.5) / 10);
-    const n1z = Math.ceil((cz + this.viewSpan * 0.5) / 10);
+    const n0z = Math.floor((cz - reach) / 10);
+    const n1z = Math.ceil((cz + reach) / 10);
     for (let n = n0z; n <= n1z; n++) {
-      const Y = Math.round((n * 10 - cz) * ppm + half) + 0.5;
-      g.moveTo(0, Y);
-      g.lineTo(S, Y);
+      const Y = (n * 10 - cz) * ppm;
+      g.moveTo(-reach * ppm, Y);
+      g.lineTo(reach * ppm, Y);
     }
     g.stroke();
+    g.restore();
 
-    // view cone
-    const heading = ((s.heading ?? 0) * Math.PI) / 180;
+    // view cone — always straight up, because the map turns instead
     const fov = (((s.fov ?? 80) * 0.5) * Math.PI) / 180;
     const coneR = S * 0.42;
     const grad = g.createRadialGradient(half, half, 2, half, half, coneR);
@@ -531,7 +553,7 @@ export class Minimap {
     g.fillStyle = grad;
     g.beginPath();
     g.moveTo(half, half);
-    g.arc(half, half, coneR, -Math.PI / 2 + heading - fov, -Math.PI / 2 + heading + fov);
+    g.arc(half, half, coneR, -Math.PI / 2 - fov, -Math.PI / 2 + fov);
     g.closePath();
     g.fill();
     g.strokeStyle = 'rgba(226,244,255,.17)';
@@ -547,8 +569,10 @@ export class Minimap {
       const r = 6 * u;
       for (let i = 0; i < objs.length; i++) {
         const o = objs[i];
-        const dx = clamp((o.x - cx) * ppm + half, r + 1, S - r - 1);
-        const dy = clamp((o.z - cz) * ppm + half, r + 1, S - r - 1);
+        const wx = o.x - cx;
+        const wz = o.z - cz;
+        const dx = clamp((wx * cosR - wz * sinR) * ppm + half, r + 1, S - r - 1);
+        const dy = clamp((wx * sinR + wz * cosR) * ppm + half, r + 1, S - r - 1);
         g.fillStyle = 'rgba(121,210,255,.94)';
         g.strokeStyle = 'rgba(4,14,20,.8)';
         g.lineWidth = 1;
@@ -566,14 +590,16 @@ export class Minimap {
     if (blips) {
       for (let i = 0; i < blips.length; i++) {
         const b = blips[i];
-        const dx = (b.x - cx) * ppm + half;
-        const dy = (b.z - cz) * ppm + half;
+        const wx = b.x - cx;
+        const wz = b.z - cz;
+        const dx = (wx * cosR - wz * sinR) * ppm + half;
+        const dy = (wx * sinR + wz * cosR) * ppm + half;
         if (dx < -8 || dy < -8 || dx > S + 8 || dy > S + 8) continue;
         const enemy = b.kind !== 'friend';
         const r = 3.4 * u;
         g.save();
         g.translate(dx, dy);
-        g.rotate(((b.heading ?? 0) * Math.PI) / 180);
+        g.rotate(((b.heading ?? 0) * Math.PI) / 180 + rot);
         g.fillStyle = enemy ? 'rgba(255,74,58,.96)' : 'rgba(126,196,255,.95)';
         g.shadowColor = enemy ? 'rgba(255,60,40,.85)' : 'rgba(120,190,255,.7)';
         g.shadowBlur = 6 * u;
@@ -587,10 +613,9 @@ export class Minimap {
       }
     }
 
-    // player arrow
+    // player arrow — fixed, pointing up: the map rotates underneath it
     g.save();
     g.translate(half, half);
-    g.rotate(heading);
     const pr = 4.8 * u;
     g.beginPath();
     g.moveTo(0, -pr * 1.55);
@@ -615,6 +640,20 @@ export class Minimap {
     vg.addColorStop(1, 'rgba(0,0,0,.17)');
     g.fillStyle = vg;
     g.fillRect(0, 0, S, S);
+
+    // north marker — orbits the rim as the map turns; up when facing north
+    const nr = half - 10 * u;
+    const nx = half + sinR * nr;
+    const ny = half - cosR * nr;
+    g.font = `700 ${(9.5 * u).toFixed(1)}px system-ui, sans-serif`;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.lineWidth = 3 * u;
+    g.lineJoin = 'round';
+    g.strokeStyle = 'rgba(4,10,15,.75)';
+    g.strokeText('N', nx, ny);
+    g.fillStyle = 'rgba(222,238,250,.92)';
+    g.fillText('N', nx, ny);
 
     g.restore();
   }
