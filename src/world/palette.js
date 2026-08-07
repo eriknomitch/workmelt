@@ -282,35 +282,6 @@ export const PALETTE = {
     opts: { vertexMasks: true, tint: 0xb9a988, scale: 2.4, normalStrength: 1.25, weather: [0.6, 0.4, 0.45, 0.5] },
   },
   /**
-   * SITE HOARDING. Safety orange profiled sheet, and Site Work's single accent
-   * (DESIGN.md's one-accent-per-map rule) — it is the first thing you see of
-   * that map and the thing that tells you where its edge is.
-   *
-   * Reusing the `corrugated` generator is what makes this nearly free. Texture
-   * sets are cached on the generator plus its `bake` options only, and `tint`
-   * is a material parameter rather than a bake one — so this key shares the
-   * three maps the `container_*` family already baked, and costs a material
-   * instance and one draw call rather than 3 more RGBA8 textures. A new LOOK
-   * (a different generator) is the expensive kind of palette addition; a new
-   * TINT is not.
-   *
-   * `scale` is a tile size in metres, so 1.5 lands the profile ribs at roughly
-   * the 25 cm pitch hoarding sheet actually comes in — coarser than the 2.4 the
-   * containers use, because a hoarding panel is a smaller sheet than a 40 ft box.
-   *
-   * The BLUE channel is the one with no headroom. Safety orange wants it near
-   * zero, and this file's own 0.02 reflectance floor puts the minimum at 0x2b —
-   * a first pass at 0x2a was under it, which is a black point no real paint has
-   * and which crushes to pure black in shadow. `maps.selftest.mjs` asserts the
-   * band for this key rather than trusting the eye, because the difference
-   * between 0x2a and 0x38 is invisible in a lit frame and not in a dark one.
-   */
-  hoarding_orange: {
-    name: 'corrugated',
-    surface: 'metal',
-    opts: { vertexMasks: true, tint: 0xd06e38, scale: 1.5, normalStrength: 1.2, weather: [0.5, 0.45, 0.55, 0.5] },
-  },
-  /**
    * Structural steel that is PAINTED and only rusting through at the arris —
    * the derrick legs, gantry stringers and pipe trestles. Distinct from
    * `metal_rust`, which is bare corroded sheet: a whole 14 m tower in bare rust
@@ -910,4 +881,92 @@ export const PALETTE = {
       bg_dark: { name: 'flat_matte', surface: 'metal', opts: { ...FLAT, tint: 0x4b5054 } },
     };
   })(),
+  /* ─────────────────────────────────────────────────────────────── the site ── */
+  /**
+   * `sw_*` — Site Work's blockout family, and the same bargain as `gb_*` and
+   * `bg_*` above: every key is `flat_matte` differing only by `tint`, so the
+   * whole map costs ONE resident 256 bake and no texture memory of its own.
+   *
+   * FLATNESS IS THE WHOLE LOOK and it is entirely configuration. `weather` all
+   * zeroes drops the `OW_WEATHER` block from the compile outright, and
+   * `vertexMasks: false` compiles out the wear/grime/AO block regardless of the
+   * masks `PB` writes into the geometry. What is left is the colour and the
+   * light — which is exactly what an arena shooter's art direction is.
+   *
+   * The `FLAT` block is repeated rather than shared with the two families above
+   * ON PURPOSE, for the reason `bg_*` gives: hoisting one shared constant would
+   * make every future edit to one map's flatness an edit to all three, which is
+   * the coupling separate keys exist to avoid.
+   *
+   * TWO ORANGES, NOT ONE. Site Work is an orange map — the hoarding, the frame
+   * and the core are all the same paint in life — and a single tint made the
+   * frame vanish into the hoarding behind it from half the map. `sw_orange` is
+   * the bright environmental accent (hoarding, columns, the core mast) and
+   * `sw_amber` the deeper structural value (the frame, the core shaft), so a
+   * mass always has something a value apart to read against.
+   *
+   * Tints stay inside the 0.02-0.9 reflectance band this file opens with, and
+   * the BLUE channel is the one with no headroom: safety orange wants it near
+   * zero and the floor puts the minimum at 0x2b. Two passes at this palette
+   * were under it — a black point no real paint has, which crushes to pure
+   * black in shadow and is invisible in a lit frame. `maps.selftest.mjs`
+   * asserts the band for the whole family rather than trusting the eye.
+   */
+  ...(() => {
+    const FLAT = {
+      vertexMasks: false,
+      weather: [0, 0, 0, 0],
+      macro: [0.05, 0, 0, 0],
+      macroBig: [1, 0, 0, 0],
+      patch: [0, 0, 0, 0],
+      detail: [8, 0, 0, 0],
+      parallax: 0,
+      detile: 0,
+      normalStrength: 0,
+      aoStrength: 0,
+      roughness: [0, 0.85, 0.85],
+    };
+    return {
+      /**
+       * The site floor. As dark as this file's 0.02 reflectance floor allows —
+       * the shader receives it as 0.027 linear, measured off `owTintCol`.
+       *
+       * It still reads as a mid grey on screen and that is correct, not a bug:
+       * a 2.4% albedo under an open sky tonemaps to about that, the same way
+       * fresh asphalt photographs mid-grey in sunlight. Do not chase a darker
+       * floor with a lower tint — below 0x2b it is out of band, and the thing
+       * actually setting the on-screen value is the sky, not the albedo.
+       */
+      sw_ground: { name: 'flat_matte', surface: 'concrete', opts: { ...FLAT, tint: 0x2e3134 } },
+      /** The hoarding, the frame columns, the core mast — the bright accent. */
+      sw_orange: { name: 'flat_matte', surface: 'metal', opts: { ...FLAT, tint: 0xd98a38 } },
+      /** The deeper structural orange: the frame walls and both core shafts. */
+      sw_amber: { name: 'flat_matte', surface: 'concrete', opts: { ...FLAT, tint: 0xc06a34 } },
+      /** Timber: crates, pallets, plank stacks. */
+      sw_tan: { name: 'flat_matte', surface: 'wood', opts: { ...FLAT, tint: 0xdcc48f } },
+      /** Brick pallets, and the barrels that are not blue. */
+      sw_red: { name: 'flat_matte', surface: 'concrete', opts: { ...FLAT, tint: 0xc4534a } },
+      /**
+       * Light concrete, for SMALL objects only: barriers, cover blocks, the
+       * backdrop's slab edges.
+       */
+      sw_grey: { name: 'flat_matte', surface: 'concrete', opts: { ...FLAT, tint: 0xb9bcbe } },
+      /**
+       * Mid concrete, for the BIG poured surfaces: the frame deck, the core
+       * deck, the stairs, the two end sheds.
+       *
+       * Splitting this off `sw_grey` is not a nicety. The frame deck is 34 x 14
+       * m — the largest single surface on the map — and at the barriers' value
+       * it read as a white table top that pulled the eye off everything else.
+       * A barrier is bright because it is small; a deck at the same value is
+       * just the brightest thing in the frame.
+       */
+      sw_concrete: { name: 'flat_matte', surface: 'concrete', opts: { ...FLAT, tint: 0x8e9296 } },
+      /** The dark value that keeps the oranges and the tans apart. */
+      sw_dark: { name: 'flat_matte', surface: 'metal', opts: { ...FLAT, tint: 0x4a4e54 } },
+      /** The one cool note: half the cabins, some barrels, the shed glazing. */
+      sw_blue: { name: 'flat_matte', surface: 'metal', opts: { ...FLAT, tint: 0x4a7ba8 } },
+    };
+  })(),
+
 };

@@ -36,6 +36,7 @@ import {
   resolveBootMap,
 } from './maps.js';
 import { CONTAINER } from './rustprops.js';
+import { CABIN } from './siteworkprops.js';
 import { CONTAINERS, STRUCTURES, RUST, DERRICK, inSolid } from './rust.js';
 import { HEDGE } from './wilmotprops.js';
 import {
@@ -60,7 +61,7 @@ import {
   stairDir,
   BARRIERS as SITE_BARRIERS,
   TIMBER as SITE_TIMBER,
-  CONTAINERS as SITE_CONTAINERS,
+  CABINS as SITE_CABINS,
   inSolid as inSolidSitework,
   groundYSitework,
 } from './sitework.js';
@@ -1744,11 +1745,11 @@ const swRowRect = (label, x, z, ry, len, t) => {
 for (const s of SITE_STRUCTURES) swRects.push([s.id, s.x - s.w / 2, s.z - s.d / 2, s.x + s.w / 2, s.z + s.d / 2]);
 for (const [x, z, ry, len] of SITE_BARRIERS) swRects.push(swRowRect(`barrier(${x},${z})`, x, z, ry, len, 0.6));
 for (const [x, z, ry, len] of SITE_TIMBER) swRects.push(swRowRect(`timber(${x},${z})`, x, z, ry, len, 1.1));
-for (const [x, z, ry, tier] of SITE_CONTAINERS) {
+for (const [x, z, ry, tier] of SITE_CABINS) {
   if (tier !== 0) continue;
-  const hx = (ry === 0 ? CONTAINER.l : CONTAINER.w) / 2;
-  const hz = (ry === 0 ? CONTAINER.w : CONTAINER.l) / 2;
-  swRects.push([`container(${x},${z})`, x - hx, z - hz, x + hx, z + hz]);
+  const hx = (ry === 0 ? CABIN.l : CABIN.w) / 2;
+  const hz = (ry === 0 ? CABIN.w : CABIN.l) / 2;
+  swRects.push([`cabin(${x},${z})`, x - hx, z - hz, x + hx, z + hz]);
 }
 
 const swOverlaps = [];
@@ -1764,29 +1765,79 @@ const swOut = swRects.filter((r) => r[1] < -SITE.halfX || r[2] < -SITE.halfZ || 
 ok(swOut.length === 0, 'everything solid is inside the hoarding', swOut.map((r) => r[0]).join(' '));
 
 /**
- * THE HOARDING IS ONE PALETTE KEY, AND ITS COST IS WRITTEN DOWN.
+ * THE BLOCKOUT PALETTE CONTRACT — the same guard `gb_*` and `bg_*` get, for the
+ * same reason.
  *
- * `palette.js` claims this key is nearly free because it reuses the
- * `corrugated` generator and differs from the `container_*` family by tint
- * alone — texture sets cache on the generator plus its `bake` options, so no
- * `bake:` override means no new textures. That claim is one property away from
- * being false, and the diff that falsifies it (`bake: { size: 1024 }`, to make
- * the orange crisper) reads as an improvement. TEXTURE-PERF.md counts these.
+ * Site Work's look is not geometry, it is eight palette entries that agree to
+ * do nothing: no weathering, no edge wear, no grime, no macro drift, no normal
+ * relief. Every one of those is a parameter, so every one is a single line away
+ * from coming back — and a reviewer reading a diff that adds
+ * `weather: [0.5, 0.45, 0.55, 0.5]` to one key has no way to know it just
+ * un-styled a map.
+ *
+ * These are also the texture budget. `TEXTURE-PERF.md` counts every `bake:`
+ * override, and the whole point of the family is that all eight share one
+ * resident `flat_matte` set and differ by tint alone. The diff that falsifies
+ * that (`bake: { size: 1024 }`, to make the orange crisper) reads as an
+ * improvement.
  */
 {
-  const h = PALETTE.hoarding_orange;
-  ok(h !== undefined && h.opts?.bake === undefined,
-    'the hoarding shares the corrugated bake — a tint, not a new texture set',
-    h?.opts?.bake ? 'it now overrides its bake' : `generator "${h?.name}"`);
-  ok(h.name === PALETTE.container_red.name,
-    'and it is still the same generator the containers use', `${h.name} vs ${PALETTE.container_red.name}`);
-  const t = h.opts?.tint;
-  const outOfBand = [16, 8, 0].some((sh) => {
-    const lin = Math.pow(((t >> sh) & 255) / 255, 2.2);
-    return lin < 0.02 || lin > 0.9;
+  const sw = Object.entries(PALETTE).filter(([k]) => k.startsWith('sw_'));
+  ok(sw.length >= 8, 'the site palette family exists', sw.map(([k]) => k).join(' '));
+
+  const notFlat = sw.filter(([, v]) => {
+    const o = v.opts ?? {};
+    const w = o.weather ?? [1, 1, 1, 1];
+    return o.vertexMasks !== false || w.some((n) => n !== 0) || o.normalStrength !== 0;
   });
-  ok(!outOfBand, 'and its tint sits inside the 0.02-0.9 reflectance band',
-    `#${t.toString(16)}`);
+  ok(notFlat.length === 0, 'every site key is flat — no weather, no masks, no relief',
+    notFlat.map(([k]) => k).join(' '));
+
+  const extraBakes = sw.filter(([, v]) => v.opts?.bake !== undefined);
+  ok(extraBakes.length === 0, 'and none of them overrides its bake — one resident set for the map',
+    extraBakes.map(([k]) => k).join(' '));
+
+  const oneGen = new Set(sw.map(([, v]) => v.name));
+  ok(oneGen.size === 1, 'and they are all the same generator — a family of tints',
+    [...oneGen].join(' '));
+
+  /**
+   * `tint` is a linear multiply on a baked albedo, and `palette.js` opens by
+   * saying values stay inside 0.02-0.9 reflectance. The BLUE channel is where
+   * this family has no headroom: safety orange wants it near zero, and two
+   * passes at these tints landed under the floor — a black point no real paint
+   * has, invisible in a lit frame and crushed to pure black in shadow.
+   */
+  const outOfBand = sw.filter(([, v]) => {
+    const t = v.opts?.tint;
+    if (t === undefined) return false;
+    return [16, 8, 0].some((sh) => {
+      const lin = Math.pow(((t >> sh) & 255) / 255, 2.2);
+      return lin < 0.02 || lin > 0.9;
+    });
+  });
+  ok(outOfBand.length === 0, 'every tint sits inside the 0.02-0.9 reflectance band',
+    outOfBand.map(([k]) => `${k} #${k && PALETTE[k].opts.tint.toString(16)}`).join(' '));
+
+  /**
+   * TWO ORANGES, A VALUE APART. The frame and the hoarding are the same paint
+   * in life and were the same tint at first, which made the frame vanish into
+   * the hoarding behind it from half the map. If a later tidy-up collapses them
+   * back to one key the map still builds and quietly loses its middle.
+   */
+  const lum = (t) => [16, 8, 0].reduce((a, sh, i) => a + [0.2126, 0.7152, 0.0722][i] * Math.pow(((t >> sh) & 255) / 255, 2.2), 0);
+  ok(Math.abs(lum(PALETTE.sw_orange.opts.tint) - lum(PALETTE.sw_amber.opts.tint)) > 0.05,
+    'the two oranges stay a value apart, so the frame reads against the hoarding',
+    `${lum(PALETTE.sw_orange.opts.tint).toFixed(3)} vs ${lum(PALETTE.sw_amber.opts.tint).toFixed(3)}`);
+
+  /**
+   * And the floor stays below all of them. Everything on this map is a
+   * saturated mass, and they only read as silhouettes against a darker ground.
+   */
+  const floor = lum(PALETTE.sw_ground.opts.tint);
+  const brightest = Math.max(...sw.filter(([k]) => k !== 'sw_ground').map(([, v]) => lum(v.opts.tint)));
+  ok(floor < brightest * 0.5, 'and the site floor sits a value below everything standing on it',
+    `floor ${floor.toFixed(3)} vs brightest ${brightest.toFixed(3)}`);
 }
 
 /**

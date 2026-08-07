@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { BOX, BOX_THIN, IDENT, LL, stairRun, worldOf, ryOf } from './kit.js';
 import { registerProps } from './props.js';
-import { registerRustProps, CONTAINER } from './rustprops.js';
-import { fbm3, paintMasks, patchGeometry } from './util.js';
+import { registerSiteworkProps, CABIN } from './siteworkprops.js';
+import { fbm3, paintMasks } from './util.js';
 
 /**
  * WORLD — SITE WORK.
@@ -102,14 +102,14 @@ export const STRUCTURES = [
    * lane rather than two of the same. A centred frame gave two 11 m lanes and
    * the map played identically whichever way you went round.
    */
-  { id: 'frame', x: 4, z: 0, w: 34, d: 14, h: 3.8, key: 'concrete' },
+  { id: 'frame', x: 4, z: 0, w: 34, d: 14, h: 3.8, key: 'sw_amber' },
   /** THE CORE — the landmark. `h` is the deck; the mast goes to `CORE.mastTop`. */
-  { id: 'core', x: 2, z: -20, w: 8, d: 8, h: 7.2, key: 'concrete' },
+  { id: 'core', x: 2, z: -20, w: 8, d: 8, h: 7.2, key: 'sw_amber' },
   /** The south core: same idea, taller, and with no way in. Pure sightline break. */
-  { id: 'core_s', x: -4, z: 18, w: 7, d: 7, h: 9.5, key: 'concrete_dark' },
+  { id: 'core_s', x: -4, z: 18, w: 7, d: 7, h: 9.5, key: 'sw_amber' },
   /** Site office in the north yard, and the materials store in the south. */
-  { id: 'office', x: -18, z: -37, w: 12, d: 7, h: 4.2, key: 'corrugated' },
-  { id: 'store', x: 14, z: 34, w: 13, d: 7, h: 4.6, key: 'corrugated' },
+  { id: 'office', x: -18, z: -37, w: 12, d: 7, h: 4.2, key: 'sw_concrete' },
+  { id: 'store', x: 14, z: 34, w: 13, d: 7, h: 4.6, key: 'sw_concrete' },
 ];
 
 const byId = (id) => STRUCTURES.find((s) => s.id === id);
@@ -219,21 +219,21 @@ export const TIMBER = [
 ];
 
 /**
- * Containers used as cover: `[x, z, ry, tier, proto]`. Site cabins and
- * material stores. Only 0 and H are used for `ry` — the blocker test below
+ * Site cabins used as cover: `[x, z, ry, tier, proto]`. Container-shaped
+ * offices and material stores. Only 0 and H are used for `ry` — the blocker test below
  * reads them as axis-aligned rects.
  */
-export const CONTAINERS = [
-  [-24, -9, H, 0, 'cont_blue'],
-  [-24, -9, H, 1, 'cont_sand'],
-  [-21, 4, H, 0, 'cont_sand'],
-  [18, -25, 0, 0, 'cont_blue'],
-  [-2, -33, 0, 0, 'cont_sand'],
-  [-2, -33, 0, 1, 'cont_blue'],
-  [-16, 12, 0, 0, 'cont_sand'],
-  [12, 26, 0, 0, 'cont_blue'],
-  [-13, -19, 0, 0, 'cont_sand'],
-  [24, 14, H, 0, 'cont_blue'],
+export const CABINS = [
+  [-24, -9, H, 0, 'sw_cabin_b'],
+  [-24, -9, H, 1, 'sw_cabin'],
+  [-21, 4, H, 0, 'sw_cabin'],
+  [18, -25, 0, 0, 'sw_cabin_b'],
+  [-2, -33, 0, 0, 'sw_cabin'],
+  [-2, -33, 0, 1, 'sw_cabin_b'],
+  [-16, 12, 0, 0, 'sw_cabin'],
+  [12, 26, 0, 0, 'sw_cabin_b'],
+  [-13, -19, 0, 0, 'sw_cabin'],
+  [24, 14, H, 0, 'sw_cabin_b'],
   /**
    * THE GATE BLOCKS. The hoarding opens for a vehicle gate on each long side,
    * which is right — a sealed box of hoarding reads as a box of hoarding. But
@@ -241,8 +241,8 @@ export const CONTAINERS = [
    * shut the way a real site is: a container across the gap, 2 m inside the
    * hoarding line. The self-test probes both.
    */
-  [-25.8, 0, H, 0, 'cont_sand'],
-  [25.8, 0, H, 0, 'cont_blue'],
+  [-25.8, 0, H, 0, 'sw_cabin'],
+  [25.8, 0, H, 0, 'sw_cabin_b'],
 ];
 
 /**
@@ -351,10 +351,10 @@ function rowRect(x, z, ry, len, t) {
 const BLOCKERS = (() => {
   const out = [];
   for (const s of STRUCTURES) out.push([s.x - s.w / 2, s.z - s.d / 2, s.x + s.w / 2, s.z + s.d / 2]);
-  for (const [x, z, ry, tier] of CONTAINERS) {
+  for (const [x, z, ry, tier] of CABINS) {
     if (tier !== 0) continue; // a stacked box adds no new footprint
-    const hx = (ry === 0 ? CONTAINER.l : CONTAINER.w) / 2;
-    const hz = (ry === 0 ? CONTAINER.w : CONTAINER.l) / 2;
+    const hx = (ry === 0 ? CABIN.l : CABIN.w) / 2;
+    const hz = (ry === 0 ? CABIN.w : CABIN.l) / 2;
     out.push([x - hx, z - hz, x + hx, z + hz]);
   }
   for (const [x, z, ry, len] of BARRIERS) out.push(rowRect(x, z, ry, len, 0.6));
@@ -503,7 +503,9 @@ function buildGround(A, rng) {
     out[1] = 0.25 + fbm3(x * 0.26, 2.4, z * 0.26, 2) * 0.4;
     out[0] = 0.2;
   });
-  A.add('dirt', terrain, null);
+  // A value apart from the site floor, so the hoarding line reads as an edge
+  // between two grounds rather than as a wall standing on one.
+  A.add('sw_dark', terrain, null);
   A.collideGeo('sand', terrain);
   terrain.dispose();
 
@@ -526,10 +528,10 @@ function buildGround(A, rng) {
     out[0] = 0.24 + n * 0.28;
     out[1] = 0.18 + n * 0.24;
   });
-  // `floor_concrete`, not Rust's warm `yard_slab`: this is a blinded slab on a
-  // live site, and the sandy tint made the whole map read as a desert compound
-  // with the haul road invisible against it.
-  A.add('floor_concrete', slab, null);
+  // Dark, and that is the blockout's load-bearing choice: everything on this
+  // map is a saturated mass, and they only read as silhouettes if the floor
+  // they stand on is a value below all of them.
+  A.add('sw_ground', slab, null);
   A.box('dirt', 0, -0.25, 0, W, 0.5, D);
   slab.dispose();
 
@@ -550,7 +552,7 @@ function buildGround(A, rng) {
     out[1] = 0.3 + fbm3(x * 0.7, 1.9, z * 0.7, 2) * 0.35;
   });
   road.translate(-20.5, 0, 0);
-  A.add('gravel', road, null);
+  A.add('sw_dark', road, null);
   road.dispose();
 }
 
@@ -564,7 +566,7 @@ function buildGround(A, rng) {
  */
 function buildPerimeter(A, rng) {
   const { halfX, halfZ, wallH, wallT, gateHalf } = SITE;
-  const key = 'hoarding_orange';
+  const key = 'sw_orange';
   const masks = [0.5, 0.55, 0.35];
 
   // North and south runs: unbroken, full width.
@@ -588,7 +590,7 @@ function buildPerimeter(A, rng) {
     }
     // Piers on the gate jambs — an opening needs an edge or it reads as damage.
     for (const sz of [-1, 1]) {
-      A.add('steel_frame', BOX(A), LL(IDENT, sx * halfX, wallH * 0.58, sz * gateHalf, 0, 0.6, wallH * 1.16, 0.6), {
+      A.add('sw_amber', BOX(A), LL(IDENT, sx * halfX, wallH * 0.58, sz * gateHalf, 0, 0.6, wallH * 1.16, 0.6), {
         masks: [0.6, 0.5, 0.3],
       });
       A.box('metal', sx * halfX, wallH * 0.58, sz * gateHalf, 0.6, wallH * 1.16, 0.6);
@@ -599,7 +601,7 @@ function buildPerimeter(A, rng) {
   // of sheet read as bolted-together panels instead of one extruded ribbon.
   for (const sz of [-1, 1]) {
     for (let x = -halfX + 2.4; x < halfX; x += 2.4) {
-      A.add('steel_frame', BOX_THIN(A), LL(IDENT, x, wallH / 2, sz * (halfZ + 0.22), 0, 0.13, wallH, 0.1), {
+      A.add('sw_amber', BOX_THIN(A), LL(IDENT, x, wallH / 2, sz * (halfZ + 0.22), 0, 0.13, wallH, 0.1), {
         masks: [0.7, 0.5, 0.3],
       });
     }
@@ -607,7 +609,7 @@ function buildPerimeter(A, rng) {
   for (const sx of [-1, 1]) {
     for (let z = -halfZ + 2.4; z < halfZ; z += 2.4) {
       if (Math.abs(z) < gateHalf) continue;
-      A.add('steel_frame', BOX_THIN(A), LL(IDENT, sx * (halfX + 0.22), wallH / 2, z, 0, 0.1, wallH, 0.13), {
+      A.add('sw_amber', BOX_THIN(A), LL(IDENT, sx * (halfX + 0.22), wallH / 2, z, 0, 0.1, wallH, 0.13), {
         masks: [0.7, 0.5, 0.3],
       });
     }
@@ -618,11 +620,11 @@ function buildPerimeter(A, rng) {
   // be BVH the physics has to walk.
   for (const [x, z, w, d, h] of BACKDROP) {
     const gy = groundYSitework(x, z);
-    A.add('concrete_dark', BOX(A), LL(IDENT, x, gy + h / 2, z, 0.24, w, h, d), { masks: [0.4, 0.6, 0.5] });
+    A.add('sw_dark', BOX(A), LL(IDENT, x, gy + h / 2, z, 0.24, w, h, d), { masks: [0.4, 0.6, 0.5] });
     // A crown of slab edges, so a backdrop block reads as unfinished floors
     // rather than a monolith — this site is one of several going up.
     for (let i = 1; i <= 3; i++) {
-      A.add('concrete', BOX_THIN(A),
+      A.add('sw_grey', BOX_THIN(A),
         LL(IDENT, x, gy + h * (i / 4), z, 0.24, w + 0.5, 0.24, d + 0.5), { masks: [0.7, 0.4, 0.2] });
     }
   }
@@ -667,11 +669,11 @@ function buildFrame(A, rng) {
 
   // Columns, so the deck reads as carried rather than floating on its walls.
   for (const [cx, cz] of FRAME_COLUMNS) {
-    pbox(A, pm, 'concrete_dark', cx, wallH / 2, cz, 0, 0.55, wallH, 0.55, [0.6, 0.45, 0.25]);
+    pbox(A, pm, 'sw_orange', cx, wallH / 2, cz, 0, 0.55, wallH, 0.55, [0.6, 0.45, 0.25]);
   }
 
   // The deck slab. Its top is exactly `s.h` — the stairs are built to land here.
-  A.add('concrete', BOX(A), LL(IDENT, s.x, s.h - 0.15, s.z, 0, s.w + 0.6, 0.3, s.d + 0.6), {
+  A.add('sw_concrete', BOX(A), LL(IDENT, s.x, s.h - 0.15, s.z, 0, s.w + 0.6, 0.3, s.d + 0.6), {
     masks: [0.5, 0.5, 0.3],
   });
   A.box('concrete', s.x, s.h - 0.15, s.z, s.w + 0.6, 0.3, s.d + 0.6);
@@ -694,11 +696,11 @@ function buildFrame(A, rng) {
     const x1 = s.x + hw + 0.3;
     for (const [a, b] of [[x0, gapX - 1.2], [gapX + 1.2, x1]]) {
       if (b - a < 0.3) continue;
-      lowRow(A, 'concrete', (a + b) / 2, z, 0, b - a, 1.0, 0.24, [0.6, 0.5, 0.3]);
+      lowRow(A, 'sw_concrete', (a + b) / 2, z, 0, b - a, 1.0, 0.24, [0.6, 0.5, 0.3]);
     }
   }
   for (const sx of [-1, 1]) {
-    lowRow(A, 'concrete', s.x + sx * (hw + 0.25), s.z, H, s.d + 0.1, 1.0, 0.24, [0.6, 0.5, 0.3]);
+    lowRow(A, 'sw_concrete', s.x + sx * (hw + 0.25), s.z, H, s.d + 0.1, 1.0, 0.24, [0.6, 0.5, 0.3]);
   }
 }
 
@@ -725,23 +727,23 @@ function buildCore(A, rng) {
   }
 
   // The deck slab, top at exactly `c.h`.
-  A.add('concrete', BOX(A), LL(IDENT, c.x, c.h - 0.15, c.z, 0, c.w + 0.7, 0.3, c.w + 0.7), {
+  A.add('sw_concrete', BOX(A), LL(IDENT, c.x, c.h - 0.15, c.z, 0, c.w + 0.7, 0.3, c.w + 0.7), {
     masks: [0.5, 0.5, 0.3],
   });
   A.box('concrete', c.x, c.h - 0.15, c.z, c.w + 0.7, 0.3, c.w + 0.7);
 
   // The mast above the deck. Solid, and the deck wraps it.
-  A.add('concrete_dark', BOX(A), LL(IDENT, c.x, (c.h + c.mastTop) / 2, c.z, 0, c.mastW, c.mastTop - c.h, c.mastW), {
+  A.add('sw_orange', BOX(A), LL(IDENT, c.x, (c.h + c.mastTop) / 2, c.z, 0, c.mastW, c.mastTop - c.h, c.mastW), {
     masks: [0.5, 0.5, 0.35],
   });
   A.box('concrete', c.x, (c.h + c.mastTop) / 2, c.z, c.mastW, c.mastTop - c.h, c.mastW);
   // A cap and a mast head — the silhouette is what makes this the landmark, so
   // it gets the two extra parts that stop it reading as an extruded post.
-  A.add('concrete', BOX(A), LL(IDENT, c.x, c.mastTop + 0.15, c.z, 0, c.mastW + 0.6, 0.3, c.mastW + 0.6), {
+  A.add('sw_concrete', BOX(A), LL(IDENT, c.x, c.mastTop + 0.15, c.z, 0, c.mastW + 0.6, 0.3, c.mastW + 0.6), {
     masks: [0.75, 0.35, 0.2],
   });
   for (const sx of [-1, 1]) {
-    A.add('steel_frame', BOX_THIN(A),
+    A.add('sw_dark', BOX_THIN(A),
       LL(IDENT, c.x + sx * (mh + 0.35), c.mastTop - 1.4, c.z, 0, 0.16, 2.8, 0.16), { masks: [0.8, 0.5, 0.25] });
   }
 
@@ -752,17 +754,17 @@ function buildCore(A, rng) {
    */
   const stair = STAIRS.find((q) => q.id === 'core');
   for (const sz of [-1, 1]) {
-    lowRow(A, 'concrete', c.x, c.z + sz * (hw + 0.3), 0, c.w + 0.7, c.parapet, 0.22, [0.6, 0.5, 0.3]);
+    lowRow(A, 'sw_concrete', c.x, c.z + sz * (hw + 0.3), 0, c.w + 0.7, c.parapet, 0.22, [0.6, 0.5, 0.3]);
   }
   for (const sx of [-1, 1]) {
     const x = c.x + sx * (hw + 0.3);
     if (sx > 0) {
       for (const [a, b] of [[c.z - hw - 0.35, stair.z - 1.1], [stair.z + 1.1, c.z + hw + 0.35]]) {
         if (b - a < 0.3) continue;
-        lowRow(A, 'concrete', x, (a + b) / 2, H, b - a, c.parapet, 0.22, [0.6, 0.5, 0.3]);
+        lowRow(A, 'sw_concrete', x, (a + b) / 2, H, b - a, c.parapet, 0.22, [0.6, 0.5, 0.3]);
       }
     } else {
-      lowRow(A, 'concrete', x, c.z, H, c.w + 0.7, c.parapet, 0.22, [0.6, 0.5, 0.3]);
+      lowRow(A, 'sw_concrete', x, c.z, H, c.w + 0.7, c.parapet, 0.22, [0.6, 0.5, 0.3]);
     }
   }
 }
@@ -775,16 +777,16 @@ function buildBlocks(A, rng) {
     A.box('concrete', s.x, s.h / 2, s.z, s.w, s.h, s.d);
     // A roof that oversails and leans, so a shed reads as built rather than
     // extruded, for one extra part.
-    A.add('metal_rust', BOX(A), LL(IDENT, s.x, s.h + 0.16, s.z, 0, s.w + 0.4, 0.2, s.d + 0.4, 0, s.id === 'core_s' ? 0 : 0.08), {
+    A.add('sw_dark', BOX(A), LL(IDENT, s.x, s.h + 0.16, s.z, 0, s.w + 0.4, 0.2, s.d + 0.4, 0, s.id === 'core_s' ? 0 : 0.08), {
       masks: [0.65, 0.45, 0.25],
     });
     if (s.id === 'core_s') continue;
     // A door and two windows on the face that looks into the site.
     const sz = Math.sign(s.z) * -1;
-    A.add('metal_dark', BOX_THIN(A),
+    A.add('sw_dark', BOX_THIN(A),
       LL(IDENT, s.x - 2.4, 1.1, s.z + sz * (s.d / 2 + 0.03), 0, 1.1, 2.2, 0.06), { masks: [0.6, 0.5, 0.4] });
     for (const dx of [1.2, 4.0]) {
-      A.add('glass', BOX_THIN(A),
+      A.add('sw_blue', BOX_THIN(A),
         LL(IDENT, s.x + dx, 2.0, s.z + sz * (s.d / 2 + 0.03), 0, 1.5, 1.1, 0.06), { masks: [0.4, 0.4, 0.2] });
     }
   }
@@ -803,7 +805,7 @@ function buildStairs(A, rng) {
      */
     const pm = new THREE.Matrix4().makeRotationY(s.ry);
     pm.setPosition(s.x, 0, s.z);
-    stairRun(A, pm, 0, 0, 0, s.w, s.steps, s.rise, s.run, { key: 'concrete', railing: 'right' });
+    stairRun(A, pm, 0, 0, 0, s.w, s.steps, s.rise, s.run, { key: 'sw_concrete', railing: 'right' });
     feet.push({ id: s.id, at: [s.x, 0, s.z] });
   }
   return feet;
@@ -812,19 +814,19 @@ function buildStairs(A, rng) {
 /** Every low run: concrete barriers and banded timber stacks. */
 function buildCover(A, rng) {
   for (const [x, z, ry, len] of BARRIERS) {
-    lowRow(A, 'concrete_prop', x, z, ry, len, 1.15, 0.6, [0.65, 0.55, 0.35]);
+    lowRow(A, 'sw_grey', x, z, ry, len, 1.15, 0.6, [0.65, 0.55, 0.35]);
   }
   for (const [x, z, ry, len] of TIMBER) {
     // Four banded courses rather than one box: a timber stack's whole read is
     // the stripe of shadow between courses, and it is three extra parts.
     for (let i = 0; i < 4; i++) {
-      A.add(i % 2 ? 'wood_pale' : 'wood', BOX(A),
+      A.add(i % 2 ? 'sw_tan' : 'sw_amber', BOX(A),
         LL(IDENT, x, 0.17 + i * 0.34, z, ry, len, 0.3, 1.1), { masks: [0.6, 0.5, 0.3] });
     }
     A.box('wood', x, 0.68, z, ry === 0 ? len : 1.1, 1.35, ry === 0 ? 1.1 : len);
     // Two banding straps, the detail that says "delivered" rather than "stacked".
     for (const u of [-0.28, 0.28]) {
-      A.add('metal_dark', BOX_THIN(A),
+      A.add('sw_dark', BOX_THIN(A),
         LL(IDENT, x + (ry === 0 ? len * u : 0), 0.68, z + (ry === 0 ? 0 : len * u), ry, 0.06, 1.4, 1.16),
         { masks: [0.8, 0.5, 0.2] });
     }
@@ -833,8 +835,8 @@ function buildCover(A, rng) {
 
 /** The containers: cabins, stores and the two gate blocks. */
 function buildContainers(A, rng) {
-  const { l: L, w: W, h: CH } = CONTAINER;
-  for (const [x, z, ry, tier, proto] of CONTAINERS) {
+  const { l: L, w: W, h: CH } = CABIN;
+  for (const [x, z, ry, tier, proto] of CABINS) {
     const y = 0.04 + tier * (CH + 0.03);
     // A hand-parked site is not a CAD model: a couple of degrees of yaw and a
     // centimetre of settle is the difference between "parked" and "snapped".
@@ -843,17 +845,23 @@ function buildContainers(A, rng) {
     const hx = (ry === 0 ? L : W) / 2;
     const hz = (ry === 0 ? W : L) / 2;
     A.box('metal', x, y + CH / 2, z, hx * 2, CH, hz * 2);
-    if (tier === 0) {
-      A.addOnce('dust_skirt', patchGeometry(rng, Math.max(hx, hz) * 0.95, { lobes: 9, wobble: 0.35 }),
-        LL(IDENT, x, 0.05, z, ry, 1, 1, Math.min(hx, hz) / Math.max(hx, hz) + 0.35),
-        { masks: [0.1, 0.9, 0.6] });
-    }
   }
 }
 
 /**
- * Set dressing. Instanced props only, every placement filtered through `free()`
- * so nothing lands inside something the occupancy tests believe is empty.
+ * Set dressing — eight prototypes, repeated.
+ *
+ * QUARTER TURNS ONLY, AND NO SCALE JITTER. Every other map in the game arms
+ * `A.jitter` here so no two instances sit alike, because identical clones are
+ * the loudest tell in an instanced cloud. This map wants exactly the opposite,
+ * for the reason Nuketown gives: a blockout reads as a blockout because its
+ * objects are repetitions of ONE object, all plumb, squared to the world. A
+ * crate rolled three degrees off true would be the only thing on screen not
+ * aligned to everything else. So `A.jitter` is never armed, scale is always 1,
+ * and rotation is snapped to the compass.
+ *
+ * Every placement is filtered through `free()` so nothing lands inside
+ * something the occupancy tests believe is empty, or on a stair run-up.
  */
 function dress(A, rng, feet) {
   const free = (x, z, m = 0.5) => {
@@ -864,83 +872,81 @@ function dress(A, rng, feet) {
     return true;
   };
 
-  // Armed for the whole dressing pass: nothing a person dropped on a site is
-  // plumb, and identical clones are the loudest tell in an instanced cloud.
-  A.jitter = { rng, yaw: Math.PI * 2, scale: 0.06 };
+  /**
+   * `Rng.int` takes (min, max). Called with one argument it returns NaN, which
+   * does not throw and does not fail any headless check — it propagates into
+   * the instance matrix, then into the InstancedMesh's bounding sphere, and
+   * three culls the whole cloud every frame. Nuketown lost 82 of its 122 props
+   * exactly that way. `rng.float()` has no such trap.
+   */
+  const turn = () => Math.floor(rng.float() * 4) * H;
 
-  const scatter = (proto, list, y = 0.02) => {
-    for (const [x, z] of list) if (free(x, z, 0.6)) A.put(proto, x, y, z, rng.float() * Math.PI * 2, 1);
+  const scatter = (proto, list, m = 0.6) => {
+    for (const [x, z] of list) if (free(x, z, m)) A.put(proto, x, 0.02, z, turn(), 1);
   };
 
-  // ---- pallets and material stacks, the site's ambient clutter ------------
-  scatter('pallet', [
+  // ---- crates: the yards' unit of clutter, singly and stacked -------------
+  const S = 0.9;
+  const crates = [
     [-10, -28], [-7, -27], [14, -30], [17, -31], [-25, -13], [-24, 11],
     [20, -18], [-6, 22], [0, 28], [3, 27], [-16, 35], [22, 30],
     [-24, 33], [19, 8], [-11, -8], [8, 8], [-20, -5], [21, -8],
-  ]);
-  scatter('spool', [
+    [-9, -37], [19, -35], [6, 35], [-14, 5], [26, 27], [-2, -12],
+  ];
+  for (let i = 0; i < crates.length; i++) {
+    const [x, z] = crates[i];
+    if (!free(x, z, 0.6)) continue;
+    A.put('sw_crate', x, S / 2 + 0.02, z, turn(), 1);
+    // Every third one carries a second tier. A stack is what gives a blockout
+    // its only vertical rhythm, and it is free: the same prototype again.
+    if (i % 3 === 0) A.put('sw_crate', x, S * 1.5 + 0.03, z, turn(), 1);
+  }
+
+  // ---- brick pallets: the reference's signature object --------------------
+  // Placed in twos and threes, because one is a red post and three is a
+  // delivery — the difference between an object and a place.
+  for (const [cx, cz] of [[-16, -6], [19, -9], [-8, 8], [22, 12], [-3, -26], [7, 24], [-21, -27], [11, 32]]) {
+    const ry = turn();
+    const cos = Math.cos(ry);
+    const sin = Math.sin(ry);
+    for (let i = 0; i < 3; i++) {
+      const u = (i - 1) * 1.3;
+      const x = cx + cos * u;
+      const z = cz - sin * u;
+      if (free(x, z, 0.7)) A.put('sw_brick', x, 0.02, z, ry, 1);
+    }
+  }
+
+  // ---- pallets and loose timber ------------------------------------------
+  scatter('sw_pallet', [
     [-13, -33], [12, -21], [-3, 26], [23, -22], [-22, 25], [15, 16], [-17, -15],
-  ], 0.85);
-  scatter('scrap_a', [[-9, -37], [19, -35], [-24, 6], [6, 35], [-14, 5], [26, 27]], 0.4);
-  scatter('scrap_b', [[7, -30], [-21, -27], [11, 32], [-2, -12], [17, 4]], 0.3);
-  scatter('generator', [[-15, -26], [10, 29]], 0.5);
-  scatter('valve', [[22, -12], [-25, 17], [5, -26]], 0.35);
+    [-25, -34], [24, -29], [-25, 30], [17, 12], [-11, 30], [13, -36],
+  ]);
+  scatter('sw_timber', [
+    [-6, -14], [9, 17], [-19, 32], [20, -6], [-12, 27], [16, -11], [-8, 30], [25, 20],
+  ]);
 
-  // ---- pipe runs and steel, stacked along the lanes ----------------------
-  scatter('pipe_stack', [[-25, -34], [24, -29], [-25, 30], [17, 12]], 0.5);
-  scatter('pipe_long', [[-11, 30], [13, -36], [-23, -2]], 0.28);
-  scatter('ibeam', [[-6, -14], [9, 17], [-19, 32], [20, -6]], 0.2);
-  scatter('trestle', [[-12, 27], [16, -11], [-8, 30]], 0.6);
-
-  // ---- barrels and cans: the site's saturated colour ---------------------
+  // ---- barrels: clustered, because one barrel is a bollard ----------------
   const barrels = [
-    [-19, -34], [-18, -33.2], [15, -26], [15.8, -25.2], [-26, -18], [-26, 22],
+    [-19, -34], [-18.2, -33.2], [15, -26], [15.8, -25.2], [-26, -18], [-26, 22],
     [22, 20], [21.2, 20.8], [-9, 20], [-8.2, 20.8], [4, -29], [4.8, -28.2],
     [-14, -11], [18, -2], [-3, 12], [26, -25], [-26, -6], [11, 5],
-    [-21, 38], [23, 35], [-5, 38], [13, -18],
+    [-21, 38], [23, 35], [-5, 38], [13, -18], [-20, -20], [16, 22],
   ];
   for (let i = 0; i < barrels.length; i++) {
     const [x, z] = barrels[i];
     if (!free(x, z, 0.45)) continue;
-    A.put(i % 3 === 0 ? 'barrel_blue' : 'barrel_rust', x, 0.02, z, rng.float() * Math.PI * 2, 1);
-  }
-  scatter('jerry_can', [[-20, -20], [16, 22], [-4, -31], [25, 9]], 0.02);
-  scatter('gas_bottle', [[-17, -21], [12, 24], [-1, -30]], 0.02);
-  scatter('bucket', [[-23, -30], [8, -16], [-10, 14], [20, 33]], 0.02);
-
-  // ---- brick pallets and rubble around the frame -------------------------
-  // Stacked, so `A.skirts` goes off: the second brick stands on the first, not
-  // on dirt, and a dust fillet under each course reads as a smear.
-  A.skirts = false;
-  for (const [cx, cz] of [[-16, -6], [19, -9], [-8, 8], [22, 12], [-3, -26], [7, 24]]) {
-    if (!free(cx, cz, 1.0)) continue;
-    for (let row = 0; row < 3; row++) {
-      for (let i = 0; i < 3 - row; i++) {
-        const u = (i - (2 - row) / 2) * 0.5;
-        A.put(row % 2 ? 'brick_b' : 'brick_a', cx + u, 0.06 + row * 0.12, cz, rng.float() * 0.3, 1);
-      }
-    }
-  }
-  A.skirts = true;
-
-  scatter('rebar', [[-12, -30], [14, -14], [-22, 8], [6, 31], [24, -4]], 0.05);
-  scatter('plank_a', [[-7, -20], [11, -28], [-18, 18], [2, 33], [25, 20]], 0.04);
-  scatter('plank_b', [[-9, -19], [13, -27], [-20, 20], [4, 32]], 0.04);
-  scatter('block_small', [[-15, -17], [17, -20], [-11, 11], [9, -6], [-24, -22], [23, 6]], 0.02);
-  scatter('rock_a', [[-13, -24], [18, -33], [-6, 30], [21, 26], [-25, 12]], 0.02);
-
-  // ---- flood masts: a site works nights, and they read at range ----------
-  // `chunk: false` on the prototype, so these are one draw call however many
-  // there are; four is what covers the map without lighting it like a stadium.
-  for (const [x, z] of [[-26, -26], [26, -26], [-26, 26], [26, 26]]) {
-    if (!free(x, z, 0.8)) continue;
-    A.put('flood_mast', x, 0.02, z, Math.atan2(-x, -z), 1);
-    A.put('flood_lens', x, 0.02, z, Math.atan2(-x, -z), 1);
-    A.lampAnchors.push({ x, y: 5.4, z });
+    A.put(i % 3 === 0 ? 'sw_barrel_b' : 'sw_barrel', x, 0.02, z, turn(), 1);
   }
 
-  A.jitter = null;
+  // ---- low blocks: cover between the authored barrier lines ---------------
+  scatter('sw_block', [
+    [-15, -17], [17, -20], [-11, 11], [9, -6], [-24, -22], [23, 6],
+    [-12, -30], [14, -14], [-22, 8], [6, 31], [24, -4], [-1, -35],
+    [7, -30], [-21, 18], [12, 28], [-26, 2],
+  ], 0.8);
 }
+
 
 /**
  * Build the level. Called by `WorldSystem` with a fresh Assembler and its own
@@ -948,7 +954,7 @@ function dress(A, rng, feet) {
  */
 export function buildSitework(A, rng) {
   registerProps(A, rng);
-  registerRustProps(A, rng);
+  registerSiteworkProps(A, rng);
 
   buildGround(A, rng);
   buildPerimeter(A, rng);
@@ -988,7 +994,15 @@ export const SITEWORK_MAP = {
   groundY: groundYSitework,
   isOpen: isOpenSitework,
   build: buildSitework,
-  // No `environment`: this is a clean-daylight map, which is the cheap and safe
-  // choice. A night site would need its emitters placed for the hour — the
-  // flood masts are dressed as unlit fixtures, not as the map's light source.
+  // No `environment`: clean daylight, the cheap and safe choice, and the sky
+  // restores its own defaults for a map without one.
+  //
+  // An `exposureBias` was tried here to push the floor toward the near-black of
+  // the reference art and is deliberately NOT kept: it made no measurable
+  // difference to the frame, and the premise was wrong anyway. `sw_ground` is
+  // already at the palette's 0.02 reflectance floor and the shader receives it
+  // as 0.027 linear (measured, not assumed) — a 2.4% surface under an open sky
+  // tonemaps to a mid grey, which is what dark asphalt does in a photograph
+  // too. The reference renders near-black because it is flat-shaded in a viewer
+  // with no sky, not because its albedo is lower than this one.
 };
