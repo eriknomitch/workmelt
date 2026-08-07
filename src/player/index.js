@@ -276,6 +276,12 @@ export class PlayerSystem {
       dPitch *= 0.55;
     }
 
+    // Calibration pan: while the quality system measures this machine, sweep
+    // the view in a slow full circle so the score reflects every sightline
+    // from the spawn rather than whichever way it happened to face. Input is
+    // frozen behind the calibration scrim, so this is the only camera motion.
+    if (this.ctx.peek?.('quality')?.calibrating) dYaw += 0.5 * dt;
+
     m.yaw += dYaw;
     m.pitch = clamp(m.pitch + dPitch, -CAMERA.pitchLimit, CAMERA.pitchLimit);
     // Keep yaw bounded so long sessions never lose float precision.

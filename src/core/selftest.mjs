@@ -566,6 +566,34 @@ check('recalibrate forgets the whole measured profile and reloads into Auto', ()
   assert.equal(reloads, 1);
 });
 
+check('the calibrating flag tracks the measurement phase and nothing else', () => {
+  // Uncalibrated Auto boot: calibrating from construction…
+  const auto = new AdaptiveQualitySystem({
+    settings: { mode: 'auto', targetFps: 60, calibrated: false },
+    storage: { getItem: () => null, setItem() {} },
+    location: { reload() {} },
+  });
+  assert.equal(auto.calibrating, true);
+  // …a calibrated profile is not…
+  const done = new AdaptiveQualitySystem({
+    settings: { mode: 'auto', targetFps: 60, tier: 'high', calibrated: true },
+    storage: { getItem: () => null, setItem() {} },
+  });
+  assert.equal(done.calibrating, false);
+  // …and neither is a capture/`?q=` boot, whatever the stored profile says —
+  // the player pan and damage immunity must never leak into those runs.
+  const off = new AdaptiveQualitySystem({
+    settings: { mode: 'auto', calibrated: false },
+    enabled: false,
+    storage: { getItem: () => null, setItem() {} },
+  });
+  off.init({
+    perf: { count: 0 },
+    config: { quality: 'ultra', q: { renderScale: 1 } },
+  });
+  assert.equal(off.calibrating, false);
+});
+
 check('manual graphics selection persists and reloads exactly once', () => {
   const values = new Map();
   const storage = {

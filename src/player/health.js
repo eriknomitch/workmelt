@@ -79,6 +79,12 @@ export class Health {
    */
   damage(amount, from, opts = {}) {
     if (this.dead || amount <= 0) return 0;
+    // Immune while graphics auto-calibration runs: input is frozen behind the
+    // scrim, so the player cannot fight back or take cover, and a death would
+    // respawn the camera mid-measurement — polluting the very frames being
+    // scored — while also firing `player:death` into the quality system's
+    // deferred-reload path as a spurious safe-boundary signal.
+    if (this.ctx.peek?.('quality')?.calibrating) return 0;
     const before = this.value;
     this.value = Math.max(0, this.value - amount);
     this.lastDamageTime = this.ctx.time.elapsed;

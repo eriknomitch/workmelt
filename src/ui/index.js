@@ -623,9 +623,9 @@ export class UiSystem {
         this._lockGrace <= 0
     );
     this.touch?.update(rawDt, ctx);
-    const qStatus = ctx.peek('quality')?.getStatus();
-    if (this.menu.open) this.menu.setQualityStatus(qStatus);
-    const calibrating = qStatus?.mode === 'auto' && qStatus.state === 'calibrating';
+    const quality = ctx.peek('quality');
+    if (this.menu.open) this.menu.setQualityStatus(quality?.getStatus());
+    const calibrating = quality?.calibrating ?? false;
     if (calibrating !== this._calibShown) {
       this._calibShown = calibrating;
       setStyle(this.calib, 'display', calibrating ? '' : 'none');

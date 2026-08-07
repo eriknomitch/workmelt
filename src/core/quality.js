@@ -416,7 +416,12 @@ export class AdaptiveQualitySystem {
       tier: this.settings.tier,
       renderScale: this.settings.renderScale,
       achievedFps: 0,
-      state: this.settings.mode === 'auto' ? 'calibrating' : 'manual',
+      state:
+        this.settings.mode !== 'auto'
+          ? 'manual'
+          : this.settings.calibrated && this.settings.tier
+            ? 'stable'
+            : 'calibrating',
     };
   }
 
@@ -806,6 +811,17 @@ export class AdaptiveQualitySystem {
     this._reloadPending = true;
     this.location?.reload?.();
     return true;
+  }
+
+  /**
+   * True while the measurement phase is running. Other systems key protective
+   * behaviour off this — the UI's blocking scrim and input freeze, the player's
+   * calibration camera pan, and damage immunity (a frozen player is a sitting
+   * duck, and a death mid-measurement respawns the camera and pollutes the
+   * frames being scored).
+   */
+  get calibrating() {
+    return this.enabled && this._status.state === 'calibrating';
   }
 
   getStatus() {
