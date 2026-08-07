@@ -493,10 +493,6 @@ const CSS = `
 .ow-mm-corner.bl::before { bottom:0; }
 .ow-mm-corner.br { right:calc(-1px * var(--k)); bottom:calc(-1px * var(--k)); }
 .ow-mm-corner.br::before { bottom:0; right:0; } .ow-mm-corner.br::after { right:0; }
-.ow-mm-n {
-  position:absolute; left:50%; top:calc(-13px * var(--k)); transform:translateX(-50%);
-  font-size: calc(9.5px * var(--k)); letter-spacing:.2em; color:var(--ink-2); text-shadow:var(--sh);
-}
 .ow-mm-tag {
   position:absolute; left:0; top:calc(100% + var(--u)); display:flex; gap:calc(var(--u)*1.5);
   font-size: calc(9.5px * var(--k)); letter-spacing:.2em; color:var(--ink-3); text-shadow:var(--sh);
