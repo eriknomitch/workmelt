@@ -7,8 +7,8 @@ import * as THREE from 'three';
  * minding his own business. He is completely harmless — bots ignore him, he
  * ignores everyone — right up until a PLAYER puts a round (or a blade, or a
  * grenade) into him, at which point he detonates like a frag. He does not
- * respawn on a timer: somebody has to walk to the glowing pad on the
- * Icebergs deck and stand on it for a few seconds to bring him back.
+ * respawn on a timer: somebody has to walk to one of the map's energy wells
+ * and stand in it for a few seconds to bring him back.
  *
  * Only the local player's fire sets him off. Bot rounds fly through the same
  * `physics.fireBullet` path, so the trigger keys off the `source` field the
@@ -63,9 +63,10 @@ export const VOICE = {
 export class RooCore {
   /**
    * `cfg` is the map descriptor's `critter` field: `home {x,z}`,
-   * `bounds {x0,z0,x1,z1}`, `pad {x,z,r,hold}`, `explosion {radius,damage}`.
-   * `groundY(x,z)` and `isOpen(x,z,margin)` are the map's own occupancy
-   * answers, injected so this class never imports a level.
+   * `bounds {x0,z0,x1,z1}`, `pads [{x,z,r,hold}, ...]`,
+   * `explosion {radius,damage}`. `groundY(x,z)` and `isOpen(x,z,margin)`
+   * are the map's own occupancy answers, injected so this class never
+   * imports a level.
    */
   constructor(cfg, { rng, groundY, isOpen }) {
     this.cfg = cfg;
@@ -85,7 +86,7 @@ export class RooCore {
     this._hopTo = { x: this.x, y: this.y, z: this.z };
     this._hopsLeft = 0;
     this._grazeTimer = rng.range(1.0, 2.5);
-    /** Seconds the player has held the pad so far (only counts while GONE). */
+    /** Seconds the player has held a pad so far (only counts while GONE). */
     this.padHold = 0;
     this._exploded = false;
 
@@ -224,22 +225,32 @@ export class RooCore {
   }
 
   /**
-   * THE PAD. While he is gone, standing on the lit pad accumulates hold
-   * time; stepping off resets it — the ritual is `pad.hold` CONTINUOUS
-   * seconds, not a running total. Completing it puts him back at home.
+   * THE WELLS. While he is gone, standing in any one of the energy wells
+   * accumulates hold time; stepping out resets it — the ritual is that
+   * pad's `hold` CONTINUOUS seconds, not a running total. Completing it
+   * puts him back at home. The wells are far enough apart that "moving to
+   * another well" always passes through "off every well", so the reset
+   * needs no per-pad bookkeeping.
    */
   _updatePad(dt, playerLevel) {
-    const pad = this.cfg.pad;
-    const on =
-      playerLevel &&
-      Math.hypot(playerLevel.x - pad.x, playerLevel.z - pad.z) <= pad.r &&
-      Math.abs(playerLevel.y - this.groundY(pad.x, pad.z)) < 1.7;
+    let on = null;
+    if (playerLevel) {
+      for (const pad of this.cfg.pads) {
+        if (
+          Math.hypot(playerLevel.x - pad.x, playerLevel.z - pad.z) <= pad.r &&
+          Math.abs(playerLevel.y - this.groundY(pad.x, pad.z)) < 1.7
+        ) {
+          on = pad;
+          break;
+        }
+      }
+    }
     if (!on) {
       this.padHold = 0;
       return null;
     }
     this.padHold += dt;
-    if (this.padHold < pad.hold) return null;
+    if (this.padHold < on.hold) return null;
     this.state = ROO_STATE.GRAZE;
     this.x = this.cfg.home.x;
     this.z = this.cfg.home.z;

@@ -12,14 +12,16 @@
  *   2. HE STAYS ON THE MAP. Hours of simulated hopping never leave his
  *      bounds, never land on closed ground, never cross a ledge taller than
  *      a hop, and every landing is ON the floor.
- *   3. THE RITUAL IS STRICT. He returns only after the pad has been held
- *      for `pad.hold` CONTINUOUS seconds — 2.9 s then stepping off buys
- *      nothing — and holding the pad while he is alive does nothing.
+ *   3. THE RITUAL IS STRICT. He returns only after one well has been held
+ *      for that pad's `hold` CONTINUOUS seconds — 2.9 s then stepping off
+ *      buys nothing — and holding a well while he is alive does nothing.
+ *      ANY well works, and near a well is not in it.
  *
- * Plus the Shivam wiring: the descriptor really carries the config, the pad
- * really sits on standable deck, and his meadow is real ground. None of
- * this is visible in a frame — a roo who leaks through the reef or a pad
- * that can never fire looks exactly like the working thing in a screenshot.
+ * Plus the Shivam wiring: the descriptor really carries the config, every
+ * energy well really sits on standable ground outside his bounds, and his
+ * meadow is real ground. None of this is visible in a frame — a roo who
+ * leaks through the reef or a well that can never fire looks exactly like
+ * the working thing in a screenshot.
  */
 
 import { Rng } from '../core/rng.js';
@@ -51,7 +53,10 @@ const FLAT = {
   kind: 'roo',
   home: { x: 0, z: 0 },
   bounds: { x0: -50, z0: -50, x1: 50, z1: 50 },
-  pad: { x: 20, z: 20, r: 0.9, hold: 3 },
+  pads: [
+    { x: 20, z: 20, r: 0.9, hold: 3 },
+    { x: -20, z: -20, r: 0.9, hold: 3 },
+  ],
   explosion: { radius: 6, damage: 95 },
 };
 function core(cfg = FLAT, opts = {}) {
@@ -83,7 +88,7 @@ console.log(B('\nharmless until a player shoots him'));
 }
 {
   const c = core();
-  ok(c.blast(FLAT.pad.x, 0, FLAT.pad.z, 6, 'player') === null && c.alive,
+  ok(c.blast(FLAT.pads[0].x, 0, FLAT.pads[0].z, 6, 'player') === null && c.alive,
     'a blast out of radius leaves him grazing');
 }
 
@@ -128,20 +133,20 @@ console.log(B('\nhe stays on the map'));
 }
 
 /* ──────────────────────────────────────────────────────────── the ritual ── */
-console.log(B('\nthe pad ritual'));
+console.log(B('\nthe well ritual'));
 {
   const dt = 1 / 60;
-  const onPad = { x: FLAT.pad.x, y: 0, z: FLAT.pad.z };
+  const onPad = { x: FLAT.pads[0].x, y: 0, z: FLAT.pads[0].z };
   const offPad = { x: 0, y: 0, z: 0 };
 
   const c = core();
   for (let i = 0; i < 600; i++) c.update(dt, onPad);
-  ok(c.alive && c.padHold === 0, 'holding the pad while he is alive does nothing');
+  ok(c.alive && c.padHold === 0, 'holding a well while he is alive does nothing');
 
   c.shot('player');
   let r = null;
   for (let i = 0; i < 60 * 120 && !r; i++) r = c.update(dt, offPad);
-  ok(r === null && !c.alive, 'he never comes back on his own', '120 s away from the pad');
+  ok(r === null && !c.alive, 'he never comes back on his own', '120 s away from every well');
 
   // 2.9 s on, step off, 2.9 s on again: a running total would fire, the
   // contract must not
@@ -157,15 +162,24 @@ console.log(B('\nthe pad ritual'));
   r = null;
   while (!r && ticks++ < 60 * 10) r = c.update(dt, onPad);
   ok(r === 'respawned' && c.alive, 'one continuous hold brings him back',
-    `${(ticks * dt).toFixed(2)} s on the pad`);
-  ok(c.x === FLAT.home.x && c.z === FLAT.home.z, 'at his home meadow, not on the pad');
+    `${(ticks * dt).toFixed(2)} s in the well`);
+  ok(c.x === FLAT.home.x && c.z === FLAT.home.z, 'at his home meadow, not at the well');
 
-  // near the pad is not on the pad
+  // any well works, not just the first
   c.shot('player');
-  const near = { x: FLAT.pad.x + FLAT.pad.r + 0.3, y: 0, z: FLAT.pad.z };
+  const onPad2 = { x: FLAT.pads[1].x, y: 0, z: FLAT.pads[1].z };
+  ticks = 0;
+  r = null;
+  while (!r && ticks++ < 60 * 10) r = c.update(dt, onPad2);
+  ok(r === 'respawned' && c.alive, 'the second well brings him back too',
+    `${(ticks * dt).toFixed(2)} s in the well`);
+
+  // near a well is not in a well
+  c.shot('player');
+  const near = { x: FLAT.pads[0].x + FLAT.pads[0].r + 0.3, y: 0, z: FLAT.pads[0].z };
   r = null;
   for (let i = 0; i < 600 && !r; i++) r = c.update(dt, near);
-  ok(r === null, 'standing beside the pad does not count');
+  ok(r === null, 'standing beside a well does not count');
 }
 
 /* ──────────────────────────────────────────────────────────── idle chatter ── */
@@ -233,7 +247,7 @@ console.log(B('\nidle chatter'));
     // ... and the resurrection does not blurt one in the frame he lands.
     let spoke = false;
     for (let i = 0; i < 60 * 10; i++) {
-      const p = at(FLAT.pad.x, 0, FLAT.pad.z);
+      const p = at(FLAT.pads[0].x, 0, FLAT.pads[0].z);
       if (c.speak(dt, p)) spoke = true;
       c.update(dt, p);
       if (c.alive) break;
@@ -245,21 +259,36 @@ console.log(B('\nidle chatter'));
 /* ─────────────────────────────────────────────────────── the shivam wiring ── */
 console.log(B('\nthe shivam wiring'));
 ok(SHIVAM_MAP.critter === ROO && ROO.kind === 'roo', 'the descriptor carries the critter config');
-ok(standableAtShivam(ROO.pad.x, ROO.pad.z), 'the pad is on standable ground');
-ok(groundYShivam(ROO.pad.x, ROO.pad.z) === DECK.y, 'on the Icebergs deck', `y=${DECK.y}`);
+ok(ROO.pads.length === 3, 'three energy wells around the map', `${ROO.pads.length}`);
+ok(ROO.pads.every((p) => standableAtShivam(p.x, p.z)), 'every well is on standable ground');
+ok(groundYShivam(ROO.pads[0].x, ROO.pads[0].z) === DECK.y,
+  'the original well is on the Icebergs deck', `y=${DECK.y}`);
 ok(standableAtShivam(ROO.home.x, ROO.home.z), 'his meadow is real ground');
 ok(ROO.bounds.x1 <= DECK.x0 - 2, 'his range stays west of the deck — he cannot camp his own pad',
   `x1=${ROO.bounds.x1}, deck at ${DECK.x0}`);
+ok(ROO.pads.every((p) => {
+  const b = ROO.bounds;
+  return p.x < b.x0 || p.x > b.x1 || p.z < b.z0 || p.z > b.z1;
+}), 'every well sits outside his bounds — he can never camp one');
 {
   const b = ROO.bounds;
   const corners = [[b.x0, b.z0], [b.x1, b.z0], [b.x0, b.z1], [b.x1, b.z1]];
   ok(corners.every(([x, z]) => Number.isFinite(groundYShivam(x, z))),
     'his whole range has a floor');
-  ok(Math.hypot(ROO.pad.x - ROO.home.x, ROO.pad.z - ROO.home.z) > 30,
-    'the ritual is a trip, not a lean',
-    `${Math.hypot(ROO.pad.x - ROO.home.x, ROO.pad.z - ROO.home.z).toFixed(0)} m from meadow to pad`);
-  ok(ROO.pad.hold >= 2 && ROO.pad.hold <= 6, 'the hold is a commitment, not a tap',
-    `${ROO.pad.hold} s`);
+  const trips = ROO.pads.map((p) => Math.hypot(p.x - ROO.home.x, p.z - ROO.home.z));
+  ok(trips.every((d) => d > 20), 'each ritual is a trip, not a lean',
+    trips.map((d) => `${d.toFixed(0)} m`).join(', '));
+  ok(ROO.pads.every((p) => p.hold >= 2 && p.hold <= 6), 'the hold is a commitment, not a tap',
+    `${ROO.pads.map((p) => p.hold).join('/')} s`);
+  // the wells are spread out: the reset-on-step-off contract leans on a
+  // player never being inside two at once, and a well pair in one corner
+  // would make the "any well" choice cosmetic
+  for (let i = 0; i < ROO.pads.length; i++) {
+    for (let j = i + 1; j < ROO.pads.length; j++) {
+      const d = Math.hypot(ROO.pads[i].x - ROO.pads[j].x, ROO.pads[i].z - ROO.pads[j].z);
+      ok(d > 25, `wells ${i} and ${j} are far apart`, `${d.toFixed(0)} m`);
+    }
+  }
 }
 
 console.log(
