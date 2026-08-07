@@ -8,10 +8,24 @@ generated procedurally at load time; audio may be procedural or sample-based.
 
 ## Hard rules
 
-1. **You own your directory. Never edit files outside it.** Another agent owns
-   every other directory and your edit will be clobbered or will break them.
-2. **Never import another subsystem's module.** Get it at runtime:
-   `const fx = ctx.get('fx')`. This is what makes parallel work safe.
+1. **If anyone else is writing to this working tree, you own your directory —
+   never edit outside it.** Another agent owns every other directory and your
+   edit will be clobbered or will break them. This is mutual exclusion, not
+   architecture: it binds only on *concurrent writers sharing one filesystem*.
+   In your own git worktree or checkout, edit whatever the change needs — git
+   resolves the overlap, and a change that legitimately spans two subsystems
+   should not have to be smuggled through a third. Rule 2 still applies either
+   way; it is the one that keeps the split honest.
+2. **Never import another subsystem's *stateful* module.** Get running systems
+   at runtime: `const fx = ctx.get('fx')`. This is what makes parallel work
+   safe — and, more durably, it is what lets one subsystem be refactored
+   without breaking the others.
+   **Exception: stateless leaf modules may be imported directly** — design
+   tokens, constant tables and pure helpers with no `init()`/`dispose()`, no
+   `ctx`, and no mutable module state. `src/ui/brand.js` is the canonical
+   example, and `DESIGN.md`'s One Token File Rule *requires* importing it from
+   `src/match/ui.js` and `src/net/ui.js`. A leaf has no lifecycle to coordinate,
+   so routing it through `ctx` buys nothing and costs a runtime lookup.
 3. **No new npm dependencies.** `three` only. No CDN fetches — every asset the
    game needs ships in the bundle, so it runs fully offline.
 4. **No `Math.random()` in gameplay or visuals.** Use `ctx.rng` (see

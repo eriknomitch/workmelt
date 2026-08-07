@@ -11,8 +11,16 @@
  *   resize(w,h,ctx): viewport changed. Optional.
  *   dispose()      : free GPU/CPU resources. Optional.
  *
- * Subsystems MUST NOT import each other directly — go through ctx.get(id).
- * That keeps the dependency graph explicit and lets agents own files in isolation.
+ * Subsystems MUST NOT import each other's STATEFUL modules — go through
+ * ctx.get(id). That keeps the dependency graph explicit and lets agents own
+ * files in isolation.
+ *
+ * Stateless leaf modules are exempt: design tokens, constant tables and pure
+ * helpers with no init()/dispose(), no ctx and no mutable module state may be
+ * imported directly. src/ui/brand.js is the canonical case — DESIGN.md's One
+ * Token File Rule requires importing it from src/match/ui.js and src/net/ui.js.
+ * A leaf has no lifecycle to coordinate, so a ctx lookup buys nothing.
+ * See ARCHITECTURE.md rule 2.
  */
 
 export class Registry {

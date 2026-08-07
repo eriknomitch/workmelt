@@ -809,6 +809,51 @@ gate races; animation runs off the engine clock, never wall clock; and glTF
 materials still map to the procedural library, because geometry and clips come
 in but the look does not.
 
+### 7.5.2 Rules 1 and 2 amended — 2026-08-07
+
+The question behind this was whether the rules, written for a smaller codebase
+and a fleet of parallel agents, had started limiting the work. Measured: `src/`
+has grown **73,681 → 101,743 LOC (+38%)** since §§0–6 were written, across 15
+subsystems and 30 self-tests.
+
+The decisive evidence was not an argument from principle. **The rules had
+already lost to practice.** `DESIGN.md`'s One Token File Rule *requires* menu
+surfaces to import `src/ui/brand.js`; rule 2 forbade it. Three standing
+violations, two of them mandated by another first-party doc:
+
+```
+src/net/ui.js:17           -> ../ui/brand.js
+src/match/ui.js:61         -> ../ui/brand.js
+src/weapons/preview.js:16  -> ../materials/index.js
+```
+
+**Rule 1** was made conditional. It is mutual exclusion, not architecture — it
+buys something only when several writers share one filesystem. The deciding
+variable is not subagents-vs-instances but *shared working tree vs isolated
+worktree*: subagents in one session and two Claude Code instances on one
+checkout are both the former; a git worktree or separate checkout is the
+latter, where git already resolves the overlap and the rule only blocks
+legitimate cross-cutting edits.
+
+**Rule 2** gained a stateless-leaf exception, which legalises what the code
+already does. Note the honest sizing: `ctx.get` appears at 29 sites, roughly
+half of them self-lookups, so there are only about **12 real cross-subsystem
+edges in 101k LOC**. The boundary is cheap, not expensive — rule 2 was never
+the thing slowing anyone down, and it stays because it is what lets one
+subsystem be refactored without breaking the rest.
+
+Its genuine cost is unchanged by this edit: `ctx.get()` returns `any`, so all
+12 edges are unchecked and a rename in `src/fx/` fails at runtime, in a frame,
+in a browser. The fix is §3.3 (`jsconfig.json` + a hand-written `ctx.d.ts`) and
+it needs **no rule change at all**.
+
+Deliberately **not** changed: rules 3–7. Rule 3's dependency ban has aged well
+and §7.5.1 showed the model-import restriction was never in it. Rules 4, 5 and
+6 are load-bearing and cheaply checkable — §7.2.1 only reached a conclusion
+because rule 4 makes two capture runs bit-exact. Rule 7 is the counter-example
+worth remembering: it read as friction for a year, and became invisible the
+moment §7.6 automated it. Some rules are not too strict, only unautomated.
+
 ### 7.6 §5 step 1 has landed — `.github/workflows/ci.yml`
 
 Written 2026-08-06. `npm ci` → `npm run build` → the self-tests, on push to
