@@ -18,10 +18,19 @@ import { V, cone } from './util.js';
  *    `userData.fxSmoke = { radius, rate }` and it will start smoking without
  *    either subsystem knowing about the other; explosions use the same pool for
  *    their smoke column.
+ *  - **Energy wells.** Persistent columns of tiny glowing embers and the odd
+ *    angular "data cube" rising out of a marked circle on the ground and
+ *    fading out around eye level — the respawn wells of Shivam's roo ritual
+ *    (`FxSystem._syncWells` registers one per `map.critter.pads` entry).
+ *    Subtle by construction: a handful of particles a second, no light, no
+ *    haze.
  */
 
 const TWO_PI = Math.PI * 2;
 const MAX_EMITTERS = 24;
+
+/** Energy wells go quiet past this — nobody can read a 2 cm ember at 80 m. */
+const WELL_CULL = 80;
 
 class Emitter {
   constructor() {
@@ -129,6 +138,95 @@ export class Ambience {
       if (e.tag === tag) {
         e.active = false;
         e.object = null;
+      }
+    }
+  }
+
+  /* --------------------------------------------------------------------- */
+  /*  energy wells                                                         */
+  /* --------------------------------------------------------------------- */
+
+  /** Persistent energy well at a world position; `radius` is the floor disc. */
+  addWell(x, y, z, o = {}) {
+    const w = {
+      tag: this._tag++,
+      x,
+      y,
+      z,
+      radius: o.radius ?? 0.9,
+      /** Embers per second. Deliberately low — the well is an accent. */
+      rate: o.rate ?? 8,
+      acc: 0,
+    };
+    (this.wells ??= []).push(w);
+    return w.tag;
+  }
+
+  removeWell(tag) {
+    if (!this.wells) return;
+    const i = this.wells.findIndex((w) => w.tag === tag);
+    if (i >= 0) this.wells.splice(i, 1);
+  }
+
+  /**
+   * One rising mote out of a well. Mostly soft ember points with a digital
+   * flicker; roughly one in five is an angular CHIP fleck — the "data cube".
+   * The climb is drag-free and unhurried (~0.3 m/s for ~5 s), so a particle
+   * expires around 1.2-1.9 m up: they fade out at eye level rather than
+   * escaping into the sky, which is what keeps the column a place marker and
+   * not a smoke signal.
+   */
+  _wellEmber(w, dt) {
+    const fx = this.fx;
+    const rng = fx.rng;
+    const s = resetSpawn();
+    const a = rng.float() * TWO_PI;
+    const r = Math.sqrt(rng.float()) * w.radius * 0.8;
+    s.x = w.x + Math.cos(a) * r;
+    s.y = w.y + rng.range(0.02, 0.1);
+    s.z = w.z + Math.sin(a) * r;
+    s.vx = rng.signed() * 0.03;
+    s.vy = rng.range(0.24, 0.38);
+    s.vz = rng.signed() * 0.03;
+    const cube = rng.float() < 0.2;
+    s.tile = cube ? P.CHIP : P.MOTE;
+    s.size0 = cube ? rng.range(0.035, 0.055) : rng.range(0.02, 0.036);
+    s.size1 = s.size0 * 0.75;
+    s.life = rng.range(4.2, 5.4);
+    s.delay = -rng.float() * dt;
+    s.rot = rng.float() * TWO_PI;
+    s.spin = cube ? rng.signed() * 0.8 : 0;
+    // teal-cyan, dimming as it climbs; flags=1 adds the spark flicker that
+    // makes it read as signal rather than as a floating dust mote. Intensity
+    // sits in the fire-ember band (3-9) — anything below ~2 is invisible in
+    // full daylight, which is when the well still has to read as a place.
+    s.r0 = 0.35; s.g0 = 1.0; s.b0 = 0.92; s.i0 = rng.range(4, 8);
+    s.r1 = 0.25; s.g1 = 0.8; s.b1 = 1.0; s.i1 = 0.4;
+    s.flags = 1;
+    s.alpha = rng.range(0.65, 0.95);
+    s.alphaCurve = 1.4;
+    s.soft = 0.15;
+    s.turb = rng.range(0.02, 0.06);
+    s.turbFreq = rng.range(0.3, 0.7);
+    s.seed = rng.float();
+    fx.emitAdd(s);
+  }
+
+  _wells(dt, camera) {
+    if (!this.wells) return;
+    const cp = camera.position;
+    for (const w of this.wells) {
+      const dx = w.x - cp.x;
+      const dz = w.z - cp.z;
+      if (dx * dx + dz * dz > WELL_CULL * WELL_CULL) {
+        w.acc = 0;
+        continue;
+      }
+      w.acc += w.rate * dt;
+      let guard = 8;
+      while (w.acc >= 1 && guard-- > 0) {
+        w.acc -= 1;
+        this._wellEmber(w, dt);
       }
     }
   }
@@ -328,6 +426,7 @@ export class Ambience {
       }
     }
 
+    this._wells(dt, camera);
     if (this.moteEnabled) this._motes(dt, now, camera);
     this._shimmer(dt, now, camera);
 

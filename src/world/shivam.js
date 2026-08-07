@@ -130,16 +130,28 @@ export const DECK_STAIR_Z = 4; // the beach stair in the deck's west parapet
  * He grazes the lawn and hops the beach front inside `bounds` — kept west of
  * the Icebergs and north of the surf so he never crosses his own respawn
  * ritual. Shooting him is a frag going off at chest height. Bringing him
- * back means standing on the lit pad on the Icebergs deck's south apron for
- * `pad.hold` continuous seconds: far enough from his meadow that the ritual
- * is a trip, on ground that is already authored standable (the self-test
- * pins both).
+ * back means standing in any one of the energy wells in `pads` for that
+ * pad's `hold` CONTINUOUS seconds: every well sits outside his bounds and
+ * far enough from his meadow that the ritual is a trip, on ground that is
+ * already authored standable (the self-test pins all of it).
+ *
+ * The wells themselves are a dark inlaid ring on the ground (drawn in
+ * `buildRooWells` below) plus a column of rising ember particles the fx
+ * system hangs over each one, read straight off this descriptor
+ * (`FxSystem._syncWells` in `src/fx/index.js`).
  */
 export const ROO = {
   kind: 'roo',
   home: { x: -8, z: -18 },
   bounds: { x0: -38, z0: -26, x1: 21, z1: 13 },
-  pad: { x: 30.5, z: 24.4, r: 0.9, hold: 3 },
+  pads: [
+    /** The original well: the Icebergs deck's south apron. */
+    { x: 30.5, z: 24.4, r: 0.9, hold: 3 },
+    /** Campbell Parade, up on the street behind the Pavilion's east end. */
+    { x: 20, z: -27.5, r: 0.9, hold: 3 },
+    /** The west sand, down by the surf line under the headland. */
+    { x: -30, z: 13.8, r: 0.9, hold: 3 },
+  ],
   explosion: { radius: 6, damage: 95 },
 };
 
@@ -836,19 +848,6 @@ function buildIcebergs(A, rng, s) {
     railing: false,
   });
 
-  // THE ROO PAD: the lit ring on the south apron that brings the kangaroo
-  // back (see the ROO constants and `src/ai/roo.js`). A stone kerb around a
-  // glowing disc — emissive surface, so it reads "stand here" in any light.
-  // 6 cm proud of the deck: a texture on the floor is a stain, a kerb is a
-  // place. No collision proxy — it is a step, not an obstacle.
-  A.addOnce('stone_pale', tubeY(ROO.pad.r + 0.14, 0.06, { radial: 18 }),
-    LL(IDENT, ROO.pad.x, D.y, ROO.pad.z), { masks: [0.85, 0.3, 0.1] });
-  {
-    const glow = new THREE.CircleGeometry(ROO.pad.r, 18);
-    glow.rotateX(-Math.PI / 2);
-    A.addOnce('sign_glow', glow, LL(IDENT, ROO.pad.x, D.y + 0.065, ROO.pad.z));
-  }
-
   // rocks under the deck's seaward corners — the apron stands over the
   // shelf it is actually poured on, and the surf line needs the mass
   for (const [rx, rz, rs] of [
@@ -997,6 +996,26 @@ function buildRocks(A, rng) {
 }
 
 /**
+ * THE ROO WELLS: the particle energy wells that bring the kangaroo back
+ * (see the ROO constants and `src/ai/roo.js`). Each is a stone kerb around
+ * a dark inlaid ring — 6 cm proud of the floor, because a texture on the
+ * ground is a stain and a kerb is a place. The glow is not geometry: the fx
+ * system hangs a column of rising embers over each well at runtime
+ * (`src/fx/ambience.js`). No collision proxy — a well is a step, not an
+ * obstacle.
+ */
+function buildRooWells(A) {
+  for (const p of ROO.pads) {
+    const y = groundYShivam(p.x, p.z);
+    A.addOnce('stone_pale', tubeY(p.r + 0.14, 0.06, { radial: 18 }),
+      LL(IDENT, p.x, y, p.z), { masks: [0.85, 0.3, 0.1] });
+    const ring = new THREE.RingGeometry(p.r * 0.55, p.r, 20);
+    ring.rotateX(-Math.PI / 2);
+    A.addOnce('metal_dark', ring, LL(IDENT, p.x, y + 0.065, p.z), { masks: [0.3, 0.5, 0.2] });
+  }
+}
+
+/**
  * Set dressing: the parade, the lawn, the promenade and the sand each get
  * their own furniture. Everything instanced and jittered.
  */
@@ -1007,7 +1026,9 @@ function dressBeach(A, rng) {
     !inSolidShivam(x, z, m) &&
     Math.abs(x) < S.halfX - 1.2 &&
     z > S.zBack + 1 &&
-    (x >= DECK.x0 ? z < DECK.z1 - 1 : z < S.zSurf - 0.5);
+    (x >= DECK.x0 ? z < DECK.z1 - 1 : z < S.zSurf - 0.5) &&
+    // the roo wells stay clear — a bottle in an energy well reads as a bug
+    ROO.pads.every((p) => Math.hypot(x - p.x, z - p.z) > p.r + 0.3 + m);
   const drop = (id, x, z, ry, sc = 1) => {
     if (free(x, z, 0.5)) A.put(id, x, groundYShivam(x, z) + 0.02, z, ry, sc);
   };
@@ -1130,6 +1151,7 @@ export function buildShivam(A, rng) {
   }
 
   buildRocks(A, rng);
+  buildRooWells(A);
   dressBeach(A, rng);
 
   return { buildings: infos };

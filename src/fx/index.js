@@ -659,6 +659,47 @@ export class FxSystem {
     this.ambience.remove(tag);
   }
 
+  /**
+   * Persistent "energy well": tiny glowing embers and data cubes rising out
+   * of a circle on the floor and fading out at eye level.
+   */
+  addEnergyWell(x, y, z, o) {
+    return this.ambience.addWell(x, y, z, o);
+  }
+
+  removeEnergyWell(tag) {
+    this.ambience.removeWell(tag);
+  }
+
+  /**
+   * Hang an energy well over each of the map's critter respawn pads
+   * (`map.critter.pads` — Shivam's roo ritual, `src/ai/roo.js`).
+   *
+   * Read off the world descriptor rather than registered by the roo, for the
+   * same reason the pad rings are map geometry: the wells are a feature of
+   * the MAP, and the critter itself is skipped under `deterministic` (a
+   * capture must not have a kangaroo mid-hop in it) while a place marker
+   * that vanishes from captures could never be visually checked at all.
+   * Lazy and re-entrant because `world` can finish init after `fx`.
+   */
+  _syncWells(ctx) {
+    const world = ctx.peek('world');
+    const map = world?.map ?? null;
+    if (map === this._wellMap) return;
+    this._wellMap = map;
+    if (this._wellTags) for (const t of this._wellTags) this.ambience.removeWell(t);
+    this._wellTags = null;
+    const pads = map?.critter?.pads;
+    if (!pads) return;
+    this._wellTags = [];
+    for (const pad of pads) {
+      world.levelToWorld(pad.x, map.groundY(pad.x, pad.z), pad.z, this._tmpA);
+      this._wellTags.push(
+        this.ambience.addWell(this._tmpA.x, this._tmpA.y, this._tmpA.z, { radius: pad.r })
+      );
+    }
+  }
+
   /** Let `sky` drive the values smoke and dust are lit with. */
   setAmbient(topColor, bottomColor, sunColor) {
     if (topColor) this._ambTop.set(topColor.r ?? topColor.x, topColor.g ?? topColor.y, topColor.b ?? topColor.z);
@@ -806,6 +847,7 @@ export class FxSystem {
 
   update(dt, ctx) {
     this.now = ctx.time.elapsed;
+    this._syncWells(ctx);
     this._syncLighting(ctx);
     this.lights.update(dt);
     this.viewLights?.update(dt);
