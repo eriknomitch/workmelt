@@ -119,6 +119,64 @@ console.log(B('\npower — the outage cannot be extended'));
     'a one-shot mechanic is spent in the first minute of a match');
 }
 
+/* ──────────────────────────────────────────────────────────── self-repair ─── */
+/**
+ * WHY GENERATORS HEAL. `bullet:impact` carries no shooter, so bot fire, exit
+ * wounds from penetrating rounds and the player's own rounds all land the
+ * same — and the plant room is the contested middle of the map, so stray fire
+ * crosses it all match. Played without regen, chip damage accumulated until a
+ * 21st stray round minutes later tripped an outage nobody had aimed at.
+ * Regen is what makes the trigger DELIBERATE: a committed magazine beats the
+ * delay, a match's worth of strays cannot.
+ */
+console.log(B('\npower — self-repair'));
+{
+  const g = rig({ hp: 700, regenDelay: 4, regenRate: 140 });
+  g.damage(0, 1, 0, 300);
+  run(g, 2);
+  ok(g.generators[1].hp === 400, 'a wounded generator does not heal inside the delay',
+    `${g.generators[1].hp} hp after 2 s of a 4 s delay`);
+  run(g, 8);
+  ok(g.generators[1].hp === 700, 'and is back at full once the delay and the ramp have run',
+    `${g.generators[1].hp} hp`);
+
+  // A fresh hit restarts the clock — suppressing a generator keeps it wounded.
+  g.damage(0, 1, 0, 300);
+  run(g, 3);
+  g.damage(0, 1, 0, 34);
+  run(g, 3);
+  ok(g.generators[1].hp < 700, 'a fresh hit restarts the delay', `${g.generators[1].hp.toFixed(0)} hp`);
+
+  // The split the numbers exist for: a magazine dump beats the delay outright…
+  const fast = rig({ hp: 700, regenDelay: 4, regenRate: 140 });
+  for (let i = 0; i < 21; i++) {
+    fast.damage(0, 1, 0, 34);
+    fast.update(0.1);
+  }
+  ok(fast.out, 'a committed magazine still trips the grid', `21 rounds in 2.1 s`);
+
+  /**
+   * …while STRAY fire — the thing that caused the mystery outages — cannot.
+   * Stray means sporadic: a bot round every few seconds as fights cross the
+   * room, each gap longer than the regen delay. Two minutes of that must end
+   * with the generator at full and the grid untouched.
+   *
+   * (Deliberately NOT "any sustained fire": a player parked on the room
+   * hitting it every half-second is suppressing the generator on purpose, and
+   * the delay never elapsing is correct — that is aimed fire, and it should
+   * work. The line regen draws is deliberate-vs-incidental, not fast-vs-slow.)
+   */
+  const stray = rig({ hp: 700, regenDelay: 4, regenRate: 140 });
+  let tripped = false;
+  for (let t = 0; t < 120; t += 6) {
+    stray.damage(0, 1, 0, 34);
+    if (run(stray, 6).length || stray.out) tripped = true;
+  }
+  ok(!tripped && stray.generators[1].hp === 700,
+    'two minutes of sporadic stray rounds never trips it',
+    `a hit every 6 s, ${stray.generators[1].hp.toFixed(0)} hp at the end`);
+}
+
 /* ─────────────────────────────────────────────────────────────── the level ── */
 console.log(B('\npower — the mains level'));
 {

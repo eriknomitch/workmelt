@@ -127,7 +127,10 @@ either works: `test:quality` = `src/core/selftest.mjs`, `test:graphics` =
 - `node src/world/power.selftest.mjs` checks the destructible power grid Site
   Work carries: hit tests, hit points, that one grenade is one outage, that the
   mains come back and the generators repair with them, that a second generator
-  cannot extend the dark, and that the dip envelope is deterministic. Every
+  cannot extend the dark, that chip damage self-repairs (the impact feed has no
+  shooter field, so bot rounds and penetration exit wounds land like aimed fire
+  — regen is what keeps a stray-fire outage from tripping minutes later), and
+  that the dip envelope is deterministic. Every
   property here is a TIMING property — a capture sees one instant and none of
   these failures throws, so a grid that never restores just makes a map that is
   dark forever with every other check green. The arithmetic is kept free of

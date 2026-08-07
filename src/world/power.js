@@ -42,6 +42,24 @@ export const POWER_DEFAULTS = {
   /** Metres of slack around a generator box when hit-testing a bullet. */
   margin: 0.15,
   /**
+   * Self-repair: seconds a generator must go unhit before it starts healing,
+   * and hit points per second once it does.
+   *
+   * THIS IS WHAT MAKES THE TRIGGER DELIBERATE, and it exists because the
+   * damage feed cannot be filtered. `bullet:impact` carries no shooter — a
+   * bot's round, a penetrating round's exit wound and the player's own fire
+   * all land identically — and the generator room is the contested middle of
+   * the map BY DESIGN, so stray fire crosses it all match. Without regen that
+   * chip damage accumulates silently until some 21st stray round over three
+   * minutes trips an outage nobody asked for and nobody can explain.
+   *
+   * With it, the arithmetic splits clean: a committed magazine (700 hp at
+   * ~34 a round inside a couple of seconds) beats the delay entirely, while
+   * anything slower than `regenRate` sustained can never get there.
+   */
+  regenDelay: 4,
+  regenRate: 140,
+  /**
    * EV of extra metering compensation while the mains are down. POSITIVE IS
    * DARKER, the same sign the map's own `environment.exposureBias` uses.
    *
@@ -69,8 +87,12 @@ export class PowerGrid {
     this.margin = s.margin;
     this.maxHp = s.hp;
     this.outageEv = s.outageEv;
+    this.regenDelay = s.regenDelay;
+    this.regenRate = s.regenRate;
+    /** Internal clock, for the per-generator last-hit stamps. */
+    this._clock = 0;
 
-    this.generators = (spec.boxes ?? []).map((b) => ({ ...b, hp: s.hp, alive: true }));
+    this.generators = (spec.boxes ?? []).map((b) => ({ ...b, hp: s.hp, alive: true, hitAt: -Infinity }));
 
     /** Seconds left on the outage, 0 when the mains are up. */
     this.remaining = 0;
@@ -139,6 +161,7 @@ export class PowerGrid {
     const g = this.at(x, y, z);
     if (!g) return miss;
     g.hp -= amount;
+    g.hitAt = this._clock;
     if (g.hp > 0) return { hit: true, destroyed: false, generator: g, hp: g.hp };
     g.hp = 0;
     g.alive = false;
@@ -187,6 +210,7 @@ export class PowerGrid {
    */
   update(dt) {
     if (!(dt > 0)) return false;
+    this._clock += dt;
     let restored = false;
     if (this.remaining > 0) {
       this._since += dt;
@@ -208,6 +232,13 @@ export class PowerGrid {
       }
     } else if (this._restore < this.restoreTime) {
       this._restore = Math.min(this.restoreTime, this._restore + dt);
+    }
+    // Self-repair — see `POWER_DEFAULTS.regenDelay`. Only standing, only
+    // wounded, and only once the last hit is `regenDelay` behind us.
+    for (const g of this.generators) {
+      if (!g.alive || g.hp >= this.maxHp) continue;
+      if (this._clock - g.hitAt < this.regenDelay) continue;
+      g.hp = Math.min(this.maxHp, g.hp + this.regenRate * dt);
     }
     this.level = this._envelope();
     return restored;
