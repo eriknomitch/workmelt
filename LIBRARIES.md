@@ -17,6 +17,10 @@ measured costs in this engine (3.27 s of blocking boot, 51.7 draw calls per
 character, 29 KB/s of JSON per player) are addressed by them without adding a
 byte to `package.json`.
 
+> Of those three, only the **29 KB/s of JSON** survives re-measurement. The
+> 3.27 s boot bake was deleted with `src/ai/textures.js`, and the character
+> draw-call figure predates `src/ai/livery.js`. See §7.5.5.
+
 Exactly **one** third-party runtime library is worth a rule change, and it is a
 single 20 KB-gzip MIT file with no dependencies: `meshopt_simplifier`. Everything
 else in the usual list — Rapier, Jolt, `three-mesh-bvh`, `postprocessing`,
@@ -115,6 +119,14 @@ in `src/world/builder.js`.
 
 ### 1.2 `THREE.LOD` + `SimplifyModifier` — the characters' missing LOD
 
+> **STALE — re-measured 2026-08-07. See §7.5.5.** Every triangle count in this
+> section and in §4.1 is from before `src/ai/textures.js` was replaced by
+> `src/ai/livery.js` and the sections in `parts.js` went through the `F`/`R`
+> scales. A soldier is **7,287 triangles**, not 25,698 — 3.5× fewer — which
+> takes the whole prize from ~7.2% of frame triangles to ~2.0% and demotes
+> character LOD well down the list. Read §7.5.5 before planning against
+> anything below.
+
 `TEXTURE-PERF.md` §5.4 calls this out and does not solve it: *"The characters
 have no geometry LOD. 25,698 triangles each at every distance, drawn into four
 cascades… That is a bigger number than anything textures can give back, and it
@@ -141,6 +153,13 @@ per-character shadow cost, and it is invisible by construction because shadow
 cascades at that distance are filtered to mush anyway.
 
 ### 1.3 `WorkerPool` — the 3.27 s character bake
+
+> **DEAD — the customer no longer exists. See §7.5.5.** `src/ai/textures.js`
+> was deleted and replaced by `src/ai/livery.js`; characters are flat-shaded
+> and untextured, and the 3.27 s bake this section is entirely about is now
+> ~9 ms of material construction. `WorkerPool` may still suit another caller
+> (`src/physics/bvh.js`'s build is the remaining candidate), but the measured
+> justification below is gone. Do not schedule this.
 
 `three/addons/utils/WorkerPool.js` is 4 KB of `Worker` lifecycle management.
 `grep -rn "new Worker" src/` returns nothing: this engine has never left the main
@@ -452,6 +471,20 @@ Against the measured baseline: 6 characters at 25,698 triangles each are
 prepass and four cascades. LOD1 at 50% and LOD2 at 20% removes most of that
 for anything past ~25 m, and it composes with §1.1 rather than competing.
 
+> **The paragraph above is stale and its conclusion no longer follows.**
+> Re-measured 2026-08-07: a soldier is **7,287 triangles**, so the same six
+> characters are ~232,600 of 11.35M — **~2.0% of frame triangles, not 7.2%** —
+> and that 2% is the ceiling you would get by deleting characters outright, not
+> what an LOD recovers. On a mesh already at 7.3k triangles this is no longer
+> "the one third-party library worth the argument". See §7.5.5.
+>
+> What survives: `meshopt_simplifier` is still the *only* tool that can do this
+> job when it does become worth doing, because the soldier still carries
+> `skinIndex`/`skinWeight` across nine material groups and `SimplifyModifier`
+> still cannot. Its determinism is proven (§7.5.3) and the dependency gate now
+> has a path for it (§7.5.4). The blocker is no longer permission or
+> feasibility — it is that the win is currently too small to bother.
+
 Why it clears the bar the rules set: the rules exist to keep the bundle small,
 keep the game offline-capable, and keep content generated rather than authored.
 A 20 KB simplifier does not ship content — it *processes content we generated*,
@@ -542,6 +575,13 @@ not deploy to a Durable Object.
 ---
 
 ## 5. Recommended sequence
+
+> **Amended twice. Read §7.5.5 and §7.5.4 first.** Step 1 has landed (§7.6).
+> Step 5 is **dead** — its 3.27 s customer no longer exists. Step 8 is
+> **demoted** — the soldier is 7,287 triangles, not 25,698, so the prize is
+> ~2.0% of frame triangles rather than 7.2%. A step 0 (`three` r185) was added
+> and is **blocked** (§7.2.1). The steps that survive unchanged are 2, 3, 4, 6,
+> 7, 9 and 10.
 
 Ordered by (measured win) ÷ (effort × risk). Nothing above step 6 changes
 `package.json`.
@@ -871,7 +911,7 @@ documents no determinism guarantee, and non-reproducible output makes
 1.2.0**.
 
 Method: a fixed indexed `TorusKnotGeometry(1, 0.35, 220, 40)` — 17,600
-triangles, the right order of magnitude for the 25,698-triangle soldier —
+triangles — comfortably above the 7,287-triangle soldier measured in §7.5.5 —
 simplified to 20% (LOD2). Interleaved normals + UVs as weighted attributes
 (stride 5, weights `[1,1,1,.5,.5]`) and a vertex-lock mask standing in for the
 material-group seams, which is the exact shape §4.1 argues for. Output indices
@@ -950,6 +990,59 @@ than assumed:
 `meshopt_simplifier` is therefore unblocked, but it is not hereby adopted —
 it now simply has a path. Adopt it as an npm dependency when the character LOD
 work in §1.2/§4.1 actually starts, and record its measured cost here then.
+
+### 7.5.5 The character numbers were stale — §§1.2, 1.3 and 4.1 corrected
+
+Measured 2026-08-07 by building a soldier headlessly
+(`buildSoldier('vanguard', { rng: new Rng(12345), materials })`):
+
+```
+triangles 7287            §§1.2/4.1 say 25,698
+vertices  5764
+groups    9
+attrs     position, normal, uv, color, skinIndex, skinWeight
+indexed   true
+```
+
+**A soldier is 7,287 triangles, 3.5× fewer than every estimate in §1.** The
+cause is not a mistake in the original measurement — it is that the subject
+changed underneath it. `src/ai/textures.js` was deleted and replaced by
+`src/ai/livery.js` (characters became flat-shaded and untextured, one saturated
+hue per player), and the sections in `src/ai/parts.js` went through the `F` and
+`R` scales (`n * 0.45`, `n * 0.42`). `TEXTURE-PERF.md` carries a supersede note
+saying exactly this; §1 of this document never got updated to match.
+
+What it does to the two affected recommendations:
+
+| | as written | re-measured |
+|---|---|---|
+| §4.1 six characters, all passes | 820,342 of 11.35M (7.2%) | **~232,600 of 11.35M (~2.0%)** |
+| §1.3 character texture bake | 3.27 s blocking | **~9 ms** — the code is deleted |
+
+The ~2.0% is a **ceiling**, not a win: it is what you would recover by deleting
+characters from the frame entirely. An LOD only reduces *distant* actors, so
+the realised figure is a fraction of it — on a mesh already at 7.3k triangles,
+fighting for tenths of a percent.
+
+So **§1.3 is dead** (no customer) and **§4.1/§1.2 are demoted** from "the one
+third-party library worth the argument" to "revisit if actor counts rise well
+past six". The meshopt work in §7.5.3 and the dependency gate in §7.5.4 both
+still stand — they were about the library and the policy, not this use case,
+and `meshopt_simplifier` remains the only tool that *can* do skinned LOD when
+it is worth doing, because the soldier still carries `skinIndex`/`skinWeight`
+across nine groups.
+
+The lesson generalises past these two numbers, and is the same one §7.2.1
+taught one layer down: **a measured recommendation decays when its subject
+changes, and nothing in the document can tell you that has happened.** The
+number stays confident and correctly derived while quietly describing code that
+no longer exists. §1 was quoted three times in one session before anyone
+rebuilt the mesh and counted. When a §1-style claim is about to drive work,
+re-measure it first — the harnesses are cheap and the doc cannot self-invalidate.
+
+The largest untapped item in §1 is unaffected and unchanged: **the world's 1,266
+of 1,724 draw calls** (§1.1, `BatchedMesh`), which is about `src/world/`, not
+characters — though it now sits behind the blocked r185 port (§7.2.1).
 
 ### 7.6 §5 step 1 has landed — `.github/workflows/ci.yml`
 
