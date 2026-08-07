@@ -256,6 +256,27 @@ console.log(B('\npower — site work'));
     `mains fall to ${(dim * 100).toFixed(0)}% of authored`);
 
   /**
+   * THE EXPOSURE SPLIT. The blacked-out frame is authored at a fixed net stop
+   * -down: the map's own `environment.exposureBias` plus the grid's
+   * `outageEv`. How that total is DIVIDED is free — it is the only knob for
+   * how bright the powered site is — but the total is not, and moving it moves
+   * the dark.
+   *
+   * This exists because "the powered map is too dark" is a one-line edit to
+   * `exposureBias`, and made on its own it brightens the outage by exactly as
+   * much and quietly undoes the contrast the whole feature is for. It has
+   * already been retuned once (1.0/1.1 -> 0.45/1.65) and the sum is what
+   * survived unchanged.
+   */
+  const base = SITEWORK_MAP.environment?.exposureBias ?? 0;
+  const ev = spec.outageEv ?? POWER_DEFAULTS.outageEv;
+  ok(Math.abs(base + ev - 2.1) < 1e-6,
+    'the powered and blacked-out exposures still sum to the authored 2.1 EV',
+    `${base} + ${ev} = ${(base + ev).toFixed(2)}`);
+  ok(base >= 0 && ev > 0, 'and the outage is a stop DOWN from the powered state, not up',
+    `powered ${base} EV, outage +${ev} EV`);
+
+  /**
    * TWO CIRCUITS, WIRED OPPOSITE WAYS, AND NEITHER IS OPTIONAL.
    *
    * The neon is the EMERGENCY circuit: dark while the site has power, and the

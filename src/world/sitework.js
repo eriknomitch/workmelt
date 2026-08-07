@@ -270,8 +270,9 @@ export const CABINS = [
 ];
 
 /**
- * The lamp masts: `[x, z]`. Six is what covers a 56 x 84 m site without turning
- * it into a stadium — the corners plus a long-side mid-point each way.
+ * The lamp masts: `[x, z]`. Eight on a 56 x 84 m site: the four corners and two
+ * down each long side. Six left the middle of both haul lanes between pools of
+ * light, which on a working site is the one place that would actually be lit.
  *
  * A TABLE rather than a literal inside the build, because a mast is solid: it
  * has to reach `BLOCKERS` or the occupancy tests believe its square metre is
@@ -280,7 +281,7 @@ export const CABINS = [
  * which is exactly where each gate cabin is parked.
  */
 export const MASTS = [
-  [-26, -38], [26, -38], [-26, 12], [26, -12], [-26, 38], [26, 38],
+  [-26, -38], [26, -38], [-26, -12], [26, -12], [-26, 12], [26, 12], [-26, 38], [26, 38],
 ];
 
 /** How tall a mast stands, and how far its head leans in over the yard. */
@@ -670,7 +671,7 @@ function buildPerimeter(A, rng) {
        * capture reproduces: the same window is lit every run.
        */
       for (let k = 0; k < 4; k++) {
-        if ((Math.abs(Math.round(x * 7 + z * 3 + i * 11 + k * 5)) % 5) > 2) continue;
+        if ((Math.abs(Math.round(x * 7 + z * 3 + i * 11 + k * 5)) % 5) > 3) continue;
         const u = (k / 3 - 0.5) * (w - 2.2);
         const wy = gy + h * (i / 4) + h * 0.1;
         A.add('sw_window', BOX_THIN(A),
@@ -730,10 +731,32 @@ function buildFrame(A, rng) {
   A.box('concrete', s.x, s.h - 0.15, s.z, s.w + 0.6, 0.3, s.d + 0.6);
   // A strip under the deck's nose on both long faces. It marks the roof edge
   // from the ground, which on a map whose middle IS that roof is a readability
-  // job as much as a lighting one.
+  // job as much as a lighting one. Emergency circuit: dark until the power is.
   for (const sz of [-1, 1]) {
     A.add('sw_neon', BOX_THIN(A),
       LL(IDENT, s.x, s.h - 0.34, s.z + sz * (hd + 0.31), 0, s.w + 0.5, 0.07, 0.07), { masks: [0.9, 0.2, 0.1] });
+  }
+
+  /**
+   * FESTOON. A run of work lamps strung under the deck on both faces and down
+   * the middle of the plant room — the mains-side counterpart to the strip
+   * above, and the thing that makes the frame read as a building somebody is
+   * working in rather than a slab on legs.
+   *
+   * Emissive only, on a key the map already batches, so the whole run is free
+   * of draw calls and of the light count. It is on the mains, so it dies with
+   * everything else and the emergency strip is what is left.
+   */
+  for (const sz of [-1, 1]) {
+    for (let x = s.x - hw + 2; x < s.x + hw - 1; x += 3.4) {
+      A.add('sw_glow', BOX(A), LL(IDENT, x, s.h - 0.75, s.z + sz * (hd - 0.35), 0, 0.16, 0.16, 0.16),
+        { masks: [0.9, 0.2, 0.1] });
+      A.add('sw_dark', BOX_THIN(A), LL(IDENT, x, s.h - 0.58, s.z + sz * (hd - 0.35), 0, 0.05, 0.3, 0.05),
+        { masks: [0.8, 0.4, 0.2] });
+    }
+  }
+  for (let x = s.x - hw + 3; x < s.x + hw - 2; x += 3.4) {
+    A.add('sw_glow', BOX(A), LL(IDENT, x, wallH - 0.5, s.z, 0, 0.2, 0.14, 0.2), { masks: [0.9, 0.2, 0.1] });
   }
 
   /**
@@ -884,6 +907,18 @@ function buildBlocks(A, rng) {
     A.add('sw_dark', BOX(A), LL(IDENT, s.x, s.h + 0.16, s.z, 0, s.w + 0.4, 0.2, s.d + 0.4, 0, s.id === 'core_s' ? 0 : 0.08), {
       masks: [0.65, 0.45, 0.25],
     });
+    /**
+     * A wall pack over the face that looks into the site. Two parts — a hood
+     * and a lens — because an unhooded emissive box reads as a hole in the
+     * wall rather than as a fitting on it. On the mains.
+     */
+    const inward = s.id === 'core_s' ? 1 : Math.sign(s.z) * -1;
+    for (const u of s.id === 'core_s' ? [0] : [-3.5, 3.5]) {
+      const wz = s.z + inward * (s.d / 2 + 0.12);
+      A.add('sw_dark', BOX(A), LL(IDENT, s.x + u, s.h - 0.7, wz, 0, 0.5, 0.18, 0.34), { masks: [0.7, 0.4, 0.2] });
+      A.add('sw_glow', BOX_THIN(A), LL(IDENT, s.x + u, s.h - 0.84, wz, 0, 0.4, 0.1, 0.26), { masks: [0.9, 0.2, 0.1] });
+    }
+
     if (s.id === 'core_s') continue;
     // A door and two windows on the face that looks into the site.
     const sz = Math.sign(s.z) * -1;
@@ -1156,7 +1191,19 @@ export const SITEWORK_MAP = {
     generators: GENERATORS,
     hp: 700,
     outage: 22,
-    dim: 0.1,
+    /**
+     * 6%, not 10%. `dim` is a fraction of AUTHORED brightness, so it is only
+     * half of what the dark actually looks like — the other half is how many
+     * emitters there are. Adding the festoon runs and the wall packs to
+     * brighten the powered site roughly doubled the mains-side fittings, and
+     * at the old 10% the blacked-out frame came back up with them: thirty
+     * small warm points instead of a few. Down to 6% and the dark is where it
+     * was, with more to see once the power returns.
+     */
+    dim: 0.06,
+    // See `environment.exposureBias`: these two must sum to 2.1 EV, which is
+    // what the blacked-out frame is authored at.
+    outageEv: 1.65,
     mains: ['sw_window', 'sw_glow'],
     emergency: ['sw_neon'],
   },
@@ -1177,16 +1224,25 @@ export const SITEWORK_MAP = {
    * grey blockout wearing fairy lights; take the fittings away and it is a
    * black rectangle.
    *
-   * `exposureBias` is EV and POSITIVE IS DARKER. Stopping down a stop is what
-   * hands the top of the tone curve to the emitters instead of to a wall — the
-   * Loop carries exactly this for exactly this reason.
+   * `exposureBias` is EV and POSITIVE IS DARKER. Stopping down hands the top of
+   * the tone curve to the emitters instead of to a wall — the Loop carries the
+   * same for the same reason.
+   *
+   * THE SPLIT BETWEEN THIS AND `power.outageEv` IS THE WHOLE TUNING, and the
+   * sum of the two is the invariant. A full stop here made the powered site
+   * darker than a working site should be, so it came back to 0.45 and the
+   * outage delta went up by exactly as much: the blacked-out frame is lit
+   * identically to before (0.45 + 1.65 = 2.1 EV, as 1.0 + 1.1 was), and only
+   * the powered state moved. `power.selftest.mjs` asserts that sum, because
+   * "brighten the map" is a one-line edit that silently brightens the outage
+   * too and undoes the contrast the whole feature is for.
    *
    * `fogDensity` is doing double duty: it is the yard haze the reference has
    * hanging in it, and it is what gives the neon something to bloom into.
    */
   environment: {
     hour: 22.0,
-    exposureBias: 1.0,
+    exposureBias: 0.45,
     weather: {
       turbidity: 1.9,
       cloudCoverage: 0.18,
