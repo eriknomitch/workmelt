@@ -131,6 +131,30 @@ export const FRAME_DOORS = [
   ['w', 0, 3.2], ['e', 0, 3.2],
 ];
 
+/**
+ * THE GENERATORS — the power plant inside the frame, and the map's one
+ * destructible feature.
+ *
+ * `{ id, x, z, w, d, h }`, centres in LEVEL space. Three skids in a row down
+ * the frame's west half, which is the half the west haul road and both frame
+ * doorways feed: the room has to be somewhere people already fight over, or
+ * the mechanic is a lever in a quiet corner that whoever is winning gets to
+ * pull for free.
+ *
+ * Break ONE and the mains go out across the whole map for `power.outage`
+ * seconds — every lamp mast, every lit window, every hazard drum. The green
+ * neon stays lit and is what you fight by. `power.js` owns the arithmetic and
+ * `power.selftest.mjs` states the balance; `WorldSystem` wires the damage.
+ *
+ * Held clear of the doorway lines and the columns so a generator never becomes
+ * accidental cover in a doorway — they are a target, not architecture.
+ */
+export const GENERATORS = [
+  { id: 'gen-a', x: -9.5, z: 0, w: 2.4, d: 3.2, h: 2.0 },
+  { id: 'gen-b', x: -4.0, z: 0, w: 2.4, d: 3.2, h: 2.0 },
+  { id: 'gen-c', x: 1.5, z: 0, w: 2.4, d: 3.2, h: 2.0 },
+];
+
 /** Frame columns, `[x, z]`. Kept clear of every doorway's line through. */
 export const FRAME_COLUMNS = [
   [-10, -3.5], [-2, -3.5], [6, -3.5], [16, -3.5],
@@ -381,6 +405,7 @@ const BLOCKERS = (() => {
   for (const [x, z] of MASTS) {
     out.push([x - MAST.post / 2, z - MAST.post / 2, x + MAST.post / 2, z + MAST.post / 2]);
   }
+  for (const g of GENERATORS) out.push([g.x - g.w / 2, g.z - g.d / 2, g.x + g.w / 2, g.z + g.d / 2]);
   for (const s of STAIRS) {
     const len = s.steps * s.run;
     const [dx, dz] = stairDir(s.ry);
@@ -738,6 +763,44 @@ function buildFrame(A, rng) {
 }
 
 /**
+ * The generator room's plant. A skid, a radiator end, an exhaust stack and a
+ * lit control panel each — enough silhouette to be unmistakably a machine at
+ * 20 m, and nothing more, because there are three of them and they are all
+ * seen from the same two doorways.
+ *
+ * The panel is `sw_glow`, which is on the mains: when the grid trips, the
+ * generators go dark along with everything else they were feeding. That is the
+ * one bit of feedback that says the thing you shot is the thing that did it.
+ */
+function buildGenerators(A, rng) {
+  for (const g of GENERATORS) {
+    const hw = g.w / 2;
+    const hd = g.d / 2;
+    // The skid it stands on, then the body.
+    A.add('sw_dark', BOX(A), LL(IDENT, g.x, 0.12, g.z, 0, g.w + 0.3, 0.24, g.d + 0.3), { masks: [0.6, 0.5, 0.3] });
+    A.add('sw_amber', BOX(A), LL(IDENT, g.x, 0.24 + (g.h - 0.24) / 2, g.z, 0, g.w, g.h - 0.24, g.d), {
+      masks: [0.5, 0.5, 0.3],
+    });
+    // One collision box for the whole machine — the visual is four parts, the
+    // proxy is one, which is the rule everywhere else in this file.
+    A.box('metal', g.x, g.h / 2, g.z, g.w, g.h, g.d);
+
+    // Radiator grille on the north end: a stack of fins, which is the cheapest
+    // thing that reads as cooling rather than as a painted panel.
+    for (let i = 0; i < 5; i++) {
+      A.add('sw_dark', BOX_THIN(A),
+        LL(IDENT, g.x, 0.55 + i * 0.28, g.z - hd - 0.04, 0, g.w - 0.35, 0.16, 0.08), { masks: [0.7, 0.4, 0.2] });
+    }
+    // Exhaust stack, offset so the row does not read as three identical boxes.
+    const sx = g.x + hw - 0.4;
+    A.add('sw_dark', BOX(A), LL(IDENT, sx, g.h + 0.5, g.z + hd - 0.5, 0, 0.28, 1.0, 0.28), { masks: [0.7, 0.5, 0.3] });
+    // The control panel, on the south face where both doorways see it.
+    A.add('sw_glow', BOX_THIN(A),
+      LL(IDENT, g.x - 0.35, 1.25, g.z + hd + 0.03, 0, 0.7, 0.45, 0.06), { masks: [0.9, 0.2, 0.1] });
+  }
+}
+
+/**
  * THE CORE — the landmark, and the map's one commanding position.
  *
  * A lift-shaft box up to a 7.2 m deck, then a slimmer mast carrying on to
@@ -1033,6 +1096,7 @@ export function buildSitework(A, rng) {
   buildPerimeter(A, rng);
   buildFrame(A, rng);
   buildCore(A, rng);
+  buildGenerators(A, rng);
   buildBlocks(A, rng);
   const feet = buildStairs(A, rng);
   buildCover(A, rng);
@@ -1062,6 +1126,31 @@ export const SITEWORK_MAP = {
    * the core mast head at 13.65 m.
    */
   bounds: [-33, -2, -47, 33, 20, 47],
+  /**
+   * THE POWER GRID. Optional on the descriptor — a map without one never
+   * builds a grid at all, and Site Work is the only map that carries one.
+   *
+   * `mains` names the palette keys that go dark. `sw_neon` is deliberately
+   * NOT among them: the green strips are the map's emergency lighting and the
+   * only reason a blacked-out site is still a place you can fight in rather
+   * than a black rectangle. They are also the fiction — a hoarding strip runs
+   * off its own battery, a lamp mast does not.
+   *
+   * The numbers, and why: 700 hp is a bit over two thirds of a rifle magazine
+   * at ~34 a round, so breaking one is a commitment made inside a room two
+   * other people want, not a stray shot in passing. 22 s is long enough to
+   * fight a whole engagement in the dark and short enough that a ten-minute
+   * match is not played there — and `power.js` makes the generators
+   * invulnerable for the duration, so the dark has a hard ceiling however many
+   * people are working on it. `power.selftest.mjs` asserts all of that.
+   */
+  power: {
+    generators: GENERATORS,
+    hp: 700,
+    outage: 22,
+    dim: 0.1,
+    mains: ['sw_window', 'sw_glow'],
+  },
   spawnPoints: SITEWORK_SPAWNS,
   standable: standableAtSitework,
   groundY: groundYSitework,

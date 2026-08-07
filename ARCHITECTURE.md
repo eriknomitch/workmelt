@@ -136,6 +136,8 @@ Emit and listen via `ctx.events`. Payloads are plain objects. The canonical set:
 | `player:footstep` | `{ position, surface, running }` | player |
 | `player:state` | `{ stance, sprinting, sliding, ads }` | player |
 | `explosion` | `{ position, radius, damage }` | any |
+| `power:out` | `{ mapId, generator, seconds }` — a map's destructible power grid has been tripped: the mains fall to `power.dim` for `seconds` and the sky stops down. Only emitted by a map that declares a `power` block (Site Work). `world` owns the grid and the lights; this is purely the announcement, so `ui`, `audio` and `fx` can react without `world` knowing they exist. | world |
+| `power:restored` | `{ mapId }` — the outage ended and the mains are ramping back. Every generator is repaired with them, so the feature is repeatable rather than spent. | world |
 | `equipment:flash` | `{ position, radius, duration, source }` — a stun grenade detonated. Every listener folds in its own range / line-of-sight / facing falloff rather than trusting a pre-scaled intensity, so the player's whiteout (`ui`) and the bots' blindness (`ai`) stay consistent with each other. | weapons |
 | `resize` | `{ width, height }` | engine |
 | ↳ | COALESCED, not one per browser event. A window drag delivers a `resize` event every frame, and each one would rebuild the whole post chain (~160 MB of render targets per megapixel — ~1.3 GB per event at 4K). The engine waits for the window to hold still for 120 ms, timed off the frame clock, so a drag costs one reallocation. Meanwhile the backbuffer keeps its old size and the browser scales it into the new CSS box; because the camera aspect moves at the same moment the targets do, that is a uniform stretch rather than a geometry error. `engine.resize()` remains synchronous for `init()` and for harnesses that need the new size on the very next frame. | |
@@ -182,6 +184,11 @@ world.mapId                 // 'market' | 'rust' | 'wilmot' | 'loop' | 'fishers'
                             // | 'sitework' — see the REGISTRY in
                             // world/maps.js, which is also where a map is
                             // enabled or parked
+world.power                 // PowerGrid | null — the destructible grid, for a
+                            // map whose descriptor carries a `power` block.
+                            // `.out`, `.level` (0..1 mains), `.remaining`,
+                            // `.standing`. Damage arrives on `bullet:impact`
+                            // and `explosion`; see src/world/power.js
 world.maps                  // [{ id, name, description, blurb, size }] for menus
                             // — enabled maps only, in registry order
 await world.setMap('rust')  // tear the level down and build another. Emits

@@ -3,6 +3,7 @@ import { Assembler } from './builder.js';
 import { BUILDINGS, STREET, SET_PIECES, GATE } from './layout.js';
 import { Rng } from '../core/rng.js';
 import { SpawnDirector, buildSpawnPoints } from './spawns.js';
+import { PowerGrid } from './power.js';
 import { MAPS, DEFAULT_MAP_ID, getMap, isMapId, mapSummaries, resolveBootMap, saveMapPreference } from './maps.js';
 
 /**
@@ -260,6 +261,8 @@ export class WorldSystem {
     this.bulbs = null;
     this.lamps = null;
     this.lampLens = null;
+    this.power = null;
+    this._mains = null;
 
     // The ballast pool survives (it belongs to the system, not to the level),
     // but the scan of everybody else's point lights is stale and the adopted
@@ -347,6 +350,30 @@ export class WorldSystem {
       if (p) this.spawns.noteDeath(p.x, p.y, p.z);
     });
 
+    /**
+     * Damage into the power grid. Both sources are already in the contract:
+     * `bullet:impact` reports the world-space point of every round that lands,
+     * and `explosion` covers the grenade somebody will inevitably roll into
+     * the generator room. Nothing new is emitted at anybody to make this work.
+     *
+     * Subscribed unconditionally — the grid is built later, in `_buildLights`,
+     * and a map without one leaves `this.power` null, which both handlers
+     * check. Gating the subscription on it instead would silently wire nothing
+     * for every map, because this runs first.
+     */
+    on('bullet:impact', (e) => {
+      const p = e?.point;
+      if (!this.power || !p) return;
+      const r = this.power.damage(p.x, p.y, p.z, e.damage ?? 0);
+      if (r.destroyed) this._announcePower(r.generator);
+    });
+    on('explosion', (e) => {
+      const p = e?.position;
+      if (!this.power || !p) return;
+      const killed = this.power.splash(p.x, p.y, p.z, e.radius ?? 0, e.damage ?? 0);
+      if (killed.length) this._announcePower(killed[0]);
+    });
+
     const zones = [...this.spawns.zones.values()].map((z) => `${z.name}:${z.points.length}`);
     console.info(
       `[world] ${this.spawnPoints.length} spawn points in ${this.spawns.zones.size} zones — ${zones.join(' ')}`
@@ -385,6 +412,41 @@ export class WorldSystem {
     }
     this.lampLens = A.mat('lamp_lens');
     this._lampMix = -1;
+    this._powerLevel = 1;
+    this._powerWasOut = false;
+
+    /**
+     * THE POWER GRID, for a map that declares one. `world` owns it because
+     * `world` already owns every light on the map and re-drives them every
+     * frame; a separate subsystem would only have to reach back in here.
+     *
+     * The boxes are converted LEVEL -> WORLD once, here, because
+     * `bullet:impact` reports world space and converting per round would be
+     * the same arithmetic thousands of times over.
+     *
+     * `A.toWorld` returns a SHARED scratch array — the same trap `kit.js`'s
+     * `LL` sets — so the result is read out into a fresh object rather than
+     * held. Holding it gives every generator the last one's coordinates.
+     */
+    const spec = this.map.power;
+    if (spec) {
+      const boxes = spec.generators.map((g) => {
+        const w = A.toWorld(g.x, g.h / 2, g.z);
+        return { id: g.id, cx: w[0], cy: w[1], cz: w[2], hx: g.w / 2, hy: g.h / 2, hz: g.d / 2 };
+      });
+      this.power = new PowerGrid({ ...spec, boxes });
+      // The materials the mains feed, with the brightness they were authored
+      // at — the grid reports a 0..1 level and this is what it multiplies.
+      this._mains = (spec.mains ?? [])
+        .map((key) => {
+          const m = A.mat(key);
+          return { key, mat: m, base: m?.emissiveIntensity ?? 0 };
+        })
+        .filter((e) => e.mat);
+    } else {
+      this.power = null;
+      this._mains = null;
+    }
   }
 
   /**
@@ -528,6 +590,58 @@ export class WorldSystem {
       // altitude: a weak practical by day, the room's only light after dark.
       for (let i = 0; i < this.bulbs.length; i++) this.bulbs[i].intensity = 5 + 17 * mix;
     }
+
+    /**
+     * THE MAINS. `_lampMix` above is cached against solar altitude and only
+     * writes when the sun moves — an outage changes the lights while the sun
+     * is still, so it cannot ride on that compare and gets its own.
+     */
+    if (this.power) {
+      const wasOut = this._powerWasOut;
+      if (this.power.update(dt)) this.ctx.events.emit('power:restored', { mapId: this.mapId });
+      /**
+       * The sky half of a blackout, applied on the two EDGES only.
+       *
+       * `sky.applyEnvironment` is the documented way to change the hour a map
+       * plays at, and `_build` already calls it once per level — calling it
+       * twice more per outage is nothing. What it must NOT be is per-frame:
+       * it re-derives the whole weather patch, and the map's own
+       * `environment` is the thing being re-applied unchanged apart from one
+       * number.
+       *
+       * Why it is needed at all: cutting the lamps and the lit windows removes
+       * the light the LEVEL owns, but the moonlit sky is still the largest
+       * contributor to a night frame. Without stopping down as well, an outage
+       * reads as "a few signs went off". See `POWER_DEFAULTS.outageEv`.
+       */
+      if (this.power.out !== wasOut) {
+        this._powerWasOut = this.power.out;
+        const env = this.map.environment ?? null;
+        const ev = (env?.exposureBias ?? 0) + (this.power.out ? this.power.outageEv : 0);
+        this.ctx.peek('sky')?.applyEnvironment?.(env ? { ...env, exposureBias: ev } : { exposureBias: ev });
+      }
+      const level = this.power.level;
+      if (Math.abs(level - this._powerLevel) > 0.002) {
+        this._powerLevel = level;
+        const lit = Math.max(0, this._lampMix);
+        for (let i = 0; i < this.lamps.length; i++) this.lamps[i].intensity = 14 * lit * level;
+        if (this.lampLens) this.lampLens.emissiveIntensity = 9 * lit * level;
+        for (const e of this._mains) e.mat.emissiveIntensity = e.base * level;
+      }
+    }
+  }
+
+  /**
+   * A generator went down. The event is the whole of the public surface —
+   * `ui`, `audio` and `fx` can each decide what a blackout means to them
+   * without `world` knowing any of them exist.
+   */
+  _announcePower(generator) {
+    this.ctx.events.emit('power:out', {
+      mapId: this.mapId,
+      generator: generator?.id ?? null,
+      seconds: this.power.outage,
+    });
   }
 
   lateUpdate(dt, ctx) {

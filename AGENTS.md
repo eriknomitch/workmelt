@@ -124,6 +124,15 @@ either works: `test:quality` = `src/core/selftest.mjs`, `test:graphics` =
   survives the death that ends the streak, the recon-sweep window, and that a
   mortar volley is announced round by round, lands inside its scatter disc and
   is deterministic for a given seed.
+- `node src/world/power.selftest.mjs` checks the destructible power grid Site
+  Work carries: hit tests, hit points, that one grenade is one outage, that the
+  mains come back and the generators repair with them, that a second generator
+  cannot extend the dark, and that the dip envelope is deterministic. Every
+  property here is a TIMING property — a capture sees one instant and none of
+  these failures throws, so a grid that never restores just makes a map that is
+  dark forever with every other check green. The arithmetic is kept free of
+  lights, materials and `THREE` precisely so this can drive a whole outage in
+  Node in a millisecond. Mutation-checked.
 - `node src/world/maps.selftest.mjs` builds every map headlessly and checks the map-descriptor contract, spawn tables and layout invariants.
 - `node src/world/collision.selftest.mjs` checks every map, parked ones included,
   for invisible walls: collision proxies with nothing drawn inside them that a
