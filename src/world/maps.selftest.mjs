@@ -50,6 +50,20 @@ import {
   inSolidWilmot,
   groundYWilmot,
 } from './wilmot.js';
+import {
+  SITE,
+  STRUCTURES as SITE_STRUCTURES,
+  FRAME,
+  CORE,
+  FRAME_DOORS,
+  STAIRS as SITE_STAIRS,
+  stairDir,
+  BARRIERS as SITE_BARRIERS,
+  TIMBER as SITE_TIMBER,
+  CONTAINERS as SITE_CONTAINERS,
+  inSolid as inSolidSitework,
+  groundYSitework,
+} from './sitework.js';
 import { CONIFER } from './fisherprops.js';
 import {
   FISHER,
@@ -1709,6 +1723,302 @@ for (const [id, x, z] of [
 // spawn-side tables and the build both read WALL_GAPS, so what can drift is
 // a gap wide enough to matter: two bodies, like the bases' doors.
 ok(WALL_GAP_W >= 1.6, 'every sea-wall stair gap passes two players', `${WALL_GAP_W} m`);
+
+
+/* ───────────────────────────────────────────────────── sitework — the site ── */
+console.log(B('\nsitework — the site'));
+
+const sitework = mapById('sitework');
+
+/**
+ * The rects the map ships, derived the same way `inSolid` derives them so this
+ * section asks about the tables the build actually reads rather than a second
+ * copy of the arithmetic.
+ */
+const swRects = [];
+const swRowRect = (label, x, z, ry, len, t) => {
+  const hx = (ry === 0 ? len : t) / 2;
+  const hz = (ry === 0 ? t : len) / 2;
+  return [label, x - hx, z - hz, x + hx, z + hz];
+};
+for (const s of SITE_STRUCTURES) swRects.push([s.id, s.x - s.w / 2, s.z - s.d / 2, s.x + s.w / 2, s.z + s.d / 2]);
+for (const [x, z, ry, len] of SITE_BARRIERS) swRects.push(swRowRect(`barrier(${x},${z})`, x, z, ry, len, 0.6));
+for (const [x, z, ry, len] of SITE_TIMBER) swRects.push(swRowRect(`timber(${x},${z})`, x, z, ry, len, 1.1));
+for (const [x, z, ry, tier] of SITE_CONTAINERS) {
+  if (tier !== 0) continue;
+  const hx = (ry === 0 ? CONTAINER.l : CONTAINER.w) / 2;
+  const hz = (ry === 0 ? CONTAINER.w : CONTAINER.l) / 2;
+  swRects.push([`container(${x},${z})`, x - hx, z - hz, x + hx, z + hz]);
+}
+
+const swOverlaps = [];
+for (let i = 0; i < swRects.length; i++)
+  for (let j = i + 1; j < swRects.length; j++) {
+    const a = swRects[i];
+    const b = swRects[j];
+    if (a[1] < b[3] && a[3] > b[1] && a[2] < b[4] && a[4] > b[2]) swOverlaps.push(`${a[0]} ∩ ${b[0]}`);
+  }
+ok(swOverlaps.length === 0, 'nothing solid is inside anything else solid', swOverlaps.slice(0, 3).join(', '));
+
+const swOut = swRects.filter((r) => r[1] < -SITE.halfX || r[2] < -SITE.halfZ || r[3] > SITE.halfX || r[4] > SITE.halfZ);
+ok(swOut.length === 0, 'everything solid is inside the hoarding', swOut.map((r) => r[0]).join(' '));
+
+/**
+ * THE HOARDING IS ONE PALETTE KEY, AND ITS COST IS WRITTEN DOWN.
+ *
+ * `palette.js` claims this key is nearly free because it reuses the
+ * `corrugated` generator and differs from the `container_*` family by tint
+ * alone — texture sets cache on the generator plus its `bake` options, so no
+ * `bake:` override means no new textures. That claim is one property away from
+ * being false, and the diff that falsifies it (`bake: { size: 1024 }`, to make
+ * the orange crisper) reads as an improvement. TEXTURE-PERF.md counts these.
+ */
+{
+  const h = PALETTE.hoarding_orange;
+  ok(h !== undefined && h.opts?.bake === undefined,
+    'the hoarding shares the corrugated bake — a tint, not a new texture set',
+    h?.opts?.bake ? 'it now overrides its bake' : `generator "${h?.name}"`);
+  ok(h.name === PALETTE.container_red.name,
+    'and it is still the same generator the containers use', `${h.name} vs ${PALETTE.container_red.name}`);
+  const t = h.opts?.tint;
+  const outOfBand = [16, 8, 0].some((sh) => {
+    const lin = Math.pow(((t >> sh) & 255) / 255, 2.2);
+    return lin < 0.02 || lin > 0.9;
+  });
+  ok(!outOfBand, 'and its tint sits inside the 0.02-0.9 reflectance band',
+    `#${t.toString(16)}`);
+}
+
+/**
+ * THREE WAYS PAST THE MIDDLE — the deviation this whole layout turns on.
+ *
+ * The reference model's spine seals to the east wall and leaves one ~3 m gap as
+ * the only route between the halves of the site. That is the choke this map
+ * exists not to be, and every part of the fix is a number someone could tidy
+ * away: the frame's east edge could drift to the hoarding, a barrier could grow
+ * across the service gap, a doorway could be dropped from the table. The map
+ * would still build, still pass every generic check, and quietly become the
+ * thing the deviation was written to avoid.
+ *
+ * The count comes from two sources, because the routes are two kinds of thing.
+ * The OUTDOOR lanes are walked at the frame's own latitude — `isOpen` answers
+ * for open ground. The routes THROUGH the frame cannot be walked that way:
+ * `isOpen` is what the minimap draws as outdoor floor, so an enterable building
+ * reads as solid whether or not you can pass through it. Those are asserted
+ * from the door table instead, as a north hole and a south hole at the same
+ * offset — which is what a straight run through the building actually requires.
+ */
+{
+  const zBand = FRAME.z; // the frame's centre line: where a route must exist
+  const runs = [];
+  let run = null;
+  for (let x = -SITE.halfX + 1; x <= SITE.halfX - 1; x += 0.25) {
+    if (sitework.isOpen(x, zBand, 0.45)) {
+      if (!run) run = [x, x];
+      else run[1] = x;
+    } else if (run) {
+      runs.push(run);
+      run = null;
+    }
+  }
+  if (run) runs.push(run);
+  const lanes = runs.filter(([a, b]) => b - a >= 1.2);
+  ok(lanes.length >= 2, 'the site has a lane down each side of the frame',
+    lanes.map(([a, b]) => `${a.toFixed(1)}..${b.toFixed(1)}`).join('  '));
+  ok(lanes.every(([a, b]) => b - a >= 1.2), 'and both pass a body',
+    `narrowest ${Math.min(...lanes.map(([a, b]) => b - a)).toFixed(1)} m`);
+
+  const north = FRAME_DOORS.filter((d) => d[0] === 'n');
+  const through = north.filter(([, ox]) => FRAME_DOORS.some(([f, sx]) => f === 's' && Math.abs(sx - ox) < 0.01));
+  ok(through.length >= 1, 'and at least one straight route through the frame itself',
+    through.map(([, ox]) => `x=${ox}`).join(' '));
+  ok(lanes.length + through.length >= 3, 'three independent routes cross the middle of the site',
+    `${lanes.length} outdoor + ${through.length} through the frame`);
+}
+
+/**
+ * The frame is the only enterable structure, and its six doorways are what make
+ * it a route rather than a room. Two per long face means it cannot be held by
+ * watching one door — drop to one and the building becomes a trap with a
+ * predictable exit.
+ */
+{
+  const perFace = {};
+  for (const [face] of FRAME_DOORS) perFace[face] = (perFace[face] ?? 0) + 1;
+  ok(FRAME_DOORS.length >= 6, 'the frame has six ways through it', `${FRAME_DOORS.length} doors`);
+  ok((perFace.n ?? 0) >= 2 && (perFace.s ?? 0) >= 2,
+    'and at least two on each long face, so one watcher cannot hold it',
+    `n=${perFace.n} s=${perFace.s} w=${perFace.w} e=${perFace.e}`);
+  ok(FRAME_DOORS.every(([, , w]) => w >= 1.6), 'every doorway passes two players',
+    `narrowest ${Math.min(...FRAME_DOORS.map((d) => d[2]))} m`);
+}
+
+/**
+ * STAIR ARITHMETIC. A flight lands on a platform at its EDGE — one that rose
+ * inside a slab would come up through it, and one a step short would leave the
+ * deck unreachable with nothing in the build to say so. Both failures are
+ * invisible in a still frame and neither throws, so the rise and the run are
+ * asserted against the deck they serve instead of eyeballed.
+ */
+for (const s of SITE_STAIRS) {
+  const target = s.id === 'core' ? CORE.h : FRAME.h;
+  ok(Math.abs(s.steps * s.rise - target) < 1e-6, `the ${s.id} stair climbs exactly to its deck`,
+    `${s.steps} x ${s.rise} = ${(s.steps * s.rise).toFixed(2)} m vs ${target} m`);
+  // Where the top step lands, against the deck edge it is built to reach. The
+  // direction comes from `stairDir` rather than a +Z assumption — the core's
+  // flight climbs west, and an assumption here would silently pass it.
+  const [dx, dz] = stairDir(s.ry);
+  const len = s.steps * s.run;
+  const deck = s.id === 'core' ? CORE : FRAME;
+  const hx = (s.id === 'core' ? CORE.w : FRAME.w) / 2;
+  const hz = (s.id === 'core' ? CORE.w : FRAME.d) / 2;
+  // Only the axis the flight travels along matters: where it sits ALONG the
+  // face it climbs is a placement choice, but how far it gets is not.
+  const reach = dx ? s.x + dx * len : s.z + dz * len;
+  const edge = dx ? deck.x - Math.sign(dx) * hx : deck.z - Math.sign(dz) * hz;
+  ok(Math.abs(reach - edge) < 0.35, `and arrives on the edge of it`,
+    `top at ${reach.toFixed(2)} on ${dx ? 'x' : 'z'}, edge at ${edge.toFixed(2)}`);
+  // Nuketown ships this one because a stair buried under dressing is the one
+  // mistake that silently deletes a position.
+  ok(sitework.isOpen(s.x - dx * 1.6, s.z - dz * 1.6, 0.5),
+    `and has open ground to start from`, `(${s.x}, ${s.z})`);
+}
+
+/**
+ * THE CORE IS THE LANDMARK AND THE MAP'S ONE COMMANDING POSITION, which only
+ * works if it is unmistakably the tallest thing inside the hoarding and if the
+ * only way onto it stays exposed. A second stair, or a neighbour grown to deck
+ * height, would turn a priced position into a free one.
+ */
+{
+  const others = SITE_STRUCTURES.filter((s) => s.id !== 'core').map((s) => s.h);
+  ok(CORE.mastTop > Math.max(...others) + 3, 'the core stands clear of everything else on the site',
+    `${CORE.mastTop} m vs ${Math.max(...others)} m`);
+  ok(CORE.mastTop > SITE.wallH * 2, 'and reads over the hoarding from outside it',
+    `${CORE.mastTop} m over a ${SITE.wallH} m hoarding`);
+  const toCore = SITE_STAIRS.filter((s) => s.id === 'core');
+  ok(toCore.length === 1, 'exactly one flight reaches the core deck', `${toCore.length}`);
+  // The approach must cross open ground: a stair whose foot tucked against
+  // cover would make the strongest position on the map free to take.
+  const f = toCore[0];
+  const [fdx, fdz] = stairDir(f.ry);
+  let openAhead = 0;
+  for (let d = 1; d <= 6; d += 0.5) if (sitework.isOpen(f.x - fdx * d, f.z - fdz * d, 0.45)) openAhead += 0.5;
+  ok(openAhead >= 4.5, 'and its run-up is exposed ground, not cover', `${openAhead.toFixed(1)} m of open approach`);
+}
+
+/**
+ * THE SOUTH CORE IS SCENERY, DELIBERATELY. The two towers are unequal because
+ * the source is 180-degree symmetric and this game has no team colours: two
+ * matching towers means no way to tell which end of the site you are looking
+ * at. If a later edit gives the south one a stair, the map loses its only
+ * orientation cue and gains a second uncontested overlook.
+ */
+{
+  const south = SITE_STRUCTURES.find((s) => s.id === 'core_s');
+  ok(!SITE_STAIRS.some((s) => Math.abs(s.x - south.x) < south.w && Math.abs(s.z - south.z) < south.d + 8),
+    'nothing climbs the south core — it is a sightline break, not a position');
+  ok(Math.abs(south.h - CORE.mastTop) > 2, 'and it reads as the shorter of the two towers',
+    `${south.h} m vs ${CORE.mastTop} m`);
+}
+
+/**
+ * The end sheds break standing sightlines down the length of the site, which
+ * only works if they are TALL — one that drifted to barricade height would
+ * leave two 84 m yards open at head height, the failure `spawns.probe.mjs`
+ * found on Nuketown. And a shed parked on a spawn point fails nothing:
+ * `buildSpawnPoints` silently culls the point against real collision.
+ */
+{
+  const sheds = SITE_STRUCTURES.filter((s) => s.id === 'office' || s.id === 'store');
+  ok(sheds.every((s) => s.h > 2.4), 'the end sheds stand above head height',
+    `${Math.min(...sheds.map((s) => s.h))} m shortest`);
+  const swallowed = sitework.spawnPoints.filter(([x, z]) =>
+    swRects.some(([, x0, z0, x1, z1]) => x > x0 - 0.6 && x < x1 + 0.6 && z > z0 - 0.6 && z < z1 + 0.6));
+  ok(swallowed.length === 0, 'and nothing solid is parked on a spawn point',
+    swallowed.map(([x, z, , zone]) => `${zone}(${x},${z})`).join(' '));
+}
+
+/**
+ * Every spawn point has to be walkable-to from the boot spawn. This is the
+ * check that would catch a lane sealed by an edit somewhere else entirely —
+ * a barrier grown across the east gap strands a whole zone, and the map still
+ * builds and still spawns you there.
+ */
+{
+  const seen = new Set();
+  const start = sitework.spawnPoints[0];
+  const stack = [[Math.round(start[0]), Math.round(start[1])]];
+  seen.add(`${stack[0][0]},${stack[0][1]}`);
+  while (stack.length) {
+    const [x, z] = stack.pop();
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx;
+      const nz = z + dz;
+      const k = `${nx},${nz}`;
+      if (seen.has(k)) continue;
+      // 0.45 m of clearance: a body's width, not a point.
+      if (!sitework.isOpen(nx, nz, 0.45)) continue;
+      seen.add(k);
+      stack.push([nx, nz]);
+    }
+  }
+  const stranded = sitework.spawnPoints.filter(([x, z]) => {
+    for (let dx = -1; dx <= 1; dx++)
+      for (let dz = -1; dz <= 1; dz++) if (seen.has(`${Math.round(x) + dx},${Math.round(z) + dz}`)) return false;
+    return true;
+  });
+  ok(stranded.length === 0, 'every spawn point can be walked to from the boot spawn',
+    stranded.length ? stranded.map(([x, z, , zone]) => `${zone}(${x},${z})`).join(' ') : `${seen.size} cells reachable`);
+}
+
+/**
+ * THE GATES ARE SEALED — the same probe as Rust's gates and Nuketown's street
+ * mouths, for the same reason. The hoarding is deliberately open for a vehicle
+ * gate on each long side, and the container parked across is the only thing
+ * between that opening and empty spoil.
+ *
+ * The probe stays 3.5 m deep on purpose: run it deeper and it reaches the west
+ * haul road's own cover, and becomes an assertion that cannot fail.
+ */
+for (const sx of [-1, 1]) {
+  const leaks = [];
+  for (let z = -SITE.gateHalf + 0.2; z <= SITE.gateHalf - 0.2; z += 0.2) {
+    let solid = false;
+    for (let d = 0.2; d <= 3.5; d += 0.2) if (inSolidSitework(sx * (SITE.halfX - d), z, 0.1)) { solid = true; break; }
+    if (!solid) leaks.push(z.toFixed(1));
+  }
+  ok(leaks.length === 0, `the ${sx < 0 ? 'west' : 'east'} gate is sealed`,
+    leaks.length ? `leaks at z=${leaks.slice(0, 4).join(',')}` : `${(SITE.gateHalf * 2 - 0.4).toFixed(1)} m of opening covered`);
+}
+
+// The site is a blinded slab: this map pays for cheap terrain by building every
+// height difference on top of it, so a dig sneaking into the height field is a
+// real regression.
+{
+  let flat = true;
+  for (let x = -SITE.halfX; x <= SITE.halfX && flat; x += 2)
+    for (let z = -SITE.halfZ; z <= SITE.halfZ && flat; z += 2) if (Math.abs(groundYSitework(x, z)) > 0.2) flat = false;
+  ok(flat, 'the site floor is flat — every rise on this map is built');
+}
+ok(!sitework.isOpen(0, SITE.halfZ + 3) && !sitework.isOpen(SITE.halfX + 3, 0),
+  'outside the hoarding is not playable ground');
+
+/**
+ * Sample the site. A yard with one big frame and a lot of scattered cover, so
+ * this sits in the same band as Rust's yard rather than the Loop's dense block.
+ */
+{
+  let open = 0;
+  let total = 0;
+  for (let x = -SITE.halfX; x <= SITE.halfX; x += 1)
+    for (let z = -SITE.halfZ; z <= SITE.halfZ; z += 1) {
+      total++;
+      if (sitework.isOpen(x, z)) open++;
+    }
+  const frac = open / total;
+  ok(frac > 0.45 && frac < 0.9, 'walkable fraction sits in the open-yard band', frac.toFixed(2));
+}
 
 console.log(
   fail === 0

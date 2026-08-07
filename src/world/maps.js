@@ -7,6 +7,7 @@ import { NUKETOWN_MAP } from './nuketown.js';
 import { BLOODGULCH_MAP } from './bloodgulch.js';
 import { DOME_MAP } from './dome.js';
 import { SHIVAM_MAP } from './shivam.js';
+import { SITEWORK_MAP } from './sitework.js';
 
 /**
  * WORLD — the map list.
@@ -125,6 +126,13 @@ const REGISTRY = [
     enabled: true,
     name: 'Shivam',
     description: 'Bondi Beach front, Sydney',
+  },
+  {
+    map: SITEWORK_MAP,
+    order: 39.5,
+    enabled: true,
+    name: 'Site Work',
+    description: 'Live construction site behind orange hoarding',
   },
   {
     map: MARKET_MAP,
@@ -299,4 +307,4 @@ export function saveMapPreference(id) {
   }
 }
 
-export { MARKET_MAP, RUST_MAP, WILMOT_MAP, LOOP_MAP, FISHERS_MAP, NUKETOWN_MAP, BLOODGULCH_MAP, DOME_MAP, SHIVAM_MAP };
+export { MARKET_MAP, RUST_MAP, WILMOT_MAP, LOOP_MAP, FISHERS_MAP, NUKETOWN_MAP, BLOODGULCH_MAP, DOME_MAP, SHIVAM_MAP, SITEWORK_MAP };

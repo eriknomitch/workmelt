@@ -282,6 +282,35 @@ export const PALETTE = {
     opts: { vertexMasks: true, tint: 0xb9a988, scale: 2.4, normalStrength: 1.25, weather: [0.6, 0.4, 0.45, 0.5] },
   },
   /**
+   * SITE HOARDING. Safety orange profiled sheet, and Site Work's single accent
+   * (DESIGN.md's one-accent-per-map rule) — it is the first thing you see of
+   * that map and the thing that tells you where its edge is.
+   *
+   * Reusing the `corrugated` generator is what makes this nearly free. Texture
+   * sets are cached on the generator plus its `bake` options only, and `tint`
+   * is a material parameter rather than a bake one — so this key shares the
+   * three maps the `container_*` family already baked, and costs a material
+   * instance and one draw call rather than 3 more RGBA8 textures. A new LOOK
+   * (a different generator) is the expensive kind of palette addition; a new
+   * TINT is not.
+   *
+   * `scale` is a tile size in metres, so 1.5 lands the profile ribs at roughly
+   * the 25 cm pitch hoarding sheet actually comes in — coarser than the 2.4 the
+   * containers use, because a hoarding panel is a smaller sheet than a 40 ft box.
+   *
+   * The BLUE channel is the one with no headroom. Safety orange wants it near
+   * zero, and this file's own 0.02 reflectance floor puts the minimum at 0x2b —
+   * a first pass at 0x2a was under it, which is a black point no real paint has
+   * and which crushes to pure black in shadow. `maps.selftest.mjs` asserts the
+   * band for this key rather than trusting the eye, because the difference
+   * between 0x2a and 0x38 is invisible in a lit frame and not in a dark one.
+   */
+  hoarding_orange: {
+    name: 'corrugated',
+    surface: 'metal',
+    opts: { vertexMasks: true, tint: 0xd06e38, scale: 1.5, normalStrength: 1.2, weather: [0.5, 0.45, 0.55, 0.5] },
+  },
+  /**
    * Structural steel that is PAINTED and only rusting through at the arris —
    * the derrick legs, gantry stringers and pipe trestles. Distinct from
    * `metal_rust`, which is bare corroded sheet: a whole 14 m tower in bare rust
