@@ -56,6 +56,8 @@ scratch/
 !.claude/settings.json
 !.claude/hooks/
 
+!.claude/skills/
+
 # Local design-iteration screenshots (chrome-devtools)
 .shots/
 
