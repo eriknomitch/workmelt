@@ -383,6 +383,7 @@ export class SkySystem {
     this._environment = null;
     /** EV the active map adds to this system's own metering compensation. */
     this._envExposureBias = 0;
+    this._envMoonlight = 1;
 
     this._applyWeather();
     this._applyFog();
@@ -502,6 +503,13 @@ export class SkySystem {
     this._environment = next;
     const base = this._defaultEnvironment;
     this._envExposureBias = next?.exposureBias ?? 0;
+    // How much of the moon a map keeps, 0..1. The atmosphere is physical, so
+    // at this site the moon is up all night and the sky it scatters is BLUE —
+    // there is no hour that gives a black, starlit sky. A map that wants one
+    // (Site Work: a city in blackout) dials the moon down instead of lying
+    // about the hour. Scales the beam, the sky's moon irradiance and the disc
+    // together so the sky stays self-consistent; stars are untouched.
+    this._envMoonlight = THREE.MathUtils.clamp(next?.moonlight ?? 1, 0, 1);
     this.setWeather({ ...base.weather, ...(next?.weather ?? null) });
     // setTimeOfDay re-runs _updateCelestial, which is where the bias lands.
     this.setTimeOfDay(next?.hour ?? base.hour);
@@ -718,7 +726,8 @@ export class SkySystem {
     const mb = MT[2] * cool[2];
     const mmax = Math.max(1e-6, mr, mg, mb);
     this.moonLight.color.setRGB(mr / mmax, mg / mmax, mb / mmax);
-    let moonI = MOON_ILLUMINANCE_NIGHT * c.moonPhase * mmax * discM * keyRamp;
+    const moonScale = this._envMoonlight ?? 1;
+    let moonI = MOON_ILLUMINANCE_NIGHT * c.moonPhase * mmax * discM * keyRamp * moonScale;
 
     // The renderer switches its own 4.3-intensity fallback sun back on if no
     // foreign directional light is brighter than 0.01. Keep a floor so that
@@ -726,7 +735,7 @@ export class SkySystem {
     if (Math.max(this._baseSunIntensity, moonI) < 0.03) moonI = 0.03;
     this.moonLight.intensity = moonI;
 
-    const moonIrr = MOON_ILLUMINANCE_NIGHT * c.moonPhase * keyRamp;
+    const moonIrr = MOON_ILLUMINANCE_NIGHT * c.moonPhase * keyRamp * moonScale;
     s.uMoonIrradiance.value.set(moonIrr * cool[0], moonIrr * cool[1], moonIrr * cool[2]);
 
     // Day: a pale disc a little above the daytime sky, which is what the moon
@@ -734,7 +743,9 @@ export class SkySystem {
     // clip to white and bloom, the way every photograph of a moon does.
     // Both numbers are *ratios to the sky the LUT produces*, so they moved with
     // the pi correction in atmosphere.js rather than being retuned by eye.
-    const moonDisc = THREE.MathUtils.lerp(0.35, 3.5, nightRamp);
+    // The disc keeps a floor: a blackout dims the CITY, not the moon itself —
+    // a starfield with no moon in it reads as an error, not as night.
+    const moonDisc = THREE.MathUtils.lerp(0.35, 3.5, nightRamp) * Math.max(moonScale, 0.4);
     s.uMoonDiscRadiance.value.set(moonDisc, moonDisc * 0.985, moonDisc * 0.95);
 
     // ---- ambient colour (published, not used for lighting) -----------------

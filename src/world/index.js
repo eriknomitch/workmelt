@@ -264,6 +264,7 @@ export class WorldSystem {
     this.power = null;
     this._mains = null;
     this._emergency = null;
+    this._city = null;
 
     // The ballast pool survives (it belongs to the system, not to the level),
     // but the scan of everybody else's point lights is stale and the adopted
@@ -462,10 +463,23 @@ export class WorldSystem {
        * frames anybody is looking.
        */
       this._emergency = circuit(spec.emergency);
+      /**
+       * The CITY circuit: emitters past the playable area that share the
+       * grid's fate but not its floor. `dim` exists so a fight next to a lamp
+       * mast stays winnable — a gameplay property of the NEAR field, which is
+       * why `power.selftest.mjs` asserts it is never zero. The lit rooms in
+       * the backdrop blocks are not near anything: they are set dressing for
+       * a city whose power just went, and at 6% of authored they still read
+       * as lit windows once the night meter adapts up. So they get their own
+       * wire and it cuts to actual zero, on the same normalised level the
+       * emergency circuit already uses.
+       */
+      this._city = circuit(spec.city);
     } else {
       this.power = null;
       this._mains = null;
       this._emergency = null;
+      this._city = null;
     }
   }
 
@@ -656,6 +670,9 @@ export class WorldSystem {
         const span = Math.max(1e-3, 1 - this.power.dim);
         const emg = Math.min(1, Math.max(0, (1 - level) / span));
         for (const e of this._emergency) e.mat.emissiveIntensity = e.base * emg;
+        // 1 at full mains, 0 at the dim floor — the city goes truly dark.
+        const city = Math.min(1, Math.max(0, (level - this.power.dim) / span));
+        for (const e of this._city) e.mat.emissiveIntensity = e.base * city;
       }
     }
   }

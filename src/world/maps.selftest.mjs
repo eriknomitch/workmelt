@@ -296,6 +296,11 @@ for (const m of ALL_MAPS.filter((m) => m.environment)) {
     `"${m.id}" asks for a sane exposure compensation`,
     `${e.exposureBias ?? 0} EV`
   );
+  ok(
+    e.moonlight === undefined || (Number.isFinite(e.moonlight) && e.moonlight >= 0 && e.moonlight <= 1),
+    `"${m.id}" moonlight, if asked for, is a 0..1 scale`,
+    `${e.moonlight ?? 1}`
+  );
   const unknown = Object.keys(e.weather ?? {}).filter((k) => !WEATHER_KEYS.has(k));
   ok(unknown.length === 0, `"${m.id}" only asks for weather the sky reads`, unknown.join(' '));
   ok(

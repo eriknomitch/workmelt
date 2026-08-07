@@ -1204,7 +1204,11 @@ export const SITEWORK_MAP = {
     // See `environment.exposureBias`: these two must sum to 2.1 EV, which is
     // what the blacked-out frame is authored at.
     outageEv: 1.65,
-    mains: ['sw_window', 'sw_glow'],
+    mains: ['sw_glow'],
+    // The rooms in the blocks past the hoarding: same grid, no dim floor —
+    // a total city outage kills them outright. See the city circuit in
+    // `world/index.js`.
+    city: ['sw_window'],
     emergency: ['sw_neon'],
   },
   spawnPoints: SITEWORK_SPAWNS,
@@ -1243,6 +1247,13 @@ export const SITEWORK_MAP = {
   environment: {
     hour: 22.0,
     exposureBias: 0.45,
+    // The moon dialled almost out. The atmosphere is physical and the moon is
+    // up all night at this site, so 22:00 is a BLUE night — and this map wants
+    // a black one, stars and cloud silhouettes over a city you can only read
+    // by its own fittings. See `moonlight` in sky.applyEnvironment. This is
+    // deliberately NOT exposureBias: exposure would dim the neon and the
+    // lamps too, and the 0.45 + 1.65 = 2.1 EV outage sum is asserted.
+    moonlight: 0.12,
     weather: {
       turbidity: 1.9,
       cloudCoverage: 0.18,

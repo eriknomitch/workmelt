@@ -1006,11 +1006,15 @@ export const PALETTE = {
         surface: 'glass',
         opts: { ...FLAT, tint: 0xf0b060, three: { emissive: 0xff8a2a, emissiveIntensity: 6, toneMapped: true } },
       },
-      /** Somebody is still working in the blocks going up past the hoarding. */
+      /** Somebody is still working in the blocks going up past the hoarding.
+       * The tint is DARK on purpose: these are on the mains circuit, and when
+       * the grid goes down the emissive drops to 6% — a pale albedo kept the
+       * quads reading as lit rectangles off skylight alone, so the powered
+       * look is carried entirely by the emissive. */
       sw_window: {
         name: 'flat_matte',
         surface: 'glass',
-        opts: { ...FLAT, tint: 0xf0dcb4, three: { emissive: 0xffd9a0, emissiveIntensity: 3.2, toneMapped: true } },
+        opts: { ...FLAT, tint: 0x3a3d44, three: { emissive: 0xffd9a0, emissiveIntensity: 3.2, toneMapped: true } },
       },
     };
   })(),
