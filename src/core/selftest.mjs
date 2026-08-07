@@ -294,12 +294,10 @@ await checkAsync('calibrates once, persists the tier, and reloads when the pipel
 
   assert.equal(loadGraphicsSettings(storage).tier, 'low');
   assert.equal(loadGraphicsSettings(storage).renderScale, 0.7);
-  assert.equal(reloads, 0, 'the tier switch waits for a safe boundary');
-  assert.equal(system.getStatus().state, 'reload-pending');
-
-  ctx.time.scale = 0; // player pauses — that is the safe boundary
-  system.lateUpdate(0, ctx);
+  // Immediate, unlike the live walk-down: the calibration scrim blocks play,
+  // so there is no fight to interrupt and no death to wait for.
   assert.equal(reloads, 1);
+  assert.equal(system.getStatus().state, 'reloading');
   assert.equal(location.href, 'http://localhost:5173/?room=ABC123');
 });
 
@@ -347,11 +345,7 @@ await checkAsync('discards hidden calibration frames before choosing a tier', as
   system.lateUpdate(0, ctx); // warm-up complete, window opens
   perf.count = 360;
   nowMs = 15002;
-  system.lateUpdate(0, ctx); // measured — reload deferred while active
-  assert.equal(reloads, 0);
-
-  active = false;
-  system.lateUpdate(0, ctx);
+  system.lateUpdate(0, ctx); // measured — the calibration reload is immediate
   assert.equal(reloads, 1);
 });
 

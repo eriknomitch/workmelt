@@ -558,7 +558,12 @@ export class AdaptiveQualitySystem {
     });
 
     if (tier !== ctx.config.quality && loadGraphicsSettings(this.storage).tier === tier) {
-      this._requestReload();
+      // Immediate, not deferred: the UI blocks play behind a scrim for the
+      // whole calibration phase, so nobody is mid-fight here — and the deferred
+      // path would wait on a death that cannot happen behind the blocker.
+      this._status.state = 'reloading';
+      this._reloadPending = true;
+      this.location?.reload?.();
       return;
     }
     this._activatePolicy();

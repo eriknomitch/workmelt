@@ -621,18 +621,30 @@ const CSS = `
   color: var(--amber); text-shadow: var(--sh);
 }
 
-/* ================================================= calibration notice */
-/* Quiet pill under the compass while Auto measures the machine. HUD chrome,
-   so it keeps the in-world outlined treatment, not the brand tokens. */
+/* ================================================ calibration blocker */
+/* Full-frame scrim while Auto measures the machine: play is frozen (the
+   tier-switch reload would yank a live fight away), so the whole picture says
+   "wait" rather than a quiet pill saying "by the way". The world stays visible
+   and running underneath — calibration needs live frames. HUD chrome, so it
+   keeps the in-world outlined treatment, not the brand tokens. */
 .ow-calib {
-  position:absolute; left:50%; top: calc(84px * var(--k));
-  transform: translateX(-50%);
+  position:absolute; inset:0;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap: calc(var(--u) * 3);
+  background: rgba(4,7,10,.62);
+  pointer-events:auto; cursor:wait;
+}
+.ow-calib-box {
   display:flex; align-items:center; gap: calc(var(--u) * 1.6);
-  padding: calc(var(--u) * 1.2) calc(var(--u) * 2.4);
-  font-size: calc(10px * var(--k)); letter-spacing:.22em;
+  padding: calc(var(--u) * 2) calc(var(--u) * 4);
+  font-size: calc(13px * var(--k)); letter-spacing:.24em;
+  color: var(--ink); text-shadow: var(--sh);
+  border: 1px solid rgba(255,255,255,.28); border-radius: calc(2px * var(--k));
+  background: rgba(8,11,14,.6);
+}
+.ow-calib-sub {
+  font-size: calc(9.5px * var(--k)); letter-spacing:.22em;
   color: var(--ink-2); text-shadow: var(--sh);
-  border: 1px solid rgba(255,255,255,.18); border-radius: calc(2px * var(--k));
-  background: rgba(8,11,14,.42);
 }
 .ow-calib-dot {
   width: calc(6px * var(--k)); height: calc(6px * var(--k)); border-radius:50%;

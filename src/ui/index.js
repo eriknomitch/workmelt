@@ -101,15 +101,6 @@ export class UiSystem {
     this.prompt = new Prompt(this.chromeLayer);
     this.banner = new Banner(this.chromeLayer);
 
-    // Auto-calibration notice: while the quality system is measuring this
-    // machine (its `calibrating` state), say so — a player who sees the game
-    // boot at medium and then shift should know why. Never shows in capture
-    // boots: adaptive quality is disabled there, so the state is `override`.
-    this.calib = el('div', 'ow-calib', this.chromeLayer);
-    el('i', 'ow-calib-dot', this.calib);
-    el('span', null, this.calib, 'AUTO-CALIBRATING GRAPHICS QUALITY');
-    this._calibShown = false;
-    setStyle(this.calib, 'display', 'none');
 
     // Performance readout gets its own layer above the game chrome and outside
     // the HUD opacity fade — see the rationale in perfhud.js. Suppressed
@@ -123,6 +114,30 @@ export class UiSystem {
 
     this.perfLayer = el('div', 'ow-layer', this.root);
     this.perf = ctx.config.deterministic ? null : new PerfHud(this.perfLayer, this._perfOpts());
+
+    // Auto-calibration blocker: while the quality system is measuring this
+    // machine (its `calibrating` state), a semi-opaque scrim covers the whole
+    // frame and gameplay input is frozen — a player who starts fighting during
+    // calibration would only have the match yanked out from under them by the
+    // tier-switch reload. The world keeps running underneath (frozen, not
+    // paused) because calibration needs live frames to measure. Sits above the
+    // HUD chrome and the flash layer; the pause menu (its own host + z-index)
+    // stays above it. Never shows in capture boots: adaptive quality is
+    // disabled there, so the state is `override`, and this system never
+    // touches `input.frozen` unless the state transitions through
+    // `calibrating` — the capture harness owns that flag in those runs.
+    this.calib = el('div', 'ow-calib', this.root);
+    const calibBox = el('div', 'ow-calib-box', this.calib);
+    el('i', 'ow-calib-dot', calibBox);
+    el('span', null, calibBox, 'AUTO-CALIBRATING GRAPHICS QUALITY');
+    el(
+      'div',
+      'ow-calib-sub',
+      this.calib,
+      'MEASURING THIS MACHINE — THE MATCH UNLOCKS IN A FEW SECONDS'
+    );
+    this._calibShown = false;
+    setStyle(this.calib, 'display', 'none');
 
     // The settings panel is a modal over the whole app, not HUD chrome: it has
     // to sit above the lobby (z-index 60) as well as the HUD, and `.ow-hud`'s
@@ -614,6 +629,12 @@ export class UiSystem {
     if (calibrating !== this._calibShown) {
       this._calibShown = calibrating;
       setStyle(this.calib, 'display', calibrating ? '' : 'none');
+      // Freeze, not disable: `enabled` doubles as the "we are in a live match"
+      // signal for the pause logic above, while `frozen` stops movement and
+      // fire but leaves the world simulating — the frames calibration needs.
+      // Only touched on the transition so capture runs (which own this flag
+      // and never reach `calibrating`) are left alone.
+      ctx.input.frozen = calibrating;
     }
     this.menu.update(rawDt);
 
