@@ -878,6 +878,10 @@ export class RenderSystem {
           }
         }
         scratch.dispose();
+        // Programs are warm; DOF's own targets get their first bind here too —
+        // they are outside the every-frame chain (the pass is skipped until
+        // ADS), so this is the only pre-ADS chance to allocate them.
+        this.dof?.warm(renderer);
       }
     } catch (e) {
       return { ok: false, reason: String(e && e.message ? e.message : e) };
@@ -1221,6 +1225,10 @@ export class RenderSystem {
     this.taa?.setSize(rw, rh);
     this.motionBlur?.setSize(rw, rh);
     this.dof?.setSize(rw, rh);
+    // Pay the DOF targets' first-bind allocation here, at resize time, rather
+    // than inside the first ADS frame — the only frame that ever binds them.
+    // See DepthOfField.warm for what this does and does not buy.
+    if (this.dof && this.renderer) this.dof.warm(this.renderer);
     this.bloom?.setSize(rw, rh);
 
     this.patcher.setScreenSize(rw, rh);

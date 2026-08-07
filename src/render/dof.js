@@ -306,6 +306,24 @@ export class DepthOfField {
   }
 
   /**
+   * Bind and clear both internal targets once, so the driver's first-bind
+   * allocation happens here — at boot or resize — rather than inside the
+   * first ADS frame, which is the only place these targets are ever used.
+   * Hygiene, not a hitch fix: the measured first-ADS stall at large internal
+   * resolutions reproduces with DOF disabled entirely and tracks GPU
+   * saturation, not this allocation (scratch/ads-hitch.mjs, all tiers).
+   */
+  warm(renderer) {
+    if (!this.rtA || !this.rtB) return;
+    const prev = renderer.getRenderTarget();
+    renderer.setRenderTarget(this.rtA);
+    renderer.clear();
+    renderer.setRenderTarget(this.rtB);
+    renderer.clear();
+    renderer.setRenderTarget(prev);
+  }
+
+  /**
    * @param amount 0..1 ADS engagement; the CoC scales with it so the blur ramps
    *               in with the sight picture instead of popping.
    * @param out    full-res target to write the recombined image into
