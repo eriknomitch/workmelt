@@ -79,6 +79,14 @@ either works: `test:quality` = `src/core/selftest.mjs`, `test:graphics` =
   per event, that a devicePixelRatio move at a fixed CSS size still reaches the
   renderer, and the resolution budget's clamp arithmetic — area respected,
   aspect ratio exact, `MAX_TEXTURE_SIZE` never breached.
+- `node src/fx/tracers.selftest.mjs` checks how long a bullet tracer stays on
+  screen. Lifetime is `dist / speed` and the visual speed is clamped, so RANGE
+  alone used to decide it: inside ~34 m a streak existed for two frames, moved
+  further between them than its own length, and measured zero pixels in the FX
+  rig — the effect the file describes was not being drawn at the ranges people
+  fight at. Nothing catches that: it throws nothing, the particles really are
+  emitted, and a still capture of a 35 ms effect is empty whether it is right
+  or wrong. So the check is on TIME, in frames. Mutation-checked.
 - `node src/render/dof.selftest.mjs` checks the ADS depth-of-field focus contract:
   that the pixel under the reticle is sharp at every engagement range, that the
   near band never reaches the mid-ground, that the far band always lands behind
@@ -303,13 +311,14 @@ Read on demand, not loaded at session start:
 ## Verifying a change
 
 **Default to not rendering.** The Node-only self-tests carry most of the real
-coverage and are effectively free — all twenty-seven of them (`physics`, `ai`,
-`ai/lod`, `ai/footstep`, `ai/roo`, `weapons/balance`, `weapons/throwables`,
+coverage and are effectively free — all twenty-eight of them (`physics`, `ai`,
+`ai/lod`, `ai/footstep`, `ai/roo`, `fx/tracers`, `weapons/balance`, `weapons/throwables`,
 `weapons/loadout`, `weapons/autoreload`, `weapons/melee`, `weapons/baked`,
 `audio/attenuation`,
 `audio/reload`,
 `core` × 4, `render/resolution`, `render/dof`, `ui/touch`, `ui/killicons`, `match/bounds`,
-`match/streaks`, `world/maps`, `world/collision`, `world/spawns`, `world/power`) run in ~10 s
+`match/streaks`, `world/maps`, `world/collision`, `world/power`, `world/spawns`)
+run in ~10 s
 combined, and `world/maps.selftest.mjs` builds every map headlessly without a
 browser at all. Run those plus `npm run build` and stop there unless the change
 is genuinely a function of the image.
@@ -322,7 +331,7 @@ find src server \( -name 'selftest.*' -o -name '*.selftest.*' \) | sort
 
 Note both halves of that pattern — four suites are a bare `selftest.js`/`.mjs`
 (`physics`, `ai`, `core`, `audio`) and `-name '*.selftest.*'` alone silently
-misses them. It returns 32 files; the twenty-seven above are the free ones. The
+misses them. It returns 33 files; the twenty-eight above are the free ones. The
 other five are not: `server/{bounds,lobby,map,skin}.selftest.mjs` each stand up
 a real relay on a real socket, and `src/audio/selftest.js` is a library the audio
 probe drives from a page — run directly it exits 0 having asserted nothing.

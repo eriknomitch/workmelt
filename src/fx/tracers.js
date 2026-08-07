@@ -13,10 +13,30 @@ import { resetSpawn } from './particles.js';
  *
  * Three sprites: a hot head, the streak core (HDR, blooms), and a longer, dimmer
  * afterglow behind it.
+ *
+ * THE SPEED CLAMP ALONE DOES NOT ACHIEVE THAT, and for most of a match it
+ * achieved the opposite. Lifetime is `dist / v`, so with `v` pinned at
+ * MAX_SPEED by every real muzzle velocity, RANGE alone decided how long a
+ * streak existed — and inside ~34 m that is less time than the frame rate can
+ * resolve. Measured in the FX rig at 12 m: the tracer existed for 35 ms, was
+ * sampled at exactly two instants (n=0.47 and n=0.94), moved 5.6 m between
+ * them — further than its own 4.9 m streak, so it never overlapped itself —
+ * and contributed ZERO warm pixels to either frame. The same tracer at 60 m/s
+ * measured 371. So the visual the whole file describes was, at the ranges
+ * people actually fight at, not being drawn at all: what read as "tracers"
+ * was the muzzle flash and the impact sparks either side of nothing.
+ *
+ * MIN_LIFE is the fix, and it is a floor on TIME rather than on speed because
+ * time is what the frame rate spends. A short shot flies slower so it lasts
+ * ~6 frames; a long shot is untouched, because `dist / MIN_LIFE` only falls
+ * below MAX_SPEED under MAX_SPEED * MIN_LIFE = 34 m. Departure and arrival
+ * stay honest at the ranges where they were ever legible.
  */
 
 const MIN_SPEED = 55;
 const MAX_SPEED = 340;
+/** Seconds a streak must stay on screen — about six frames at 60 Hz. */
+const MIN_LIFE = 0.1;
 
 export function spawnTracer(fx, from, to, speed, opts) {
   const rng = fx.rng;
@@ -28,7 +48,12 @@ export function spawnTracer(fx, from, to, speed, opts) {
   dx /= dist;
   dy /= dist;
   dz /= dist;
-  const v = Math.min(MAX_SPEED, Math.max(MIN_SPEED, speed || 260));
+  // Slow enough to last MIN_LIFE, never faster than the round and never
+  // outside the readable band. MIN_SPEED still wins on a point-blank shot —
+  // a tracer that crawls reads as a firework, and over a couple of metres
+  // there is no streak to follow anyway.
+  const want = Math.min(speed || 260, dist / MIN_LIFE);
+  const v = Math.min(MAX_SPEED, Math.max(MIN_SPEED, want));
   const life = dist / v;
   const warm = opts?.warm ?? 1;
   // Start a little out of the bore so the tracer is not born inside the flash.
