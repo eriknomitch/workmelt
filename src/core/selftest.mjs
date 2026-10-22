@@ -507,6 +507,51 @@ await checkAsync('promotes an unproven tier after 20 s of headroom, at a safe bo
   assert.equal(h.reloads(), 1, 'the local death is the safe boundary');
 });
 
+await checkAsync('a room match holds a queued reload until the match ends', async () => {
+  // A reload drops the socket: to the relay, the player left the match. So in
+  // a room match death and pause are not safe boundaries — only the end is.
+  const h = promotionHarness();
+  await h.system.init(h.ctx);
+  h.ctx.events.emit('match:start', { mode: 'versus' });
+  h.run(22000);
+  assert.equal(loadGraphicsSettings(h.storage).tier, 'ultra', 'the promotion is still persisted');
+  assert.equal(h.system.getStatus().state, 'reload-pending');
+
+  h.ctx.events.emit('player:death', {});
+  assert.equal(h.reloads(), 0, 'a death mid-match is not a safe boundary');
+  h.ctx.time.scale = 0;
+  h.system.lateUpdate(0, h.ctx);
+  assert.equal(h.reloads(), 0, 'nor is pausing — the room match keeps running');
+  h.ctx.time.scale = 1;
+
+  h.ctx.events.emit('match:end', { reason: 'complete' });
+  assert.equal(h.reloads(), 1, 'the end of the match is');
+});
+
+await checkAsync('a warm-up pulled into the room countdown does not reload', async () => {
+  const h = promotionHarness();
+  await h.system.init(h.ctx);
+  h.ctx.events.emit('match:start', { mode: 'bots' });
+  h.run(22000);
+  assert.equal(h.system.getStatus().state, 'reload-pending');
+  h.ctx.events.emit('match:end', { reason: 'pulled-in' });
+  assert.equal(h.reloads(), 0, 'reloading now would drop it out of the starting cohort');
+  h.ctx.events.emit('match:start', { mode: 'join' });
+  h.ctx.events.emit('player:death', {});
+  assert.equal(h.reloads(), 0, 'and the room match it lands in holds the reload');
+  h.ctx.events.emit('match:end', { reason: 'left' });
+  assert.equal(h.reloads(), 1);
+});
+
+await checkAsync('a bots warm-up still reloads on the local death', async () => {
+  const h = promotionHarness();
+  await h.system.init(h.ctx);
+  h.ctx.events.emit('match:start', { mode: 'bots' });
+  h.run(22000);
+  h.ctx.events.emit('player:death', {});
+  assert.equal(h.reloads(), 1, 'nobody else is in a warm-up');
+});
+
 await checkAsync('the persisted ceiling from a past walk-down blocks promotion', async () => {
   const h = promotionHarness({ settings: { tierCeiling: 'high' } });
   await h.system.init(h.ctx);

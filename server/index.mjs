@@ -161,6 +161,15 @@ function getRoom(code) {
       starting: new Set(),
       /** When the running match ends on time (ms epoch). 0 while no match. */
       matchUntil: 0,
+      /**
+       * The scoreline of players who dropped out of the RUNNING match, keyed by
+       * their client token (see sanitiseToken). A dropped socket is not a
+       * forfeit — a network blip, or the client reloading itself to change
+       * graphics tier, comes back as a brand-new peer, and without this its
+       * `deploy` would enter the match at zero. Only good for the match it was
+       * banked in: cleared whenever a new scoreline starts or the match ends.
+       */
+      departed: new Map(),
     };
     rooms.set(code, r);
   }
@@ -282,6 +291,23 @@ function sanitiseMap(v) {
 }
 
 /**
+ * The client's reconnect token: an opaque per-tab id it keeps across reloads,
+ * so a player who drops out of a match and comes back is recognisable as the
+ * same player. Anything malformed is simply no token — that player rejoins at
+ * zero, which is what every client did before tokens existed.
+ */
+function sanitiseToken(v) {
+  const s = String(v ?? '').slice(0, 64);
+  return /^[A-Za-z0-9_-]{8,}$/.test(s) ? s : null;
+}
+
+/** The match is over (or a new one is starting): banked scorelines lapse. */
+function clearMatchClock(room) {
+  room.matchUntil = 0;
+  room.departed.clear();
+}
+
+/**
  * Start the match if the room is ready for one.
  *
  * The condition is "everybody who is looking at the lobby has readied up",
@@ -332,6 +358,7 @@ function startMatch(room, cohort) {
     p.deaths = 0;
   }
   // The clock runs from the moment players are actually on the floor.
+  room.departed.clear();
   room.matchUntil = room.startAt + MATCH_MS;
   broadcast(room, {
     t: 'match_start',
@@ -377,7 +404,7 @@ function endMatch(room, reason, winnerId) {
     ms: MATCH_MS,
     standings: rows,
   });
-  room.matchUntil = 0;
+  clearMatchClock(room);
   for (const p of room.peers.values()) {
     if (!inMatch(p)) continue;
     p.deployed = false;
@@ -403,7 +430,7 @@ function maybeEndOnTime(room) {
   if (startRemaining(room) > 0) return; // still counting down — clock not live
   const rows = standings(room);
   if (!rows.length) {
-    room.matchUntil = 0;
+    clearMatchClock(room);
     return;
   }
   const [a, b] = rows;
@@ -509,6 +536,7 @@ function handle(peer, msg) {
         return;
       }
       peer.room = code;
+      peer.token = sanitiseToken(msg.token);
       // Before the insert: `takeSkin` reads the room, and this peer is not one
       // of the players it has to avoid.
       peer.skin = takeSkin(room);
@@ -586,8 +614,12 @@ function handle(peer, msg) {
       if (inMatch(peer)) {
         // Entering the match is entering its scoreline at zero — this is the
         // late "deploy now" joiner, whose last match must not follow them in.
-        peer.kills = 0;
-        peer.deaths = 0;
+        // The exception is a player coming BACK to this match after their
+        // socket dropped: they pick up the score they left with.
+        const back = peer.token ? room.departed.get(peer.token) : null;
+        if (back) room.departed.delete(peer.token);
+        peer.kills = back?.kills ?? 0;
+        peer.deaths = back?.deaths ?? 0;
         // The first body on the floor is what starts the clock when a match
         // forms without a start signal (a lone player deploying into a live-
         // from-elsewhere room, or an old client). A running clock is kept.
@@ -615,7 +647,7 @@ function handle(peer, msg) {
       room.starting.delete(peer.id);
       // The last player out takes the match with them — the clock must not
       // keep running against an empty floor and end a match nobody is in.
-      if (!isLive(room)) room.matchUntil = 0;
+      if (!isLive(room)) clearMatchClock(room);
       sendLobby(room);
       // The last player out of a match un-lives the room, which can complete a
       // ready set that has been waiting for exactly that.
@@ -727,6 +759,13 @@ function leave(peer) {
   if (!room) return;
   room.peers.delete(peer.id);
   room.starting.delete(peer.id);
+  // Bank the scoreline of a player who drops out of a running match, so that
+  // coming back — `deploy` with the same token — resumes it instead of
+  // starting from zero. A deliberate `undeploy` first is a real exit and has
+  // nothing to bank: `inMatch` is already false by then.
+  if (peer.token && inMatch(peer) && room.matchUntil) {
+    room.departed.set(peer.token, { kills: peer.kills, deaths: peer.deaths });
+  }
   broadcast(room, { t: 'peer_leave', id: peer.id });
   broadcast(room, { t: 'score', roster: roster(room) });
   if (room.peers.size === 0) {
@@ -735,7 +774,7 @@ function leave(peer) {
   }
   // Someone leaving can complete the ready set — or empty out the last deployed
   // player, which drops the room back to a lobby for whoever is still here.
-  if (!isLive(room)) room.matchUntil = 0;
+  if (!isLive(room)) clearMatchClock(room);
   sendLobby(room);
   maybeStart(room);
 }

@@ -42,7 +42,7 @@ srv?.stderr.on('data', (d) => process.stderr.write(d));
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 await wait(900);
 
-function open(room, name, map = 'market') {
+function open(room, name, map = 'market', token = undefined) {
   return new Promise((res, rej) => {
     const base = RELAY_URL ?? `ws://127.0.0.1:${PORT}/ws`;
     const ws = new WebSocket(`${base}${base.includes('?') ? '&' : '?'}room=${encodeURIComponent(room)}`);
@@ -56,7 +56,7 @@ function open(room, name, map = 'market') {
       }
     });
     ws.on('open', () => {
-      ws.send(JSON.stringify({ t: 'join', room, name, map }));
+      ws.send(JSON.stringify({ t: 'join', room, name, map, token }));
       res({
         ws,
         log,
@@ -147,6 +147,70 @@ try {
     ok(all(a.log, 'match_end').length === 0, 'without a ceremony nobody is there to see');
     a.ws.close();
     b.ws.close();
+  }
+
+  /* ── a dropped socket is not a forfeit ─────────────────────────────────── */
+  // A reload (graphics tier change, lost GL context) or a network blip brings a
+  // player back as a brand-new peer. With the same token, deploying back into
+  // the match it dropped out of resumes the score it left with.
+  console.log('the reconnect');
+  {
+    const a = await open('rejoin', 'A', 'market', 'tok-aaaaaaaa');
+    const b = await open('rejoin', 'B', 'market', 'tok-bbbbbbbb');
+    await wait(300);
+    await startMatch(a, b);
+    b.send({ t: 'kill', by: a.id });
+    b.send({ t: 'kill', by: a.id });
+    a.send({ t: 'kill', by: b.id });
+    await wait(200);
+    a.ws.close();
+    await wait(250);
+
+    const a2 = await open('rejoin', 'A', 'market', 'tok-aaaaaaaa');
+    await wait(250);
+    ok(last(a2.log, 'welcome')?.live === true, 'the match is still live for the returning player');
+    a2.send({ t: 'deploy' });
+    await wait(250);
+    const row = (last(b.log, 'score')?.roster ?? []).find((p) => p.id === a2.id);
+    ok(row?.kills === 2 && row?.deaths === 1, 'the same token resumes the score it left with',
+      JSON.stringify(row));
+
+    // The bank is spent on use: a second drop-and-return banks afresh, but a
+    // stranger (no token, or another one) still enters at zero.
+    const c = await open('rejoin', 'C', 'market', 'tok-aaaaaaab');
+    await wait(200);
+    c.send({ t: 'deploy' });
+    await wait(250);
+    const crow = (last(b.log, 'score')?.roster ?? []).find((p) => p.id === c.id);
+    ok(crow?.kills === 0 && crow?.deaths === 0, 'another token enters at zero', JSON.stringify(crow));
+
+    // A deliberate exit is not a drop: undeploy, then close, banks nothing.
+    a2.send({ t: 'undeploy' });
+    await wait(100);
+    a2.ws.close();
+    await wait(250);
+    const a3 = await open('rejoin', 'A', 'market', 'tok-aaaaaaaa');
+    await wait(200);
+    a3.send({ t: 'deploy' });
+    await wait(250);
+    const row3 = (last(b.log, 'score')?.roster ?? []).find((p) => p.id === a3.id);
+    ok(row3?.kills === 0, 'leaving the match on purpose and coming back starts at zero', JSON.stringify(row3));
+
+    // And a bank never outlives its match: drop, the match ends, a rematch
+    // starts, and the returning player is on the rematch's fresh scoreline.
+    b.send({ t: 'kill', by: a3.id });
+    await wait(150);
+    a3.ws.close();
+    await wait(200);
+    for (let i = 0; i < SCORE_LIMIT; i++) c.send({ t: 'kill', by: b.id });
+    await wait(250);
+    ok(!!last(b.log, 'match_end'), 'the match ends with the dropped player still away');
+    const a4 = await open('rejoin', 'A', 'market', 'tok-aaaaaaaa');
+    await wait(200);
+    await startMatch(a4, b);
+    const row4 = (last(b.log, 'score')?.roster ?? []).find((p) => p.id === a4.id);
+    ok(row4?.kills === 0, 'and the rematch does not hand the old score back', JSON.stringify(row4));
+    for (const p of [a4, b, c]) p.ws.close();
   }
 
   /* ── the time cap ends the match with a winner ─────────────────────────── */

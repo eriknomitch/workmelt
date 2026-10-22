@@ -241,7 +241,7 @@ non-capture run (disable with `?mp=0`). It:
 
 | dir | message | meaning |
 |---|---|---|
-| C→S | `join {room, name}` | enter a room |
+| C→S | `join {room, name, map, token}` | enter a room. `token` is an opaque per-tab id (sessionStorage, so it survives a reload of that tab): a player whose socket drops mid-match and who comes back with the same token resumes their kills/deaths on `deploy` instead of entering at zero. The bank lasts only for the match it was made in, and a deliberate `undeploy` banks nothing |
 | C→S | `map {map}` | change the room's level (refused once the room is live; clears everybody else's ready flag) |
 | C→S | `ready {ready, force}` | toggle my match-start ready flag. `force` starts with the ready set instead of waiting on the whole lobby |
 | C→S | `deploy {solo}` | I am out of the lobby. `solo` marks a **warm-up** — a private bot game that does not make the room live |

@@ -419,6 +419,13 @@ export class AdaptiveQualitySystem {
     this._unsubs = [];
     this._reloadPending = false;
     this._deferredReload = false;
+    /**
+     * In a ROOM match (not a bots warm-up). A reload there drops the socket
+     * mid-match — to the relay and to everyone else in it, the player just
+     * left — so death, pause and an unfocused window stop being safe
+     * boundaries: the match keeps running through all three. Only its end is.
+     */
+    this._roomMatch = false;
     this._demotedThisSession = false;
     this._promoteSinceMs = null;
     this._warmedUp = false;
@@ -466,9 +473,24 @@ export class AdaptiveQualitySystem {
     // A tier change needs a page reload, and a reload mid-firefight is brutal.
     // Requested reloads wait for a safe boundary instead: the local player's
     // death, the match ending, or the player pausing / hiding the tab (the
-    // inactive case is caught at the top of lateUpdate).
-    for (const type of ['player:death', 'match:end']) {
-      const off = ctx.events?.on?.(type, () => this._fireDeferredReload());
+    // inactive case is caught at the top of lateUpdate). In a room match only
+    // the end counts — see `_roomMatch`.
+    const subs = {
+      'match:start': (e) => {
+        this._roomMatch = !!e?.mode && e.mode !== 'bots';
+      },
+      'player:death': () => {
+        if (!this._roomMatch) this._fireDeferredReload();
+      },
+      'match:end': (e) => {
+        this._roomMatch = false;
+        // A warm-up pulled into the room's countdown is about to deploy into
+        // the match: reloading now would drop it out of the starting cohort.
+        if (e?.reason !== 'pulled-in') this._fireDeferredReload();
+      },
+    };
+    for (const [type, fn] of Object.entries(subs)) {
+      const off = ctx.events?.on?.(type, fn);
       if (off) this._unsubs.push(off);
     }
     if (!this.enabled || this.settings.mode !== 'auto') {
@@ -486,7 +508,7 @@ export class AdaptiveQualitySystem {
     if (this._deferredReload) {
       // The new tier is already persisted; the scaler stands down until the
       // reload lands so it cannot write old-tier scales into new-tier settings.
-      if (!this.isActive(ctx)) this._fireDeferredReload();
+      if (!this._roomMatch && !this.isActive(ctx)) this._fireDeferredReload();
       return;
     }
     const nowMs = this.now();
@@ -684,7 +706,8 @@ export class AdaptiveQualitySystem {
     if (this._reloadPending || this._deferredReload) return;
     this._deferredReload = true;
     this._status.state = 'reload-pending';
-    if (!this.ctx || !this.isActive(this.ctx)) this._fireDeferredReload();
+    if (!this._roomMatch && (!this.ctx || !this.isActive(this.ctx))) this._fireDeferredReload();
+    else if (this._roomMatch) this._log('reload queued — room match running, waiting for it to end');
     else this._log('reload queued — waiting for a safe boundary (death, match end, or pause)');
   }
 
