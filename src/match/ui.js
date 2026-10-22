@@ -31,7 +31,8 @@
  * ---------------------------------------------------------------------------
  * There is exactly one primary button and it is always the best next move:
  *
- *   alone in the room        PLAY VS N BOTS  deploy immediately vs the garrison
+ *   alone in the room        PLAY            deploy immediately (vs N bots when a
+ *                                            garrison is picked; none by default)
  *   somebody else is here    READY UP        the relay starts when everyone is
  *   already readied up       CANCEL READY    the only thing left to undo
  *   the match is running     DEPLOY NOW      drop into it
@@ -526,9 +527,9 @@ body.wm-touch .wm-lobby {
 
 /** Sizes offered for the bot garrison; `squads` × `perSquad` hostiles. */
 export const BOT_PRESETS = [
-  { key: 'off', label: 'No bots', squads: 0, perSquad: 0, note: 'Players only — nobody but whoever joins your room.' },
+  { key: 'off', label: 'No bots', squads: 0, perSquad: 0, note: 'Players only — nobody but whoever joins your room. The default.' },
   { key: 'light', label: 'Light', squads: 1, perSquad: 3, note: 'One patrol of 3. A quiet floor with something to shoot.' },
-  { key: 'standard', label: 'Standard', squads: 2, perSquad: 3, note: 'Two squads of 3 on patrol routes — the default garrison.' },
+  { key: 'standard', label: 'Standard', squads: 2, perSquad: 3, note: 'Two squads of 3 on patrol routes.' },
   { key: 'heavy', label: 'Heavy', squads: 3, perSquad: 4, note: 'Three squads of 4. Contact almost everywhere.' },
 ];
 

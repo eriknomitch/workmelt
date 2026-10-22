@@ -68,7 +68,12 @@ import { MatchStartUI, BOT_PRESETS } from './ui.js';
 import { StreakTracker } from './streaks.js';
 import { SCORE_LIMIT, MATCH_MS, BotMatchTally } from './bounds.js';
 
-const DEFAULT_BOTS = 'standard';
+/**
+ * No garrison until somebody asks for one: the lobby exists to fill a room with
+ * people, and a player who opens it has usually just sent the invite link. The
+ * bots are a warm-up you opt into from the chips, not the default match.
+ */
+const DEFAULT_BOTS = 'off';
 /** Time on your back before you are put back in. Matches `net`'s own timer. */
 const RESPAWN_MS = 3200;
 /** How long the ceremony holds the screen before walking back to the lobby. */

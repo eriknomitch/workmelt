@@ -28,7 +28,7 @@ import { MatchStartUI } from '../match/ui.js';
 import { detectTouchMode } from '../core/input.js';
 import { mapSummaries, resolveBootMap, saveMapPreference } from '../world/maps.js';
 
-const DEFAULT_BOTS = 'standard';
+const DEFAULT_BOTS = 'off';
 
 export async function bootUiOnly() {
   const params = new URLSearchParams(location.search);

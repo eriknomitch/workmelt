@@ -34,7 +34,7 @@ getting in is always a single click and never a choice between two panels:
 
 | room state | the button says | what happens |
 |---|---|---|
-| you are alone | **Play** (vs N bots) | you deploy immediately against the garrison size selected above it; no waiting on anyone. This is a **warm-up** — see below |
+| you are alone | **Play** (vs N bots, if you picked a garrison) | you deploy immediately against the garrison size selected above it — none by default; no waiting on anyone. This is a **warm-up** — see below |
 | somebody else is here | **Ready up** | when everyone in the lobby is ready the relay fires one start signal, every client counts 3–2–1, and the match begins for all of them at once. **No bots in this mode — it is players only.** |
 | you are already ready | **Cancel ready** | the only thing left to undo |
 | the match is running | **Deploy now** | drop into it; nobody already shooting has to wait for you |
@@ -55,7 +55,8 @@ changing either is optional and neither is ever a step:
 - **Map** — in a room the map belongs to the *room*: the choice goes to the relay
   and everybody switches together, and the cards lock while the level rebuilds.
   Once the room's match is running the level is settled and the cards say so.
-- **Garrison** — none / light (3) / standard (6) / heavy (12).
+- **Garrison** — none / light (3) / standard (6) / heavy (12). **None** is the
+  default: the lobby assumes you are there to play people, so bots are opt-in.
 
 The garrison is per-client, spawned at the moment you deploy, so a players-only
 match really is empty of AI. A player who arrives after the match has started
