@@ -162,6 +162,7 @@ export class ProjectileSim {
             dropoff: 1,
             mask: p.mask,
             source: 'player', // this module simulates the local player's rounds
+            weapon: p.weapon?.id ?? p.weapon,
           });
           this.stats.impacts++;
           this._retire(p);

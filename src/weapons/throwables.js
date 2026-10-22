@@ -109,7 +109,7 @@ export class Throwables {
     this._origin = new THREE.Vector3();
     this._step = new THREE.Vector3();
     this._hitPoint = new THREE.Vector3();
-    this._explosion = { position: new THREE.Vector3(), radius: 0, damage: 0, source: 'player' };
+    this._explosion = { position: new THREE.Vector3(), radius: 0, damage: 0, source: 'player', weapon: null };
     this._flash = {
       position: new THREE.Vector3(),
       radius: 0,
@@ -298,6 +298,7 @@ export class Throwables {
     p.radius = def.radius;
     p.damage = def.damage;
     p.source = 'player';
+    p.weapon = def.id;
     this.ctx.events.emit('explosion', p);
   }
 

@@ -721,9 +721,12 @@ export class PhysicsSystem {
     // (both arrive here; projectile flight time breaks any event-ordering
     // inference). 'player' | 'ai' | null.
     this._bulletSource = opts.source ?? null;
+    // ...and with what, for the killfeed. An id string; a def is reduced to it.
+    this._bulletWeapon = typeof opts.weapon === 'string' ? opts.weapon : opts.weapon?.id ?? null;
     this._traceId++;
     const n = this.ballistics.fire({ rng: this.rng, ...opts });
     this._bulletSource = null;
+    this._bulletWeapon = null;
     const res = this._impactResult;
     res.length = 0;
     for (let i = 0; i < n; i++) res.push(this.ballistics.impacts[i]);
@@ -755,6 +758,7 @@ export class PhysicsSystem {
         killed: false,
         point: p.point,
         source: this._bulletSource ?? null,
+        weapon: this._bulletWeapon ?? null,
       });
     }
   }

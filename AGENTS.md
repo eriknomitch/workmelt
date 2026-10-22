@@ -61,6 +61,13 @@ either works: `test:quality` = `src/core/selftest.mjs`, `test:graphics` =
   including the touch channel: virtual-stick merge and clamping, touch-look
   folding and invert, synthetic button press/release (and that a held touch
   button still releases after input is disabled), and the ADS toggle latch.
+- `node src/ui/killicons.selftest.mjs` checks the killfeed's weapon icons: that
+  every gun in `defs.js`, every lethal throwable, every bot variant's rifle,
+  melee, the mortar and every `weapon: '<id>'` literal an emitter writes under
+  `src/` resolves to its own silhouette rather than the rifle fallback, and
+  that the hand-written path data stays inside its viewBox. Both failures are
+  silent in game — the wrong gun in the feed, or a gun with its barrel clipped
+  off. Mutation-checked.
 - `node src/ui/touch.selftest.mjs` checks the touch control scheme's pure half:
   the virtual-stick vector maths (deadzone continuity, unit clamp, +y forward,
   the sprint gate) and that every on-screen button maps to a code the game
@@ -296,13 +303,13 @@ Read on demand, not loaded at session start:
 ## Verifying a change
 
 **Default to not rendering.** The Node-only self-tests carry most of the real
-coverage and are effectively free — all twenty-five of them (`physics`, `ai`,
+coverage and are effectively free — all twenty-seven of them (`physics`, `ai`,
 `ai/lod`, `ai/footstep`, `ai/roo`, `weapons/balance`, `weapons/throwables`,
 `weapons/loadout`, `weapons/autoreload`, `weapons/melee`, `weapons/baked`,
 `audio/attenuation`,
 `audio/reload`,
-`core` × 4, `render/resolution`, `render/dof`, `ui/touch`, `match/bounds`,
-`match/streaks`, `world/maps`, `world/collision`, `world/spawns`) run in ~10 s
+`core` × 4, `render/resolution`, `render/dof`, `ui/touch`, `ui/killicons`, `match/bounds`,
+`match/streaks`, `world/maps`, `world/collision`, `world/spawns`, `world/power`) run in ~10 s
 combined, and `world/maps.selftest.mjs` builds every map headlessly without a
 browser at all. Run those plus `npm run build` and stop there unless the change
 is genuinely a function of the image.
@@ -315,7 +322,7 @@ find src server \( -name 'selftest.*' -o -name '*.selftest.*' \) | sort
 
 Note both halves of that pattern — four suites are a bare `selftest.js`/`.mjs`
 (`physics`, `ai`, `core`, `audio`) and `-name '*.selftest.*'` alone silently
-misses them. It returns 30 files; the twenty-five above are the free ones. The
+misses them. It returns 32 files; the twenty-seven above are the free ones. The
 other five are not: `server/{bounds,lobby,map,skin}.selftest.mjs` each stand up
 a real relay on a real socket, and `src/audio/selftest.js` is a library the audio
 probe drives from a page — run directly it exits 0 having asserted nothing.

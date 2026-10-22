@@ -338,39 +338,41 @@ const CSS = `
 .ow-slot.empty { opacity:.34; }
 
 /* ============================================================== killfeed */
+/* CoD-style: hard left edge in the empty band between the minimap and the
+   vitals, anchored at the BOTTOM so new rows push the column up and an
+   expiring row (always the oldest, at the top) never moves the ones below it.
+   Each row is its own solid bar sized to its content — no feathering, the
+   ragged right edge of a stack of bars is the look. The bar is dense (62%)
+   because this column crosses sky, wall and floor in the same match. */
 .ow-killfeed {
-  position:absolute; right:var(--pad); top:calc(var(--pad) + var(--u) * 2);
-  display:flex; flex-direction:column; align-items:flex-end;
-  gap: calc(var(--u) * 1.1);
+  position:absolute; left:var(--pad);
+  bottom: calc(var(--pad) + 124px * var(--k));
+  display:flex; flex-direction:column; align-items:flex-start;
+  gap: calc(3px * var(--k));
+  --kf-ally:  #4fb4ff;
+  --kf-enemy: #ff6a3d;
 }
-/* Rows sit in the top right, which in daylight is sky: the scrim has to be
-   dark and dense enough to matter (58%), feathered only at the far end so it
-   dissolves instead of terminating in a rectangle. */
 .ow-kf-row {
   position:relative;
-  display:flex; align-items:center; gap: calc(var(--u) * 1.6);
-  font-size: calc(13.5px * var(--k)); letter-spacing:.09em;
-  padding: calc(var(--u) * .8) calc(var(--u) * 1.5);
-  border-right: calc(2px * var(--k)) solid rgba(255,255,255,.18);
-  text-shadow: var(--sh-o1);
+  display:flex; align-items:center; gap: calc(11px * var(--k));
+  height: calc(30px * var(--k));
+  padding: 0 calc(10px * var(--k));
+  background: rgba(6,9,12,.62);
+  font-size: calc(17px * var(--k)); font-weight:500; letter-spacing:.01em;
+  font-variant-numeric: normal; /* "Ghost-42", not a scoreboard column */
+  text-transform:none; /* names are printed as written, like the callsign */
+  line-height:1; white-space:nowrap;
+  text-shadow: 0 1px 1px rgba(0,0,0,.85);
   will-change: transform, opacity;
 }
-.ow-kf-row::before {
-  content:''; position:absolute; inset:0; z-index:-1;
-  background: rgba(5,9,12,.58);
-  -webkit-mask-image: linear-gradient(to right, rgba(0,0,0,0) 0%, #000 22%, #000 100%);
-          mask-image: linear-gradient(to right, rgba(0,0,0,0) 0%, #000 22%, #000 100%);
-}
-.ow-kf-row.mine::before { background: rgba(26,17,3,.66); }
-.ow-kf-row.mine { border-right-color: var(--amber); }
-.ow-kf-a { color: var(--friend); }
-.ow-kf-v { color: var(--enemy); }
-.ow-kf-row.mine .ow-kf-a { color: #fff; }
-.ow-kf-w { display:flex; align-items:center; gap:calc(var(--u) * .8); opacity:.9; }
-.ow-kf-w svg { width: calc(31px * var(--k)); height: calc(12px * var(--k)); display:block;
-  filter: drop-shadow(0 1px 1px rgba(0,0,0,.9)); }
-.ow-kf-hs svg { width: calc(12px * var(--k)); height: calc(12px * var(--k)); display:block;
-  filter: drop-shadow(0 1px 1px rgba(0,0,0,.9)); }
+/* A row you are in gets a hairline of your own colour down its leading edge —
+   enough to find your kills in a busy column without shouting about them. */
+.ow-kf-row.mine { box-shadow: inset calc(2.5px * var(--k)) 0 0 var(--kf-ally); background: rgba(10,16,22,.72); }
+.ow-kf-name.me, .ow-kf-name.ally { color: var(--kf-ally); }
+.ow-kf-name.enemy { color: var(--kf-enemy); }
+.ow-kf-name.me { font-weight:700; }
+.ow-kf-icon { display:block; flex:none; fill: rgba(236,241,245,.93);
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,.8)); }
 
 /* =============================================================== compass */
 .ow-compass {
@@ -985,7 +987,12 @@ const CSS = `
 .ow-tbtn.pause  { width:40px; height:40px; border-radius:6px; right: calc(10px + var(--safe-r)); top: calc(10px + var(--safe-t)); }
 
 /* HUD furniture moves out from under the thumbs on a touch session. */
-.ow-hud.ow-touch .ow-killfeed { top: calc(var(--pad) + 52px); right: calc(var(--pad) + var(--safe-r)); }
+/* The left thumb owns the lower-left, so on touch the feed goes back up under
+   the pause button, right-aligned, still growing downward from there. */
+.ow-hud.ow-touch .ow-killfeed {
+  left:auto; bottom:auto; align-items:flex-end;
+  top: calc(var(--pad) + 52px); right: calc(var(--pad) + var(--safe-r));
+}
 .ow-hud.ow-touch .ow-minimap { left: calc(var(--pad) + var(--safe-l)); }
 /* Ammo leaves the bottom-right corner (the trigger cluster owns it) and sits
    bottom-centre, clear of the crosshair and both thumb arcs. */

@@ -94,6 +94,9 @@ export class NetSystem {
     this._wantReconnect = true;
     this._lastAttacker = 0;
     this._lastAttackerName = '';
+    this._lastHeadshot = false;
+    /** Weapon id of the last PvP hit on us — rides on our `kill` report. */
+    this._lastWeapon = null;
     this._deadSince = -1;
     this._boardHeld = false;
 
@@ -702,7 +705,13 @@ export class NetSystem {
       this._killerShot.copy(from);
       this._killerShotValid = true;
     }
-    this.player.applyDamage(msg.dmg ?? 0, from, { type: 'bullet' });
+    this._lastWeapon = typeof msg.w === 'string' ? msg.w : null;
+    this.player.applyDamage(msg.dmg ?? 0, from, {
+      type: 'bullet',
+      by: { name: msg.fromName || null, remote: true },
+      weapon: this._lastWeapon,
+      headshot: this._lastHeadshot,
+    });
     // player system draws the arc from the `damage:taken` it emits internally
   }
 
@@ -715,7 +724,7 @@ export class NetSystem {
     this._deadSince = this._now();
     this._deathSite.copy(this.player.feetPosition);
     const by = this._lastAttacker || 0;
-    this._send({ t: 'kill', by, headshot: !!this._lastHeadshot });
+    this._send({ t: 'kill', by, headshot: !!this._lastHeadshot, w: by ? this._lastWeapon : null });
     this.player.setControlEnabled(false);
     if (by) this.ui.toast(`You were eliminated by <b>${esc(this._lastAttackerName || '???')}</b>`);
     else this.ui.toast(`You were eliminated`);
@@ -726,16 +735,19 @@ export class NetSystem {
     const mine = msg.by === this.myId;
     // Relay-confirmed PvP kill. `audio` scores the announcer off this; a bot
     // kill reaches it as `damage:dealt` instead.
+    // `byName`/`victimName`/`weapon` are what the HUD killfeed prints; a
+    // third party's kill reaches the player only through that feed.
     this.ctx.events.emit('net:kill', {
       by: msg.by, victim: msg.victim, headshot: !!msg.headshot, mine,
+      byName: msg.by ? msg.byName ?? null : null,
+      victimName: msg.victimName ?? null,
+      weapon: typeof msg.w === 'string' ? msg.w : null,
     });
-    const hs = msg.headshot ? ' ⌖' : '';
     if (mine) {
+      const hs = msg.headshot ? ' ⌖' : '';
       this.ui.toast(`You eliminated <b>${esc(msg.victimName)}</b>${hs}`);
       this.uiSys?.hitmarker?.('kill');
       this.uiSys?.banner?.show?.('ELIMINATED', msg.victimName, 1.6);
-    } else {
-      this.ui.toast(`<b>${esc(msg.byName)}</b> <span class="k">✕</span> <b>${esc(msg.victimName)}</b>${hs}`);
     }
   }
 

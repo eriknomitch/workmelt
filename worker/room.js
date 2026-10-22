@@ -230,6 +230,8 @@ export class Room {
           victim: peer.id,
           victimName: peer.name,
           headshot: !!msg.headshot,
+          // Killfeed weapon id. A label, never logic: clamp it and move on.
+          w: typeof msg.w === 'string' ? msg.w.slice(0, 16) : null,
         });
         this._broadcast({ t: 'score', roster: this._roster() });
         if (killer && killer.deployed && !killer.warm && killer.kills >= this.scoreLimit) {

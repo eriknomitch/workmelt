@@ -39,7 +39,10 @@ export class Health {
     this.pulse = 0;
     this.effect = 0; // 0..1 overall low-health treatment weight
 
-    this._payload = { amount: 0, from: new THREE.Vector3(), health: 0, direction: 0, critical: false };
+    this._payload = {
+      amount: 0, from: new THREE.Vector3(), health: 0, direction: 0, critical: false,
+      by: null, weapon: null, headshot: false,
+    };
     this._statePayload = {
       health: HEALTH.max, fraction: 1, low: false, critical: false,
       regenerating: false, suppression: 0, dead: false,
@@ -75,7 +78,8 @@ export class Health {
   /**
    * @param {number} amount
    * @param {THREE.Vector3|null} from  world position of the attacker/blast
-   * @param {object} opts { yaw, type, suppress }
+   * @param {object} opts { yaw, type, suppress, by, weapon, headshot } — the last
+   *   three ride out on `damage:taken` so the killfeed can name a killer
    */
   damage(amount, from, opts = {}) {
     if (this.dead || amount <= 0) return 0;
@@ -125,6 +129,9 @@ export class Health {
     p.health = this.value;
     p.direction = angle;
     p.critical = this.critical;
+    p.by = opts.by ?? null;
+    p.weapon = opts.weapon ?? null;
+    p.headshot = !!opts.headshot;
     if (from) p.from.copy(from);
     else p.from.set(this.ctx.camera.position.x, this.ctx.camera.position.y, this.ctx.camera.position.z);
     this.ctx.events.emit('damage:taken', p);
