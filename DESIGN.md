@@ -325,14 +325,15 @@ gaps.
 
 - **Left rail — the room.** The invite eyebrow, the active-room code with its
   copy control, the relay lamp and status readout, the roster; pinned to the
-  bottom, this client's own setup (garrison chips, callsign, settings) and the
-  wordmark.
+  bottom, the wordmark and the settings control.
 - **Stage — the current map.** `CURRENT MAP` eyebrow, the map's name in
   display type, its description in the label register, then the hero viewport:
   the map's artwork (`public/maps/<id>.png`) when it ships, its blueprint
   floorplan on a faint graticule when it does not. The action dock floats at
-  the bottom centre: primary, copy-invite, key hints, and the optional alt
-  link. The stage is **the window** — see The One Window Rule below.
+  the bottom centre and holds every choice that shapes the next click, in
+  reading order, directly above it: callsign, the bot chips (one row of equal
+  segments, hidden while no control would start a bots match), primary,
+  copy-invite, key hints, and the optional alt link. The stage is **the window** — see The One Window Rule below.
 - **Right rail — the map selector.** One card per enabled map in a two-column
   grid: floorplan thumbnail, name, description. The selected card wears the
   Signal Blue border and a small blue badge.

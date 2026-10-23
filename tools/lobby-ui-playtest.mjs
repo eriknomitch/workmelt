@@ -15,6 +15,9 @@
  *   • every enabled map in the registry gets a selector card, and clicking one
  *     repaints the selection and persists the preference (the solo path);
  *   • every garrison chip repaints the primary CTA with its real bot count;
+ *   • the chips live in the action dock over the primary they relabel, move
+ *     down to the warm-up link when only that link uses them, and leave when
+ *     nothing does;
  *   • the lobby ships one visual treatment and one layout — the brand system —
  *     with no style selector, no variant class and no layout picker anywhere;
  *   • the callsign: a random draw wears the Random flag and takes the first
@@ -223,6 +226,37 @@ try {
   await named.page.waitForTimeout(150);
   eq('and the first press deploys', named.plays.n, 1);
   await named.page.close();
+
+  /* ---- the bots row follows the control it configures ------------------ */
+  // Judged by layout, not by class: what matters is where the player sees the
+  // row relative to the button it changes, and whether they see it at all.
+  const bots = await open('&name=Rook');
+  const place = (model) => bots.page.evaluate((m) => {
+    if (m) window.__UIONLY__.render({ connected: true, everConnected: true, myId: 1, ...m });
+    const row = document.querySelector('[data-bots-row]');
+    const r = row.getBoundingClientRect();
+    const p = document.querySelector('[data-primary]').getBoundingClientRect();
+    return {
+      inDock: !!row.closest('.dock'),
+      shown: r.height > 0,
+      above: r.bottom <= p.top,
+      below: r.top >= p.bottom,
+      label: document.querySelector('[data-bots-lbl]').textContent,
+    };
+  }, model);
+  const me = { id: 1, name: 'Rook' };
+  let at = await place({ players: [me] });
+  eq('the bots chips sit in the action dock', at.inDock, true);
+  eq('alone, they sit over the primary they relabel', at.shown && at.above, true);
+  eq('labelled plain Bots', at.label, 'Bots');
+  at = await place({ players: [me, { id: 2, name: 'Sam' }] });
+  eq('with company, they move under the primary to the warm-up link', at.shown && at.below, true);
+  eq('labelled for the warm-up', at.label, 'Warm-up bots');
+  at = await place({ live: true, players: [me, { id: 2, name: 'Sam', deployed: true }] });
+  eq('a running match hides them — nothing would use them', at.shown, false);
+  at = await place({ players: [me] });
+  eq('and alone again puts them back over the primary', at.shown && at.above, true);
+  await bots.page.close();
 
   /* ---- ?mp=0 collapses the room panel ------------------------------------ */
   const solo = await open('&mp=0');
