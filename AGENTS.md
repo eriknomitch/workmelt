@@ -68,6 +68,14 @@ either works: `test:quality` = `src/core/selftest.mjs`, `test:graphics` =
   that the hand-written path data stays inside its viewBox. Both failures are
   silent in game — the wrong gun in the feed, or a gun with its barrel clipped
   off. Mutation-checked.
+- `node src/ui/nameplates.selftest.mjs` checks the CoD-style enemy nameplate:
+  that only the body under the reticle is named — the nearest along the aim
+  ray, not the one behind him — that the aim tube widens with range without
+  becoming a lock-on, that a crouch moves the target down with the head, and
+  the fade: in fast, a hold after the reticle leaves so a strafing target does
+  not strobe his tag, and no hold on a corpse. Line of sight is one
+  `physics.lineOfSight` ray in `src/ui/nameplates.js` and is not covered here.
+  Mutation-checked.
 - `node src/ui/touch.selftest.mjs` checks the touch control scheme's pure half:
   the virtual-stick vector maths (deadzone continuity, unit clamp, +y forward,
   the sprint gate) and that every on-screen button maps to a code the game
@@ -318,12 +326,12 @@ Read on demand, not loaded at session start:
 ## Verifying a change
 
 **Default to not rendering.** The Node-only self-tests carry most of the real
-coverage and are effectively free — all twenty-nine of them (`physics`, `ai`,
+coverage and are effectively free — all thirty of them (`physics`, `ai`,
 `ai/lod`, `ai/footstep`, `ai/roo`, `fx/tracers`, `weapons/balance`, `weapons/throwables`,
 `weapons/loadout`, `weapons/autoreload`, `weapons/melee`, `weapons/baked`,
 `audio/attenuation`,
 `audio/reload`,
-`core` × 4, `render/resolution`, `render/dof`, `ui/touch`, `ui/killicons`, `match/bounds`,
+`core` × 4, `render/resolution`, `render/dof`, `ui/touch`, `ui/killicons`, `ui/nameplates`, `match/bounds`,
 `match/streaks`, `world/maps`, `world/collision`, `world/power`, `world/spawns`,
 `world/stairs`)
 run in ~10 s
@@ -339,7 +347,7 @@ find src server \( -name 'selftest.*' -o -name '*.selftest.*' \) | sort
 
 Note both halves of that pattern — four suites are a bare `selftest.js`/`.mjs`
 (`physics`, `ai`, `core`, `audio`) and `-name '*.selftest.*'` alone silently
-misses them. It returns 34 files; the twenty-nine above are the free ones. The
+misses them. It returns 35 files; the thirty above are the free ones. The
 other five are not: `server/{bounds,lobby,map,skin}.selftest.mjs` each stand up
 a real relay on a real socket, and `src/audio/selftest.js` is a library the audio
 probe drives from a page — run directly it exits 0 having asserted nothing.

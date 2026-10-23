@@ -59,6 +59,9 @@ export class NetSystem {
     /** id -> { name, kills, deaths, puppet, buf:[], last, hp, dead, variant, livery } */
     this.peers = new Map();
     this.roster = []; // last authoritative scoreboard from server
+    /** `getNameplates()` output and its pooled entries. */
+    this._plates = [];
+    this._platePool = [];
 
     /**
      * Match-start lobby, as last reported by the relay. `match` renders this and
@@ -1152,6 +1155,35 @@ export class NetSystem {
         this.ui.showBoard(true);
       }
     }
+  }
+
+  /**
+   * Nameplate candidates for the HUD — every remote player with a live body in
+   * the scene, in the same shape `ai.getNameplates()` publishes (see
+   * src/ui/nameplates.js). `ui` picks which one, if any, is under the reticle
+   * and in sight; this only says who exists and where their head is. `key` is
+   * the peer record, which outlives a respawn, so a tag follows the player and
+   * not one particular body. Pooled, so a frame allocates nothing.
+   */
+  getNameplates() {
+    const out = this._plates;
+    const pool = this._platePool;
+    out.length = 0;
+    for (const p of this.peers.values()) {
+      const body = p.puppet;
+      if (!body || p.dead || p.hp <= 0 || body.dead) continue;
+      let e = pool[out.length];
+      if (!e) {
+        e = pool[out.length] = { key: null, name: '', colour: '', feet: null, head: new THREE.Vector3() };
+      }
+      e.key = p;
+      e.name = p.name;
+      e.colour = p.livery >= 0 ? this.ai.liveryCssFor(p.livery) : '';
+      e.feet = body.position;
+      body.headPos(e.head);
+      out.push(e);
+    }
+    return out;
   }
 
   _fullRoster() {

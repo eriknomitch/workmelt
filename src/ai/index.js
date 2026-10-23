@@ -34,6 +34,9 @@
  *   ai.grid / ai.cover                     navigation + cover queries
  *   ai.getHudActors()                      minimap blips — empty unless a recon
  *                                          sweep (`streak:uav`) is live
+ *   ai.getNameplates()                     [{ key, name, colour, feet, head }]
+ *                                          for the HUD's enemy nameplates
+ *   ai.liveryCssFor(slot)                  a colour slot's CSS colour, cached
  *   ai.stats                               { agents, alive, navMs, coverPts,
  *                                            pathsDeferred, lodIrrelevant,
  *                                            lodUnshadowed }
@@ -145,6 +148,10 @@ export class AiSystem {
     this._revealUntil = 0;
     this._hudActors = [];
     this._hudPool = [];
+    /** `getNameplates()` output, its pooled entries, and livery CSS by slot. */
+    this._plates = [];
+    this._platePool = [];
+    this._plateCss = new Map();
 
     /* scratch */
     this._v = new THREE.Vector3();
@@ -532,6 +539,45 @@ export class AiSystem {
       out.push(b);
     }
     return out;
+  }
+
+  /**
+   * Nameplate candidates for the HUD (`ui` polls this every frame; see
+   * src/ui/nameplates.js). Every live, named bot — `ui` decides which one, if
+   * any, is under the reticle and visible, so this publishes no more than what
+   * is already drawn on screen. `head` is the HeadTop bone after this frame's
+   * pose, so a crouch or a lean carries the tag with it. Pooled: nothing is
+   * allocated once the pool has grown to garrison size.
+   */
+  getNameplates() {
+    const out = this._plates;
+    out.length = 0;
+    for (const a of this.agents) {
+      if (!a.alive || !a.name) continue;
+      let p = this._platePool[out.length];
+      if (!p) {
+        p = this._platePool[out.length] = {
+          key: null, name: '', colour: '', feet: null, head: new THREE.Vector3(),
+        };
+      }
+      p.key = a;
+      p.name = a.name;
+      p.colour = this.liveryCssFor(a.livery);
+      p.feet = a.position;
+      a.animator.bonePos('HeadTop', p.head);
+      out.push(p);
+    }
+    return out;
+  }
+
+  /** `livery(slot).css`, cached — the HUD asks for it every frame. */
+  liveryCssFor(slot) {
+    let css = this._plateCss.get(slot);
+    if (css === undefined) {
+      css = this.livery(slot).css;
+      this._plateCss.set(slot, css);
+    }
+    return css;
   }
 
   _falloff(point) {
