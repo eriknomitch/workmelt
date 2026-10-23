@@ -274,6 +274,28 @@ The last four exist for the advanced graphics menu, which drives `r.settings`
 live. Anything else that writes `r.settings` directly must call
 `r.applySettings()` afterwards or the passes will not see it.
 
+### Running without drawing (`?draw=0`)
+
+`config.draw === false` runs every system, the input layer and the DOM HUD
+but draws nothing. It exists for the playtests, which judge engine and DOM
+state; under SwiftShader the shader compiles a drawn frame needs are most of
+a boot, and every frame after it is software-rasterised. Capture runs ignore
+the flag. What it changes:
+
+- `render.render()` does its CPU bookkeeping (material patching, the sun rig,
+  light culling, the ADS read) and stops at the first GPU pass, after
+  refreshing `scene` / `viewScene` world matrices — the job `renderer.render`
+  would otherwise have done for every hit test that reads them.
+- Nothing compiles ahead of time: `src/core/prewarm.js` is skipped, `ai`
+  creates its character materials (in order — Material.id decides draw order)
+  but does not compile them, and `fx` does not self-warm.
+- `materials` bakes every texture at a 128 px floor. `set.requestedSize` is
+  still the size the quality settings asked for.
+
+The rule this puts on subsystems: **gameplay state never comes from a GPU
+result.** A new boot-time bake or compile whose only consumer is a drawn frame
+should check `ctx.config.draw` the same way.
+
 ### The resolution budget
 
 `renderScale` and `pixelRatioCap` are both ratios of the window, and a window

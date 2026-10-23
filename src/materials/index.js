@@ -57,6 +57,11 @@ export class MaterialSystem {
     // name here), so the advanced graphics menu has something to override — and
     // so "Texture Quality: Ultra" is one number in one place.
     this._quality = q?.textureScale ?? 1;
+    // `?draw=0`: nothing will ever sample these, so every bake runs at the
+    // 128 px floor. Under SwiftShader the full-size bakes are GPU work the first
+    // frames would otherwise sit waiting on. Sizing — and the cache key — is
+    // still decided by `_quality`; only the forge's output shrinks.
+    this._bakeFloor = ctx?.config?.draw === false;
     /** Multiplier on per-surface parallax depth; 0 turns the POM march off. */
     this._parallax = q?.parallaxScale ?? 1;
     /** Multiplier on the shared micro-detail layer's strength and fade range. */
@@ -85,8 +90,8 @@ export class MaterialSystem {
     this._forge = new TextureForge(renderer, { anisotropy: this._anisotropy });
     // 1K, not 512: the micro tooth is 1.6-4 mm over a 0.25 m tile, which needs
     // ~6 texels per grain to survive mip 1 instead of averaging to flat grey.
-    const detail = this._forge.buildDetail(this._size(1024));
-    const macro = this._forge.buildMacro(256);
+    const detail = this._forge.buildDetail(this._bakeSize(this._size(1024)));
+    const macro = this._forge.buildMacro(this._bakeSize(256));
     this._shared = {
       detailNormal: detail.normal,
       detailAlbedo: detail.albedo,
@@ -117,6 +122,11 @@ export class MaterialSystem {
       // get. Strength and fade distance are the quality dials.
       p.detail = [tiles, normal * this._detail, albedo * this._detail, fade * this._detail];
     }
+  }
+
+  /** What the forge actually renders: `size`, or the floor under `?draw=0`. */
+  _bakeSize(size) {
+    return this._bakeFloor ? 128 : size;
   }
 
   _size(base) {
@@ -165,7 +175,7 @@ export class MaterialSystem {
     set = this._forge.build({
       key,
       glsl: def.glsl,
-      size: bake.size,
+      size: this._bakeSize(bake.size),
       seed: bake.seed ?? 1,
       worldSize: bake.worldSize,
       relief: bake.relief,
@@ -174,6 +184,8 @@ export class MaterialSystem {
       param: bake.param ? new THREE.Vector4().fromArray(bake.param) : undefined,
     });
     set.name = key;
+    /** The size the quality settings asked for; `size` is what was baked. */
+    set.requestedSize = bake.size;
     this._sets.set(cacheKey, set);
     const ms = performance.now() - t0;
     if (ms > 40) console.info(`[materials] bake ${key} ${bake.size}px ${ms.toFixed(0)}ms`);

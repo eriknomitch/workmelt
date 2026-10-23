@@ -1718,6 +1718,16 @@ export class RenderSystem {
       this._assignedViewEnv = ctx.scene.environment;
     }
 
+    // `?draw=0`: everything above is CPU bookkeeping other systems can observe
+    // (material patches, the sun rig, light culling, the ADS read); everything
+    // below is GPU passes. Stop at the seam, but keep world matrices current —
+    // `renderer.render` is otherwise what refreshes them, and hit tests read them.
+    if (ctx.config.draw === false) {
+      scene.updateMatrixWorld();
+      viewScene.updateMatrixWorld();
+      return;
+    }
+
     // ---- unjittered matrices for velocity + reprojection ------------------
     this._currVP.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
     this._invVP.copy(this._currVP).invert();

@@ -321,6 +321,12 @@ export class AiSystem {
         for (const m of mats) r.patcher.patch(m);
         r.patcher.patch(this._grenadeMat);
       }
+      // `?draw=0`: nothing will draw a soldier, so skip the compile — ~15 s of
+      // a SwiftShader boot. The materials above are still created, in order.
+      if (this.ctx.config.draw === false) {
+        out.skipped = 'draw=0';
+        return out;
+      }
       const renderer = r?.renderer;
       if (!renderer) return out;
       const before = renderer.info.programs?.length ?? 0;

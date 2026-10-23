@@ -50,6 +50,12 @@ const lockstep = capture && params.get('lockstep') === '1';
 // benchmarks and playtest harnesses.
 const matchFlow = !capture && params.get('match') !== '0';
 
+// `?draw=0` runs the engine without drawing — see `draw` in src/core/config.js.
+// A capture is a picture by definition, so it always draws.
+const draw = capture || params.get('draw') !== '0';
+// Nothing draws, so nothing is worth compiling ahead of time either.
+const prewarmOn = draw && params.get('prewarm') !== '0';
+
 const explicitQuality = params.get('q');
 let graphics = loadGraphicsSettings();
 const initialBoot = resolveGraphicsBoot({ capture, explicitQuality, settings: graphics });
@@ -92,6 +98,7 @@ const config = createConfig({
   deterministic: capture,
   // `ai` skips its boot-time garrison; `match` spawns it when a match starts.
   deferGarrison: matchFlow,
+  draw,
 });
 if (adaptiveEnabled && graphics.mode === 'auto' && graphics.calibrated)
   config.q.renderScale = graphics.renderScale;
@@ -163,7 +170,9 @@ const shotApi = installShotApi(engine, { capture, lockstep });
 // lockstep in src/dev/shots.js; (2) `will-change: transform` on the compass strip
 // cached a composited-layer raster taken at a wall-clock-dependent moment — fixed
 // in src/ui/style.js.
-const warmup = params.get('prewarm') === '0' ? { ok: false, reason: 'disabled by ?prewarm=0' } : await prewarm(engine);
+const warmup = !prewarmOn
+  ? { ok: false, reason: draw ? 'disabled by ?prewarm=0' : 'nothing to warm under ?draw=0' }
+  : await prewarm(engine);
 console.info('[boot] prewarm', warmup);
 window.__PREWARM__ = warmup;
 
