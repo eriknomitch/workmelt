@@ -14,10 +14,10 @@
  *
  *   left rail    the ROOM — the invite eyebrow, the active room code, the
  *                relay status and the roster; below them, this client's own
- *                setup (garrison, callsign, settings)
+ *                setup (garrison, settings)
  *   stage        the CURRENT MAP — its name written large, its artwork (or
  *                its blueprint floorplan when no artwork ships), and the
- *                action dock: primary, copy-invite, key hints
+ *                action dock: callsign, primary, copy-invite, key hints
  *   right rail   the MAP SELECTOR — one card per enabled map, thumbnail
  *                floorplan plus name and description; the selected card is
  *                the one wearing the Signal Blue border
@@ -48,6 +48,11 @@
  * chips both have working defaults, the callsign is an inline field, and
  * settings open over the top. `Enter` fires the primary button and `C` copies
  * the link, so the whole screen is also two keystrokes.
+ *
+ * The callsign is optional too, but it is the one default other people have to
+ * live with, so it is the one that is asked for: it sits on top of the primary,
+ * a random draw is flagged as such, and the first press with one is spent on a
+ * prompt rather than a deploy (see `_act`). The second press keeps the draw.
  *
  * The map is the one choice that is not this client's alone: in a room it
  * belongs to the ROOM, so a card click is a request the relay answers and the
@@ -225,16 +230,8 @@ const CSS = `
 .wm-lobby .note {
   font-size: 11px; line-height: 1.55; color: var(--wm-muted-fg); margin-top: 9px; min-height: 17px;
 }
-.wm-lobby .callsign .lbl { margin-bottom: 9px; }
-.wm-lobby .cs-row { display: flex; gap: 8px; align-items: center; }
-.wm-lobby .callsign input {
-  flex: 1 1 auto; min-width: 0; background: var(--wm-panel-2); border: 1px solid var(--wm-border);
-  border-radius: var(--wm-r-sm); padding: 8px 10px; font-size: 12px; font-weight: 500;
-  letter-spacing: .04em; transition: border-color var(--wm-t);
-}
-.wm-lobby .callsign input:hover { border-color: var(--wm-muted-fg); }
-.wm-lobby .callsign input:focus { outline: none; border-color: var(--wm-accent); }
-.wm-lobby .rail-mark { font-size: 15px; margin-top: 20px; color: var(--wm-fg-dim); }
+.wm-lobby .rail-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.wm-lobby .rail-mark { font-size: 15px; color: var(--wm-fg-dim); }
 
 /* ── stage: the current map, written large ───────────────────────────────── */
 /* The one surface that stays open. It adds no fill of its own, so it reads at
@@ -286,7 +283,7 @@ const CSS = `
   object-position: center; display: none;
 }
 .wm-lobby .stage.has-art .hero-img { display: block; }
-.wm-lobby .hero-plan { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px 40px 150px; }
+.wm-lobby .hero-plan { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px 40px 260px; }
 .wm-lobby .hero-plan::before {
   content: ''; position: absolute; inset: 0; pointer-events: none;
   background:
@@ -315,6 +312,38 @@ const CSS = `
   background: rgb(var(--wm-bg-rgb) / .68); border: 1px solid var(--wm-border);
   padding: 20px 20px 14px; display: flex; flex-direction: column; gap: 10px;
 }
+/* Who you deploy as. It sits on top of the primary because it is the last
+   thing worth confirming before the click — at the foot of the left rail it
+   was the one field nobody found, and every invitee walked in as the random
+   draw. A name nobody picked wears the Warning flag (the same amber as every
+   other "not settled yet" on this screen) and reads in Steel Lift, so it looks
+   provisional rather than like a name somebody chose. */
+.wm-lobby .ident { display: flex; flex-direction: column; gap: 10px; padding-bottom: 10px; }
+.wm-lobby .ident-hd { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+/* The top of the Label register (11px), in Ice White Dim rather than Steel
+   Lift: this is the one field label on the screen that is asking for input. */
+.wm-lobby .ident .lbl { font-size: 11px; letter-spacing: .24em; color: var(--wm-fg-dim); }
+.wm-lobby .ident-flag {
+  display: none; align-items: center; gap: 7px;
+  font-family: var(--wm-mono); font-size: 10px; font-weight: 500; letter-spacing: .16em;
+  text-transform: uppercase; color: var(--wm-warn);
+}
+.wm-lobby .ident-flag .sq { width: 7px; height: 7px; background: var(--wm-warn); flex: none; }
+.wm-lobby .ident.unset .ident-flag { display: inline-flex; }
+/* Larger than the 12px DESIGN.md field on purpose: it is the name the whole
+   room will read, and it shares the dock with the primary, so it is sized to
+   stand level with the button under it rather than read as a footnote. */
+.wm-lobby .ident input {
+  width: 100%; min-width: 0; background: var(--wm-panel-2); border: 1px solid var(--wm-border);
+  border-radius: var(--wm-r-sm); padding: 13px 14px; font-size: 20px; font-weight: 500;
+  line-height: 1.2; letter-spacing: .05em;
+  transition: border-color var(--wm-t), color var(--wm-t);
+}
+.wm-lobby .ident input:hover { border-color: var(--wm-muted-fg); }
+.wm-lobby .ident input:focus { outline: none; border-color: var(--wm-accent); }
+.wm-lobby .ident.unset input:not(:focus) { color: var(--wm-muted-fg); }
+.wm-lobby .ident-note { font-size: 11px; line-height: 1.55; color: var(--wm-fg-dim); }
+.wm-lobby .ident-note b { font-weight: 500; color: var(--wm-fg); }
 .wm-lobby .btn {
   font-family: var(--wm-body); font-size: 12px; font-weight: 500; letter-spacing: .24em;
   text-transform: uppercase; cursor: pointer; border-radius: var(--wm-r);
@@ -519,6 +548,8 @@ body.wm-touch .wm-lobby {
   .wm-lobby .hero-name { font-size: clamp(30px, 4vw, 44px); margin: 10px 0 6px; }
   .wm-lobby .hero-view { margin-top: 12px; min-height: 170px; }
   .wm-lobby .dock { padding: 12px 14px 10px; gap: 7px; bottom: 14px; }
+  .wm-lobby .ident { gap: 7px; padding-bottom: 4px; }
+  .wm-lobby .ident input { padding: 9px 12px; font-size: 16px; }
   .wm-lobby .btn { padding: 11px 16px; }
   .wm-lobby .mapcard .thumb { height: 64px; }
   .wm-lobby .mapcard canvas { max-height: 52px; }
@@ -649,15 +680,11 @@ export class MatchStartUI {
               <div class="chips" data-bots role="group" aria-label="Garrison size"></div>
               <p class="note" data-bot-note></p>
             </div>
-            <div class="callsign">
-              <label class="lbl" for="wm-callsign">Callsign</label>
-              <span class="cs-row">
-                <input id="wm-callsign" data-name maxlength="20" spellcheck="false" autocomplete="off" />
-                <button type="button" class="icon-btn" data-settings title="Settings (Esc)"
-                  aria-label="Settings">${GEAR_SVG}</button>
-              </span>
+            <div class="rail-foot">
+              <span class="wm-mark rail-mark">${WORDMARK_HTML}</span>
+              <button type="button" class="icon-btn" data-settings title="Settings (Esc)"
+                aria-label="Settings">${GEAR_SVG}</button>
             </div>
-            <span class="wm-mark rail-mark">${WORDMARK_HTML}</span>
           </div>
         </aside>
 
@@ -671,6 +698,15 @@ export class MatchStartUI {
             <img class="hero-img" data-hero alt="" aria-hidden="true" />
             <div class="hero-plan" data-hero-plan></div>
             <div class="dock">
+              <div class="ident" data-ident>
+                <span class="ident-hd">
+                  <label class="lbl" for="wm-callsign">Your callsign</label>
+                  <span class="ident-flag" data-ident-flag><span class="sq"></span>Random</span>
+                </span>
+                <input id="wm-callsign" data-name maxlength="20" spellcheck="false" autocomplete="off"
+                  enterkeyhint="go" aria-describedby="wm-callsign-note" />
+                <p class="ident-note hide" id="wm-callsign-note" data-ident-note></p>
+              </div>
               <button type="button" class="btn btn-primary" data-primary>${PLAY_SVG}<span data-primary-lbl>Play</span></button>
               <button type="button" class="btn btn-ghost" data-copy>${LINK_SVG}<span data-copy-lbl>Copy invite link</span></button>
               <div class="keys">
@@ -732,6 +768,8 @@ export class MatchStartUI {
     this.copyLbl = q('[data-copy-lbl]');
     this.copyBtn2 = q('[data-copy-2]');
     this.nameIn = q('[data-name]');
+    this.identEl = q('[data-ident]');
+    this.identNote = q('[data-ident-note]');
     this.roomEl = q('[data-room]');
     this.roomPanel = q('[data-room-panel]');
     this.rosterEl = q('[data-roster]');
@@ -777,14 +815,19 @@ export class MatchStartUI {
       this.chipEls.set(p.key, b);
     }
 
-    this.primaryBtn.addEventListener('click', () => this.onPrimary?.());
+    this.primaryBtn.addEventListener('click', () => this._act('primary'));
     this.cereBtn.addEventListener('click', () => this.onCeremonyDone?.());
-    this.altBtn.addEventListener('click', () => this.onAlt?.());
+    this.altBtn.addEventListener('click', () => this._act('alt'));
     this.copyBtn.addEventListener('click', () => this.onCopyInvite?.());
     this.copyBtn2.addEventListener('click', () => this.onCopyInvite?.());
     q('[data-settings]').addEventListener('click', () => this.onSettings?.());
-    this.nameIn.addEventListener('change', () => this.onName?.(this.nameIn.value.trim()));
-    this.nameIn.addEventListener('blur', () => this.onName?.(this.nameIn.value.trim()));
+    // `change` only fires for an edit, so tabbing through the field does not
+    // count as choosing the random draw. Enter does — see the keydown below.
+    this.nameIn.addEventListener('change', () => this._commitName());
+    // An emptied field is not a name; put the current one back.
+    this.nameIn.addEventListener('blur', () => {
+      if (!this.nameIn.value.trim()) this.nameIn.value = this._name;
+    });
 
     // Keys typed at this screen are menu input, never gameplay input. The
     // shortcuts live here rather than on window so they die with the view.
@@ -793,7 +836,19 @@ export class MatchStartUI {
       const typing = e.target === this.nameIn;
       if (e.key === 'Enter') {
         if (typing) {
+          // A form's Enter: confirm the name — the one on screen, even if it is
+          // still the random draw, because the player has looked at it — and
+          // carry on with whatever the prompt interrupted, or the primary.
+          e.preventDefault();
+          this._commitName();
+          const then = this._promptFor ?? 'primary';
+          const ctl = then === 'alt' ? this.altBtn : this.primaryBtn;
           this.nameIn.blur();
+          // Enter never cancels a ready: from the field it is "go", not "undo".
+          const go = !ctl.disabled && !ctl.classList.contains('hide') &&
+            !(then === 'primary' && this._mode === 'unready');
+          if (go) this._act(then);
+          else this.focusPrimary();
           return;
         }
         // The ceremony owns the screen when it is up, and it has one action.
@@ -804,7 +859,7 @@ export class MatchStartUI {
         }
         if (!this.primaryBtn.disabled) {
           e.preventDefault();
-          this.onPrimary?.();
+          this._act('primary');
         }
         return;
       }
@@ -818,6 +873,8 @@ export class MatchStartUI {
     if (!multiplayer) {
       this.roomPanel.remove();
       this.copyBtn.remove();
+      // No room, nobody to be named to.
+      this.identEl.remove();
     }
     this._setEyebrow();
 
@@ -838,6 +895,14 @@ export class MatchStartUI {
     this._altMode = null;
     /** How many are ready, for the "start now with the N who are ready" label. */
     this._altForce = 0;
+
+    /** The callsign as `net` holds it, and whether anybody picked it. */
+    this._name = '';
+    this._nameChosen = true;
+    /** Which control the callsign prompt interrupted ('primary' | 'alt'), or null. */
+    this._promptFor = null;
+    /** The prompt is offered once; the next press keeps the random draw. */
+    this._prompted = false;
   }
 
   /** 'solo' | 'ready' | 'unready' | 'deploy' — what a primary click means now. */
@@ -974,8 +1039,81 @@ export class MatchStartUI {
     this.roomEl.textContent = (code ?? '------').toUpperCase();
   }
 
-  setName(name) {
-    if (document.activeElement !== this.nameIn) this.nameIn.value = name ?? '';
+  /**
+   * @param {string} name
+   * @param {boolean} [chosen] false while it is still `net`'s random draw —
+   *   the field then wears the Random flag, and the first press of a control
+   *   that puts this player in front of anybody asks for a real one first.
+   */
+  setName(name, chosen = true) {
+    this._name = name ?? '';
+    this._nameChosen = !!chosen;
+    if (document.activeElement !== this.nameIn) this.nameIn.value = this._name;
+    this.identEl.classList.toggle('unset', !this._nameChosen);
+    if (this._nameChosen) this._hidePrompt();
+  }
+
+  /** Whatever is in the field now, as a decision. Empty is not one. */
+  _commitName() {
+    const v = this.nameIn.value.trim();
+    if (v) this.onName?.(v);
+  }
+
+  /**
+   * A press of the primary or the alt link.
+   *
+   * THE CALLSIGN SPEED BUMP. Everything else on this screen is optional and
+   * stays that way, the name included — but a random draw is what every other
+   * player's roster, killfeed and scoreboard will call you, and the field for
+   * it is easy to walk past. So the first press with a name nobody chose is
+   * spent on asking: the field takes focus with the draw selected, and a line
+   * under it says what will happen. Typing and Enter carries on with the same
+   * action; pressing the same control again keeps the draw (and saves it, so
+   * the question is asked once per browser, not once per visit).
+   *
+   * Never asked for 'unready' / 'cancel' — backing out is not deploying — nor
+   * without a room, where nobody sees the name.
+   */
+  _act(which) {
+    const mode = which === 'alt' ? this._altMode : this._mode;
+    const backingOut = mode === 'unready' || mode === 'cancel';
+    if (this.multiplayer && !this._nameChosen && !backingOut) {
+      if (!this._prompted) {
+        this._prompted = true;
+        this._promptName(which);
+        return;
+      }
+      // Asked once already: going again is the answer.
+      this.onName?.(this._name);
+    }
+    this._hidePrompt();
+    if (which === 'alt') this.onAlt?.();
+    else this.onPrimary?.();
+  }
+
+  _promptName(which) {
+    this._promptFor = which;
+    const again = which === 'alt' ? 'use the link below again' : `press ${this.primaryLbl.textContent} again`;
+    // The name is player data — set as text, never as markup.
+    const b = document.createElement('b');
+    b.textContent = this._name;
+    this.identNote.replaceChildren(
+      'Everyone in the room will see you as ',
+      b,
+      `. Type your own, or ${again} to keep it.`
+    );
+    this.identNote.classList.remove('hide');
+    try {
+      this.nameIn.focus({ preventScroll: true });
+      this.nameIn.select();
+    } catch {
+      /* focus is a nicety, never a requirement */
+    }
+  }
+
+  _hidePrompt() {
+    this._promptFor = null;
+    this.identNote.classList.add('hide');
   }
 
   /** Both copy buttons confirm together — they are the same action. */
@@ -1312,6 +1450,23 @@ export class MatchStartUI {
   focusPrimary() {
     try {
       this.primaryBtn.focus({ preventScroll: true });
+    } catch {
+      /* focus is a nicety, never a requirement */
+    }
+  }
+
+  /**
+   * Where the keyboard lands when the lobby opens. With a name nobody chose it
+   * is the callsign field, draw selected: type a name and Enter deploys, or
+   * just Enter — the screen is still one keystroke. Not on touch, where focusing
+   * a field unprompted throws a keyboard over the screen.
+   */
+  focusEntry() {
+    const touch = document.body.classList.contains('wm-touch');
+    if (!this.multiplayer || this._nameChosen || touch) return this.focusPrimary();
+    try {
+      this.nameIn.focus({ preventScroll: true });
+      this.nameIn.select();
     } catch {
       /* focus is a nicety, never a requirement */
     }

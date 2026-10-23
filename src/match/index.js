@@ -142,7 +142,7 @@ export class MatchSystem {
     this._setBots(this.bots);
     if (this.net) {
       this.ui.setRoom(this.net.room);
-      this.ui.setName(this.net.name);
+      this.ui.setName(this.net.name, this.net.nameChosen);
     }
 
     const on = (t, fn) => this._off.push(ctx.events.on(t, fn));
@@ -156,7 +156,7 @@ export class MatchSystem {
     });
     on('damage:dealt', (e) => this._onDamageDealt(e));
     on('net:lobby', (e) => this._onLobby(e));
-    on('net:name', (e) => this.ui.setName(e?.name ?? ''));
+    on('net:name', (e) => this.ui.setName(e?.name ?? '', e?.chosen ?? true));
     on('net:countdown', (e) => this._onCountdown(e));
     on('net:matchend', (e) => this._onNetMatchEnd(e));
     on('net:join', (e) => this._onPresence('join', e));
@@ -194,9 +194,10 @@ export class MatchSystem {
     this.ui.setVisible(true);
     if (this.net) this._onLobby(null);
     else this.ui.render({});
-    // Enter is the whole screen: land the focus ring on the one button that
-    // matters so a keyboard player never has to hunt for it.
-    requestAnimationFrame(() => this.ui.focusPrimary());
+    // Enter is the whole screen: land the focus ring on the one control that
+    // matters so a keyboard player never has to hunt for it — the primary, or
+    // the callsign field while the name is still the random draw.
+    requestAnimationFrame(() => this.ui.focusEntry());
   }
 
   /* ==================================================================== */

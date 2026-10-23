@@ -17,8 +17,11 @@
  *   • every garrison chip repaints the primary CTA with its real bot count;
  *   • the lobby ships one visual treatment and one layout — the brand system —
  *     with no style selector, no variant class and no layout picker anywhere;
+ *   • the callsign: a random draw wears the Random flag and takes the first
+ *     focus, the first press asks for a name instead of deploying, the second
+ *     keeps (and saves) the draw, and typing a name + Enter deploys with it;
  *   • Enter reaches the (inert) primary and C flashes the copy button;
- *   • `?mp=0` collapses the room panel.
+ *   • `?mp=0` collapses the room panel and the callsign field.
  *
  *   node tools/lobby-ui-playtest.mjs [screenshot.png]
  *
@@ -55,17 +58,22 @@ async function open(query) {
   const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
   const fetched = [];
   page.on('request', (r) => fetched.push(r.url()));
+  // How many times the inert primary fired — i.e. how many presses got through.
+  const plays = { n: 0 };
+  page.on('console', (m) => {
+    if (m.text().includes('[uionly] play ignored')) plays.n++;
+  });
   page.on('pageerror', (e) => console.log('[pageerror]', e.message));
   await page.goto(url(query), { waitUntil: 'domcontentloaded', timeout: 90000 });
   await page.waitForFunction('window.__READY__ === true', null, { timeout: 120000 });
-  return { page, fetched };
+  return { page, fetched, plays };
 }
 
 try {
   const maps = mapSummaries();
 
   /* ---- the default view ------------------------------------------------- */
-  const { page, fetched } = await open('');
+  const { page, fetched, plays } = await open('');
 
   eq('no engine boots', await page.evaluate('!!window.__ENGINE__'), false);
   eq('the UI-only view is exposed', await page.evaluate('!!window.__UIONLY__'), true);
@@ -137,6 +145,37 @@ try {
     () => !!document.querySelector('[data-layout-picker]')
   ), false);
 
+  /* ---- the callsign: optional, but asked for once ----------------------- */
+  // A fresh browser profile has no saved name, so this is the random draw.
+  const ident = () => page.evaluate(() => ({
+    unset: document.querySelector('[data-ident]').classList.contains('unset'),
+    flag: getComputedStyle(document.querySelector('[data-ident-flag]')).display !== 'none',
+    note: !document.querySelector('[data-ident-note]').classList.contains('hide'),
+    focused: document.activeElement?.id === 'wm-callsign',
+    value: document.querySelector('[data-name]').value,
+    saved: localStorage.getItem('cod_name'),
+  }));
+  let id = await ident();
+  eq('a random callsign wears the Random flag', id.unset && id.flag, true);
+  check('and the field holds the draw', /^[A-Za-z]+-\d{2}$/.test(id.value), JSON.stringify(id.value));
+  eq('the draw is not saved until somebody keeps it', id.saved, null);
+  eq('the lobby opens with focus on the callsign field', id.focused, true);
+  const draw = id.value;
+
+  await page.click('[data-primary]');
+  await page.waitForTimeout(150);
+  id = await ident();
+  eq('the first press asks instead of deploying', plays.n, 0);
+  eq('it says what happens next', id.note, true);
+  eq('and hands the field the focus', id.focused, true);
+
+  await page.click('[data-primary]');
+  await page.waitForTimeout(150);
+  id = await ident();
+  eq('the second press deploys', plays.n, 1);
+  eq('keeping the draw saves it', id.saved, draw);
+  eq('and the flag and the prompt go away', id.unset || id.note, false);
+
   /* ---- keyboard: Enter is the primary, C is copy ------------------------- */
   await page.evaluate(() => document.querySelector('.wm-lobby').focus?.());
   const inertLogged = new Promise((res) => {
@@ -158,6 +197,33 @@ try {
   if (SHOT) await page.screenshot({ path: SHOT, type: 'png' });
   await page.close();
 
+  /* ---- type a name, press Enter, deploy --------------------------------- */
+  const typed = await open('');
+  await typed.page.waitForFunction(() => document.activeElement?.id === 'wm-callsign');
+  await typed.page.keyboard.type('Mantis'); // the draw is selected, so this replaces it
+  await typed.page.keyboard.press('Enter');
+  await typed.page.waitForTimeout(150);
+  eq('Enter in the callsign field deploys in one go', typed.plays.n, 1);
+  eq('with the typed name saved', await typed.page.evaluate(() => localStorage.getItem('cod_name')), 'Mantis');
+  eq('and no Random flag', await typed.page.evaluate(
+    () => document.querySelector('[data-ident]').classList.contains('unset')
+  ), false);
+  await typed.page.close();
+
+  /* ---- a name from the link is a chosen name ---------------------------- */
+  const named = await open('&name=Rook');
+  await named.page.waitForTimeout(150);
+  eq('?name= skips the flag', await named.page.evaluate(
+    () => document.querySelector('[data-ident]').classList.contains('unset')
+  ), false);
+  eq('and the focus goes to the primary', await named.page.evaluate(
+    () => document.activeElement?.hasAttribute('data-primary') ?? false
+  ), true);
+  await named.page.click('[data-primary]');
+  await named.page.waitForTimeout(150);
+  eq('and the first press deploys', named.plays.n, 1);
+  await named.page.close();
+
   /* ---- ?mp=0 collapses the room panel ------------------------------------ */
   const solo = await open('&mp=0');
   eq('?mp=0 removes the room panel', await solo.page.evaluate(
@@ -166,6 +232,9 @@ try {
   eq('the garrison chips survive ?mp=0', await solo.page.evaluate(
     () => document.querySelectorAll('[data-bots] .chip').length > 0
   ), true);
+  eq('?mp=0 removes the callsign field — nobody sees it', await solo.page.evaluate(
+    () => !!document.querySelector('[data-ident]')
+  ), false);
   await solo.page.close();
 } finally {
   console.log(results.join('\n'));

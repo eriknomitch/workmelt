@@ -11,7 +11,8 @@
  * WHAT STILL WORKS   the whole lobby DOM: map cards (a click repaints the
  *                    selection and saves the preference, exactly the solo
  *                    path), garrison chips, the layout explorations,
- *                    copy-link, and keyboard focus.
+ *                    copy-link, the callsign field and its prompt (saved
+ *                    under the key a real boot reads), and keyboard focus.
  * WHAT IS INERT      anything that needs the engine or the wire — Play,
  *                    warm-up, settings — logs a `[uionly]` note instead.
  *
@@ -27,6 +28,7 @@
 import { MatchStartUI } from '../match/ui.js';
 import { detectTouchMode } from '../core/input.js';
 import { mapSummaries, resolveBootMap, saveMapPreference } from '../world/maps.js';
+import { resolveName, saveName } from '../net/config.js';
 
 const DEFAULT_BOTS = 'off';
 
@@ -59,7 +61,14 @@ export async function bootUiOnly() {
   // The pause menu is wired straight into ctx/config/quality, so without an
   // engine there is nothing for it to edit.
   ui.onSettings = inert('settings');
-  ui.onName = () => {};
+  // The callsign is the one piece of `net` the lobby shows that needs no wire:
+  // the same draw-or-saved resolution, and the same save, as src/net/index.js.
+  const callsign = resolveName();
+  ui.setName(callsign.name, callsign.chosen);
+  ui.onName = (n) => {
+    saveName(n.slice(0, 20));
+    ui.setName(n.slice(0, 20), true);
+  };
   ui.onCopyInvite = () => {
     navigator.clipboard?.writeText(location.href).catch(() => {});
     ui.flashCopied();
@@ -82,7 +91,7 @@ export async function bootUiOnly() {
   } else {
     ui.render({});
   }
-  requestAnimationFrame(() => ui.focusPrimary());
+  requestAnimationFrame(() => ui.focusEntry());
 
   window.__UIONLY__ = ui;
   window.__READY__ = true;
