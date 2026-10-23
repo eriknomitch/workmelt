@@ -45,6 +45,12 @@ export class Room {
     this.starting = new Set();
     /** When the running match ends on time (ms epoch). 0 while no match. */
     this.matchUntil = 0;
+    /**
+     * Scorelines banked by players whose socket dropped mid-match, keyed by
+     * client token, so a reconnect resumes rather than restarting at zero.
+     * Mirrors `room.departed` in server/index.mjs — read the note there.
+     */
+    this.departed = new Map();
     this.tickHandle = null;
   }
 
@@ -109,6 +115,7 @@ export class Room {
           this.sessions.delete(peer.ws);
           return;
         }
+        peer.token = sanitiseToken(msg.token);
         peer.skin = this._takeSkin(peer);
         peer.joined = true;
         // First one in picks the level; everybody after joins the one in progress.
@@ -163,10 +170,13 @@ export class Room {
         peer.ready = false;
         this.starting.delete(peer.id);
         if (peer.deployed && !peer.warm) {
-          // A late joiner enters the match's scoreline at zero, and the first
+          // A late joiner enters the match's scoreline at zero — unless they are
+          // coming back to this match after a dropped socket — and the first
           // body on the floor starts the clock when no start signal set one.
-          peer.kills = 0;
-          peer.deaths = 0;
+          const back = peer.token ? this.departed.get(peer.token) : null;
+          if (back) this.departed.delete(peer.token);
+          peer.kills = back?.kills ?? 0;
+          peer.deaths = back?.deaths ?? 0;
           if (!this.matchUntil) this.matchUntil = Date.now() + this.matchMs;
           this._broadcast({ t: 'score', roster: this._roster() });
         }
@@ -185,7 +195,7 @@ export class Room {
         peer.ready = false;
         this.starting.delete(peer.id);
         // The clock must not keep running against an empty floor.
-        if (!this._isLive()) this.matchUntil = 0;
+        if (!this._isLive()) this._clearMatchClock();
         this._sendLobby();
         // The last player out of a match can complete a waiting ready set.
         this._maybeStart();
@@ -270,12 +280,20 @@ export class Room {
     if (!this.sessions.has(peer.ws)) return;
     this.sessions.delete(peer.ws);
     this.starting.delete(peer.id);
+    // Bank a running match's scoreline for the reconnect. See leave() in
+    // server/index.mjs.
+    if (peer.token && peer.deployed && !peer.warm && this.matchUntil) {
+      this.departed.set(peer.token, { kills: peer.kills, deaths: peer.deaths });
+    }
     try {
       peer.ws.close();
     } catch {}
     this._broadcast({ t: 'peer_leave', id: peer.id });
     this._broadcast({ t: 'score', roster: this._roster() });
     if (this.sessions.size === 0) {
+      // Node deletes an empty room outright; the DO outlives it, so its match
+      // must not either.
+      this._clearMatchClock();
       if (this.tickHandle) {
         clearInterval(this.tickHandle);
         this.tickHandle = null;
@@ -284,7 +302,7 @@ export class Room {
     }
     // A departure can complete the ready set, or take the last deployed player
     // with it and drop the room back to a lobby.
-    if (!this._isLive()) this.matchUntil = 0;
+    if (!this._isLive()) this._clearMatchClock();
     this._sendLobby();
     this._maybeStart();
   }
@@ -354,6 +372,7 @@ export class Room {
       p.kills = 0;
       p.deaths = 0;
     }
+    this.departed.clear();
     this.matchUntil = this.startAt + this.matchMs;
     this._broadcast({
       t: 'match_start',
@@ -390,7 +409,7 @@ export class Room {
       ms: this.matchMs,
       standings: rows,
     });
-    this.matchUntil = 0;
+    this._clearMatchClock();
     for (const p of this.sessions.values()) {
       if (!p.deployed || p.warm) continue;
       p.deployed = false;
@@ -406,13 +425,19 @@ export class Room {
     if (this._startRemaining() > 0) return;
     const rows = this._standings();
     if (!rows.length) {
-      this.matchUntil = 0;
+      this._clearMatchClock();
       return;
     }
     const [a, b] = rows;
     const winner =
       !b || a.kills > b.kills || (a.kills === b.kills && a.deaths < b.deaths) ? a.id : null;
     this._endMatch('time', winner);
+  }
+
+  /** The match is over (or a new one is starting): banked scorelines lapse. */
+  _clearMatchClock() {
+    this.matchUntil = 0;
+    this.departed.clear();
   }
 
   /** Push a running countdown back to a full one for a late arrival, up to the cap. */
@@ -511,6 +536,12 @@ export class Room {
       } catch {}
     }
   }
+}
+
+/** Same filter as `sanitiseToken` in server/index.mjs — keep them identical. */
+function sanitiseToken(v) {
+  const s = String(v ?? '').slice(0, 64);
+  return /^[A-Za-z0-9_-]{8,}$/.test(s) ? s : null;
 }
 
 /** Same slug filter as `sanitiseMap` in server/index.mjs — keep them identical. */

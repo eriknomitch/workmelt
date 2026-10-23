@@ -69,6 +69,34 @@ export function resolveName() {
   return name;
 }
 
+/**
+ * This tab's reconnect token: how the relay recognises a player coming back to
+ * a match after their socket dropped — a network blip, or the page reloading
+ * itself (context loss, a graphics tier change) — so they resume their score
+ * instead of re-entering at zero. It is identity, not a secret.
+ *
+ * sessionStorage, not localStorage: it has to survive a reload of THIS tab, and
+ * must not be shared with a second tab of the same browser, which is a second
+ * player. Without storage it is per page load, which just means no resume.
+ */
+export function resolveToken() {
+  try {
+    const saved = sessionStorage.getItem('cod_token');
+    if (saved) return saved;
+  } catch {}
+  const bytes = new Uint8Array(12);
+  try {
+    crypto.getRandomValues(bytes);
+  } catch {
+    for (let i = 0; i < bytes.length; i++) bytes[i] = (Math.random() * 256) | 0;
+  }
+  const token = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  try {
+    sessionStorage.setItem('cod_token', token);
+  } catch {}
+  return token;
+}
+
 export function saveName(name) {
   try {
     localStorage.setItem('cod_name', name);

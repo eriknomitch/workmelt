@@ -33,6 +33,7 @@ import {
   resolveRoom,
   resolveServerUrl,
   resolveName,
+  resolveToken,
   saveName,
   inviteLink,
 } from './config.js';
@@ -123,6 +124,7 @@ export class NetSystem {
     /** True when the URL already named a room — i.e. somebody invited us. */
     this.arrivedByInvite = arrivedByInvite;
     this.name = resolveName();
+    this.token = resolveToken();
     this.serverUrl = resolveServerUrl();
     const variants = this.ai.variantNames ?? ['vanguard'];
     // ctx.rng, never Math.random (ARCHITECTURE.md rule 4). The relay hands out
@@ -205,7 +207,15 @@ export class NetSystem {
       // The map goes out with the join: the first client into a room decides
       // which level the room is on, and everyone after joins the one in
       // progress. `match` applies whatever comes back on the lobby frame.
-      this._send({ t: 'join', room: this.room, name: this.name, map: this.world?.mapId ?? null });
+      // `token` lets the relay hand back our score if this is a reconnect into
+      // a match we dropped out of — see resolveToken().
+      this._send({
+        t: 'join',
+        room: this.room,
+        name: this.name,
+        map: this.world?.mapId ?? null,
+        token: this.token,
+      });
     };
     ws.onmessage = (ev) => {
       let msg;
