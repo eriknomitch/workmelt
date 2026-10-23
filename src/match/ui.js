@@ -283,7 +283,7 @@ const CSS = `
   object-position: center; display: none;
 }
 .wm-lobby .stage.has-art .hero-img { display: block; }
-.wm-lobby .hero-plan { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px 40px 230px; }
+.wm-lobby .hero-plan { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px 40px 260px; }
 .wm-lobby .hero-plan::before {
   content: ''; position: absolute; inset: 0; pointer-events: none;
   background:
@@ -318,19 +318,26 @@ const CSS = `
    draw. A name nobody picked wears the Warning flag (the same amber as every
    other "not settled yet" on this screen) and reads in Steel Lift, so it looks
    provisional rather than like a name somebody chose. */
-.wm-lobby .ident { display: flex; flex-direction: column; gap: 8px; padding-bottom: 6px; }
+.wm-lobby .ident { display: flex; flex-direction: column; gap: 10px; padding-bottom: 10px; }
 .wm-lobby .ident-hd { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+/* The top of the Label register (11px), in Ice White Dim rather than Steel
+   Lift: this is the one field label on the screen that is asking for input. */
+.wm-lobby .ident .lbl { font-size: 11px; letter-spacing: .24em; color: var(--wm-fg-dim); }
 .wm-lobby .ident-flag {
   display: none; align-items: center; gap: 7px;
-  font-family: var(--wm-mono); font-size: 9px; font-weight: 500; letter-spacing: .16em;
+  font-family: var(--wm-mono); font-size: 10px; font-weight: 500; letter-spacing: .16em;
   text-transform: uppercase; color: var(--wm-warn);
 }
-.wm-lobby .ident-flag .sq { width: 6px; height: 6px; background: var(--wm-warn); flex: none; }
+.wm-lobby .ident-flag .sq { width: 7px; height: 7px; background: var(--wm-warn); flex: none; }
 .wm-lobby .ident.unset .ident-flag { display: inline-flex; }
+/* Larger than the 12px DESIGN.md field on purpose: it is the name the whole
+   room will read, and it shares the dock with the primary, so it is sized to
+   stand level with the button under it rather than read as a footnote. */
 .wm-lobby .ident input {
   width: 100%; min-width: 0; background: var(--wm-panel-2); border: 1px solid var(--wm-border);
-  border-radius: var(--wm-r-sm); padding: 9px 10px; font-size: 13px; font-weight: 500;
-  letter-spacing: .04em; transition: border-color var(--wm-t), color var(--wm-t);
+  border-radius: var(--wm-r-sm); padding: 13px 14px; font-size: 20px; font-weight: 500;
+  line-height: 1.2; letter-spacing: .05em;
+  transition: border-color var(--wm-t), color var(--wm-t);
 }
 .wm-lobby .ident input:hover { border-color: var(--wm-muted-fg); }
 .wm-lobby .ident input:focus { outline: none; border-color: var(--wm-accent); }
@@ -541,8 +548,8 @@ body.wm-touch .wm-lobby {
   .wm-lobby .hero-name { font-size: clamp(30px, 4vw, 44px); margin: 10px 0 6px; }
   .wm-lobby .hero-view { margin-top: 12px; min-height: 170px; }
   .wm-lobby .dock { padding: 12px 14px 10px; gap: 7px; bottom: 14px; }
-  .wm-lobby .ident { gap: 6px; padding-bottom: 2px; }
-  .wm-lobby .ident input { padding: 7px 10px; }
+  .wm-lobby .ident { gap: 7px; padding-bottom: 4px; }
+  .wm-lobby .ident input { padding: 9px 12px; font-size: 16px; }
   .wm-lobby .btn { padding: 11px 16px; }
   .wm-lobby .mapcard .thumb { height: 64px; }
   .wm-lobby .mapcard canvas { max-height: 52px; }
