@@ -74,6 +74,13 @@ export const MOVE = {
   airAccelScale: 0.25,
   airSpeedCap: 3.4,
   terminalSpeed: 55,
+  /**
+   * How far a grounded move may drop to stay on the ground — the stair-descent
+   * snap. At least the standing step height, so any step that can be walked up
+   * can be walked down: under a 0.34 m snap every 0.4 m altar on Graving Dock
+   * was a hop and a landing.
+   */
+  snapDistance: 0.44,
 
   /** Grace windows that hide input/timing error. */
   coyoteTime: 0.09,
