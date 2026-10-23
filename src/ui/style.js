@@ -117,6 +117,9 @@ const CSS = `
 }
 /* thin lower "shotgun" reference tick — reads as a real reticle, not a plus */
 .ow-cross-ads { position:absolute; left:0; top:0; }
+/* reticle over an enemy (see nameplates.js): the CoD red-crosshair cue */
+.ow-cross.enemy .ow-blade { background: linear-gradient(to top, rgba(255,63,49,.7), var(--red) 62%); }
+.ow-cross.enemy .ow-dot { background: var(--red); }
 
 /* ============================================================ hitmarkers */
 .ow-hit {
@@ -586,6 +589,26 @@ const CSS = `
 .ow-dn.hs   { color: var(--amber); font-size: calc(21px * var(--k)); }
 .ow-dn.kill { color: var(--red);   font-size: calc(23px * var(--k)); }
 .ow-dn.armour { color: var(--cyan); }
+
+/* ============================================================ nameplates */
+/* The red name over the head of the enemy under your reticle. Small and
+   un-bold like CoD's: it identifies, it does not shout over the fight. */
+.ow-np {
+  position:absolute; left:0; top:0;
+  display:flex; align-items:center; gap: calc(var(--u) * 1.1);
+  white-space:nowrap; will-change: transform, opacity;
+}
+.ow-np-name {
+  font-family: var(--ff); font-size: calc(15px * var(--k)); font-weight:600;
+  letter-spacing:.02em; color: var(--red); text-shadow: var(--sh-o1);
+  /* a callsign is spelled the way its owner typed it, as in the killfeed */
+  text-transform: none;
+}
+.ow-np-sw {
+  display:block; width: calc(7px * var(--k)); height: calc(7px * var(--k));
+  transform: rotate(45deg);
+  box-shadow: 0 0 0 calc(1.2px * var(--k)) var(--oc), 0 0 calc(3px * var(--k)) rgba(0,0,0,.7);
+}
 
 /* ================================================================ prompt */
 .ow-prompt {

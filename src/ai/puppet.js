@@ -108,6 +108,11 @@ export class NetPuppet {
     this.animator.hit(region, side, strength);
   }
 
+  /** Top of the head after the last pose update (for the HUD nameplate). */
+  headPos(out) {
+    return this.animator.bonePos('HeadTop', out);
+  }
+
   /** World-space muzzle after the last pose update (for remote tracers). */
   get muzzleWorld() {
     return this.animator.muzzleWorld;
