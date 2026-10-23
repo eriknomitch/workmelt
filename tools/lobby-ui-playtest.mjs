@@ -105,6 +105,11 @@ try {
     [...document.querySelectorAll('[data-bots] .chip')].map((c) => c.textContent)
   );
   eq('one chip per garrison preset', chips.length, BOT_PRESETS.length);
+  // Players-first: the lobby opens with no garrison, and the CTA says so.
+  eq('the lobby opens with no bots selected', await page.evaluate(
+    () => [...document.querySelectorAll('[data-bots] .chip')].find((c) => c.getAttribute('aria-pressed') === 'true')?.textContent
+  ), BOT_PRESETS.find((p) => p.key === 'off').label);
+  eq('so the CTA is a plain Play', await page.evaluate(() => document.querySelector('[data-primary]').textContent), 'Play');
   for (const p of BOT_PRESETS) {
     await page.evaluate((label) => {
       [...document.querySelectorAll('[data-bots] .chip')].find((c) => c.textContent === label)?.click();

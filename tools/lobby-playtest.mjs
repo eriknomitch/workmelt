@@ -114,8 +114,13 @@ try {
   const a = await player('Alpha');
   let sa = await snapshot(a);
   eq('A opens on the lobby', sa.state, 'setup');
-  eq('alone in the room, the primary is the bots match', sa.uiMode, 'solo');
-  check('labelled with the garrison size', /Play vs \d+ bots/.test(sa.primary), sa.primary);
+  eq('alone in the room, the primary is the solo deploy', sa.uiMode, 'solo');
+  eq('with no garrison by default — the lobby is for players', sa.primary, 'Play');
+
+  // The warm-up this scenario is about is against bots, so opt into them.
+  await a.$$eval('.wm-lobby [data-bots] .chip', (els) => els.find((el) => el.textContent === 'Standard').click());
+  sa = await snapshot(a);
+  check('picking a garrison labels the primary with its size', /Play vs \d+ bots/.test(sa.primary), sa.primary);
 
   // A presses it rather than sitting on an empty screen — the whole reason the
   // bug was easy to hit.
@@ -156,7 +161,7 @@ try {
     JSON.stringify(sb.roster)
   );
   eq('the map is still the room’s to choose', sb.mapsLocked, false);
-  check('and the link under the primary offers a warm-up too', !sb.altHidden && /Warm up/.test(sb.alt), sb.alt);
+  check('and the link under the primary offers a warm-up too', !sb.altHidden && /while you wait/.test(sb.alt), sb.alt);
 
   /* ── B readies up: one match, both players ──────────────────────────────── */
   await press(b, '[data-primary]');
