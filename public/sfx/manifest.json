@@ -340,5 +340,11 @@
     "powerup": [
       "world/powerup_0.opus"
     ]
+  },
+  "whizz": {
+    "pass": [
+      "whizz/pass_0.opus",
+      "whizz/pass_1.opus"
+    ]
   }
 }
