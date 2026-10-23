@@ -10,6 +10,7 @@ import {
   estimateRefreshRate,
   GRAPHICS_STORAGE_KEY,
   loadGraphicsSettings,
+  TUNED_NOTICE_KEY,
   prepareAutoSettings,
   resolveGraphicsBoot,
 } from './quality.js';
@@ -274,6 +275,7 @@ await checkAsync('calibrates once, persists the tier, and reloads when the pipel
     time: { scale: 1 },
     config: { quality: 'ultra', q: { renderScale: 1 } },
     get: () => ({ setRenderScale() {} }),
+    peek: (id) => (id === 'match' ? { reloadSafe: true } : null),
   };
   const system = new AdaptiveQualitySystem({
     logger: null,
@@ -295,8 +297,8 @@ await checkAsync('calibrates once, persists the tier, and reloads when the pipel
 
   assert.equal(loadGraphicsSettings(storage).tier, 'low');
   assert.equal(loadGraphicsSettings(storage).renderScale, 0.7);
-  // Immediate, unlike the live walk-down: the calibration scrim blocks play,
-  // so there is no fight to interrupt and no death to wait for.
+  // Immediate, unlike the live walk-down: the player is sitting on an idle
+  // lobby, so there is nothing to interrupt.
   assert.equal(reloads, 1);
   assert.equal(system.getStatus().state, 'reloading');
   assert.equal(location.href, 'http://localhost:5173/?room=ABC123');
@@ -324,6 +326,7 @@ await checkAsync('discards hidden calibration frames before choosing a tier', as
     time: { scale: 1 },
     config: { quality: 'ultra', q: { renderScale: 1 } },
     get: () => ({ setRenderScale() {} }),
+    peek: (id) => (id === 'match' ? { reloadSafe: true } : null),
   };
   const system = new AdaptiveQualitySystem({
     logger: null,
@@ -347,8 +350,202 @@ await checkAsync('discards hidden calibration frames before choosing a tier', as
   system.lateUpdate(0, ctx); // warm-up complete, window opens
   perf.count = 360;
   nowMs = 15002;
-  system.lateUpdate(0, ctx); // measured — the calibration reload is immediate
+  system.lateUpdate(0, ctx); // measured — on an idle lobby the reload is immediate
   assert.equal(reloads, 1);
+});
+
+/**
+ * An uncalibrated Auto boot on the medium pipeline, measuring a machine that
+ * holds `fps` against a 60 fps target. `lobby` stands in for the match system
+ * (`reloadSafe`); null is a `?match=0` boot with no lobby at all.
+ */
+const calibrationHarness = ({ fps = 30, lobby = { reloadSafe: true }, session } = {}) => {
+  const values = new Map();
+  const storage = {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, value),
+  };
+  const notes = new Map();
+  session ??= {
+    getItem: (key) => notes.get(key) ?? null,
+    setItem: (key, value) => notes.set(key, value),
+    removeItem: (key) => notes.delete(key),
+  };
+  let reloads = 0;
+  let applied = null;
+  let nowMs = 0;
+  const handlers = new Map();
+  const perf = {
+    count: 0,
+    stats: () => ({
+      fps: { p95: fps },
+      frameMs: { p90: 1000 / fps, p95: 1000 / fps },
+      bound: 'gpu-or-vsync',
+    }),
+  };
+  const ctx = {
+    perf,
+    time: { scale: 1 },
+    config: { quality: 'medium', q: { renderScale: QUALITY_PRESETS.medium.renderScale } },
+    events: {
+      on: (type, fn) => (handlers.set(type, fn), () => handlers.delete(type)),
+      emit: (type, payload) => handlers.get(type)?.(payload),
+    },
+    get: () => ({ setRenderScale: (scale) => (applied = scale) }),
+    peek: (id) => (id === 'match' ? lobby : null),
+  };
+  const system = new AdaptiveQualitySystem({
+    logger: null,
+    settings: { mode: 'auto', targetFps: 60, calibrated: false },
+    storage,
+    session,
+    location: { reload: () => reloads++ },
+    now: () => nowMs,
+  });
+  /** Let `ms` and `frames` pass, then run one lateUpdate. */
+  const step = (ms, frames) => {
+    nowMs += ms;
+    perf.count += frames;
+    system.lateUpdate(0, ctx);
+  };
+  /** Open the warm-up, finish it, then fill a measurement window. */
+  const calibrate = () => {
+    step(0, 0);
+    step(5001, 60);
+    step(5001, 240);
+  };
+  return {
+    system,
+    storage,
+    session,
+    ctx,
+    step,
+    calibrate,
+    reloads: () => reloads,
+    applied: () => applied,
+  };
+};
+
+await checkAsync('a calibration on an idle lobby reloads there and announces the tier', async () => {
+  const h = calibrationHarness();
+  await h.system.init(h.ctx);
+  h.calibrate();
+  assert.equal(loadGraphicsSettings(h.storage).tier, 'low');
+  assert.equal(h.reloads(), 1, 'nothing to lose on the lobby — reload now');
+  assert.equal(h.session.getItem(TUNED_NOTICE_KEY), 'low');
+
+  // The boot it lands in reads the notice exactly once…
+  const next = new AdaptiveQualitySystem({
+    logger: null,
+    settings: loadGraphicsSettings(h.storage),
+    storage: h.storage,
+    session: h.session,
+    location: { reload() {} },
+  });
+  await next.init({ ...h.ctx, config: { quality: 'low', q: { renderScale: QUALITY_PRESETS.low.renderScale } } });
+  assert.equal(next.tunedTier, 'low');
+  assert.equal(h.session.getItem(TUNED_NOTICE_KEY), null, 'one-shot');
+  // …so the boot after that says nothing.
+  const later = new AdaptiveQualitySystem({
+    logger: null,
+    settings: loadGraphicsSettings(h.storage),
+    storage: h.storage,
+    session: h.session,
+  });
+  await later.init({ ...h.ctx, config: { quality: 'low', q: { renderScale: 1 } } });
+  assert.equal(later.tunedTier, null);
+});
+
+await checkAsync('a calibration that lands on the boot tier announces it without a reload', async () => {
+  const h = calibrationHarness({ fps: 60 });
+  await h.system.init(h.ctx);
+  h.calibrate();
+  assert.equal(h.reloads(), 0);
+  assert.equal(h.system.tunedTier, 'medium');
+  assert.equal(h.system.calibrating, false);
+});
+
+await checkAsync('a calibration that finishes mid-match keeps the match and waits for the lobby', async () => {
+  // The bug this replaces: Play during calibration deployed the player behind
+  // a frozen scrim, then the tier reload threw them back to the lobby.
+  const lobby = { reloadSafe: true };
+  const h = calibrationHarness({ lobby });
+  await h.system.init(h.ctx);
+  h.ctx.events.emit('match:start', { mode: 'bots' });
+  lobby.reloadSafe = false;
+  h.calibrate();
+
+  assert.equal(loadGraphicsSettings(h.storage).tier, 'low', 'the result is persisted now');
+  const persistedScale = loadGraphicsSettings(h.storage).renderScale;
+  assert.equal(h.reloads(), 0, 'but the match is not taken away');
+  assert.equal(h.system.getStatus().state, 'reload-pending');
+  assert.equal(h.system.calibrating, false, 'measurement is over');
+
+  // The interim scaler keeps a weak machine playable on the boot tier…
+  h.step(2000, 240);
+  h.step(2000, 240);
+  assert.ok(h.applied() !== null && h.applied() < QUALITY_PRESETS.medium.renderScale, 'scaled down');
+  // Long enough to bottom out at the medium floor and report `limited`.
+  for (let i = 0; i < 60; i++) h.step(2000, 240);
+  assert.equal(h.applied(), QUALITY_PRESETS.medium.minRenderScale, 'at the boot tier floor');
+  // …without writing boot-tier scales into the new tier's profile.
+  assert.equal(loadGraphicsSettings(h.storage).renderScale, persistedScale);
+  assert.equal(loadGraphicsSettings(h.storage).tier, 'low', 'no walk-down off interim frames');
+
+  h.ctx.events.emit('player:death', {});
+  assert.equal(h.reloads(), 0, 'a death in a warm-up is not the lobby');
+  h.ctx.time.scale = 0;
+  h.step(16, 1);
+  assert.equal(h.reloads(), 0, 'nor is pausing it');
+  h.ctx.time.scale = 1;
+  h.ctx.events.emit('match:end', { reason: 'complete' });
+  h.step(16, 1);
+  assert.equal(h.reloads(), 0, 'the ceremony is still showing the result');
+
+  lobby.reloadSafe = true;
+  h.step(16, 1);
+  assert.equal(h.reloads(), 1, 'the idle lobby is where it lands');
+});
+
+await checkAsync('a calibration never reloads a player out of a room match', async () => {
+  const lobby = { reloadSafe: false }; // readied up, then pulled into the countdown
+  const h = calibrationHarness({ lobby });
+  await h.system.init(h.ctx);
+  h.ctx.events.emit('match:start', { mode: 'versus' });
+  h.calibrate();
+  h.ctx.events.emit('player:death', {});
+  h.ctx.time.scale = 0;
+  h.step(16, 1);
+  h.ctx.time.scale = 1;
+  assert.equal(h.reloads(), 0, 'to the relay a reload is the player leaving the match');
+  lobby.reloadSafe = true;
+  h.ctx.events.emit('match:end', { reason: 'left' });
+  h.step(16, 1);
+  assert.equal(h.reloads(), 1);
+});
+
+await checkAsync('deploying restarts an in-flight calibration on the live scene', async () => {
+  const h = calibrationHarness();
+  await h.system.init(h.ctx);
+  h.step(0, 0); // warm-up opens on the lobby backdrop
+  h.step(5001, 60); // warm-up done, measuring the lobby
+  h.ctx.events.emit('match:start', { mode: 'bots' });
+  h.step(5001, 240);
+  assert.equal(h.system.calibrating, true, 'lobby frames are not scored against the match');
+  assert.equal(h.reloads(), 0);
+  h.step(5001, 60); // the match's own warm-up
+  h.step(5001, 240);
+  assert.equal(h.system.calibrating, false);
+});
+
+await checkAsync('without a lobby a calibration reload uses the ordinary boundaries', async () => {
+  // `?match=0`: live on the first frame, nowhere better to wait for.
+  const h = calibrationHarness({ lobby: null });
+  await h.system.init(h.ctx);
+  h.calibrate();
+  assert.equal(h.reloads(), 0);
+  h.ctx.events.emit('player:death', {});
+  assert.equal(h.reloads(), 1);
 });
 
 await checkAsync('applies adaptive render scale through the renderer interface', async () => {
@@ -634,7 +831,7 @@ check('the calibrating flag tracks the measurement phase and nothing else', () =
   });
   assert.equal(done.calibrating, false);
   // …and neither is a capture/`?q=` boot, whatever the stored profile says —
-  // the player pan and damage immunity must never leak into those runs.
+  // the lobby pan and status line must never leak into those runs.
   const off = new AdaptiveQualitySystem({
     logger: null,
     settings: { mode: 'auto', calibrated: false },

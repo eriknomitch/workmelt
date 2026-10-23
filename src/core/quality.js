@@ -29,6 +29,12 @@ const PROMOTE_HEADROOM = 0.7;
 // help a CPU-bound frame, but a cheaper tier's draw/LOD budgets can).
 const CPU_LIMIT_MS = 15000;
 export const GRAPHICS_STORAGE_KEY = 'cod_graphics_v1';
+/**
+ * sessionStorage marker left by a calibration reload, so the boot it lands in
+ * can tell the player what was picked ("Graphics set to High"). Session-scoped
+ * on purpose: it is news for this tab's next boot, not a preference.
+ */
+export const TUNED_NOTICE_KEY = 'wm_graphics_tuned';
 export const GRAPHICS_MODES = ['auto', 'low', 'medium', 'high', 'ultra'];
 export const FPS_TARGETS = [30, 60, 90, 120, 144, 165, 240];
 const STORED_VERSIONS = [1, 2, 3, 4, 5];
@@ -59,6 +65,14 @@ const defaultGraphics = () => ({ ...DEFAULT_GRAPHICS, overrides: {} });
 function browserStorage() {
   try {
     return globalThis.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+function browserSessionStorage() {
+  try {
+    return globalThis.sessionStorage;
   } catch {
     return null;
   }
@@ -180,9 +194,14 @@ function hashString(value) {
 
 export function detectDeviceSignature() {
   const s = globalThis.screen;
-  const display = `${s?.width ?? 0}x${s?.height ?? 0}:${s?.colorDepth ?? 0}:${
-    globalThis.devicePixelRatio ?? 1
-  }`;
+  // The screen in CSS pixels, deliberately WITHOUT devicePixelRatio. Chromium
+  // reports `screen.width/height` in DIPs, which page zoom leaves alone, while
+  // the ratio moves with every Ctrl +/- — so keying on it threw a measured
+  // profile away, and sent the player back through calibration, for zooming
+  // the page. A different panel or OS scale still changes the DIP size; the
+  // rarer same-size, different-density swap is left to the live scaler and
+  // walk-down, which exist to absorb exactly that kind of drift.
+  const display = `${s?.width ?? 0}x${s?.height ?? 0}:${s?.colorDepth ?? 0}`;
   let gpu = '';
   try {
     const canvas = document.createElement('canvas');
@@ -379,7 +398,7 @@ export class AdaptiveQualitySystem {
   static id = 'quality';
   static deps = ['render'];
 
-  constructor({ settings, enabled = true, storage, location, now, isActive, logger } = {}) {
+  constructor({ settings, enabled = true, storage, session, location, now, isActive, logger } = {}) {
     this.settings = { ...defaultGraphics(), ...settings };
     this.settings.overrides = sanitizeOverrides(this.settings.overrides);
     this.enabled = enabled;
@@ -400,6 +419,7 @@ export class AdaptiveQualitySystem {
     this._log = logger === null ? () => {} : logger ?? ((msg) => console.info(`[quality] ${msg}`));
     this._loggedState = null;
     this.storage = storage ?? browserStorage();
+    this.session = session ?? browserSessionStorage();
     this.location = location ?? globalThis.location;
     this.now = now ?? (() => performance.now());
     // `hidden` catches a minimised window or another tab; `hasFocus()` catches
@@ -426,6 +446,26 @@ export class AdaptiveQualitySystem {
      * boundaries: the match keeps running through all three. Only its end is.
      */
     this._roomMatch = false;
+    /**
+     * The queued reload may only fire on the lobby screen (see `_canReloadNow`).
+     * Set for calibration results: a first-session tier change is not worth
+     * taking a match away for — the player keeps it and the reload lands
+     * between matches instead.
+     */
+    this._lobbyOnly = false;
+    /**
+     * Calibration finished mid-match on a different tier than the one booted.
+     * Until the reload lands, the scaler runs on the BOOT tier's bounds and
+     * persists nothing, so a weak machine is not left at full resolution for
+     * the rest of the match and the stored new-tier profile stays untouched.
+     */
+    this._interim = false;
+    /**
+     * The tier calibration settled on, set once this tab has news for the
+     * player: calibration finished without a reload, or this boot is the one a
+     * calibration reload landed in. The lobby reads it for its notice.
+     */
+    this.tunedTier = null;
     this._demotedThisSession = false;
     this._promoteSinceMs = null;
     this._warmedUp = false;
@@ -462,6 +502,7 @@ export class AdaptiveQualitySystem {
     );
     this._calibrationStartFrame = ctx.perf.count;
     this._adaptiveStartFrame = ctx.perf.count;
+    this._readTunedNotice();
     // Context-loss recovery lives here rather than in `render` because this is
     // where persistence and reloads already live, and a recovery that is not
     // persisted is a recovery the next boot repeats the crash through. Wired up
@@ -474,19 +515,28 @@ export class AdaptiveQualitySystem {
     // Requested reloads wait for a safe boundary instead: the local player's
     // death, the match ending, or the player pausing / hiding the tab (the
     // inactive case is caught at the top of lateUpdate). In a room match only
-    // the end counts — see `_roomMatch`.
+    // the end counts — see `_roomMatch`. A calibration result waits for the
+    // lobby itself — see `_lobbyOnly`.
+    //
+    // Deploying and leaving also swap the whole scene out from under an
+    // in-flight calibration (lobby backdrop → live match, or back), so the
+    // measurement window restarts rather than averaging the two.
     const subs = {
       'match:start': (e) => {
         this._roomMatch = !!e?.mode && e.mode !== 'bots';
+        this._restartCalibration(ctx, 'deployed');
       },
       'player:death': () => {
-        if (!this._roomMatch) this._fireDeferredReload();
+        if (!this._roomMatch && !this._lobbyOnly) this._fireDeferredReload();
       },
       'match:end': (e) => {
         this._roomMatch = false;
+        this._restartCalibration(ctx, 'back in the lobby');
         // A warm-up pulled into the room's countdown is about to deploy into
         // the match: reloading now would drop it out of the starting cohort.
-        if (e?.reason !== 'pulled-in') this._fireDeferredReload();
+        // A lobby-only reload is picked up by lateUpdate once the lobby is
+        // actually idle (a completed match still has its ceremony to show).
+        if (e?.reason !== 'pulled-in' && !this._lobbyOnly) this._fireDeferredReload();
       },
     };
     for (const [type, fn] of Object.entries(subs)) {
@@ -506,10 +556,14 @@ export class AdaptiveQualitySystem {
   lateUpdate(_dt, ctx) {
     if (!this.enabled || this.settings.mode !== 'auto' || this._reloadPending) return;
     if (this._deferredReload) {
+      if (this._canReloadNow(ctx)) {
+        this._fireDeferredReload();
+        return;
+      }
       // The new tier is already persisted; the scaler stands down until the
       // reload lands so it cannot write old-tier scales into new-tier settings.
-      if (!this._roomMatch && !this.isActive(ctx)) this._fireDeferredReload();
-      return;
+      // The interim scaler is the exception: it persists nothing.
+      if (!this._interim) return;
     }
     const nowMs = this.now();
     if (!this.settings.calibrated || !this.settings.tier) {
@@ -518,10 +572,7 @@ export class AdaptiveQualitySystem {
           this._calibIdle = true;
           this._log('calibration paused — window hidden, unfocused or time stopped');
         }
-        this._calibrationStartFrame = ctx.perf.count;
-        this._calibrationStartMs = null;
-        this._warmedUp = false;
-        this._warmupStartMs = null;
+        this._resetCalibrationWindow(ctx);
         return;
       }
       if (this._calibIdle) {
@@ -561,7 +612,7 @@ export class AdaptiveQualitySystem {
     });
     this._status.achievedFps = result.achievedFps;
     this._status.renderScale = result.renderScale;
-    this._status.state = result.status;
+    this._status.state = this._interim ? 'reload-pending' : result.status;
     if (this._status.state !== this._loggedState) {
       this._loggedState = this._status.state;
       this._log(
@@ -570,7 +621,7 @@ export class AdaptiveQualitySystem {
           `scale ${result.renderScale}`
       );
     }
-    if (result.status === 'limited') {
+    if (result.status === 'limited' && !this._interim) {
       const tier = LOWER_TIER[this.settings.tier];
       if (tier) {
         const renderScale = QUALITY_PRESETS[tier]?.renderScale ?? result.renderScale;
@@ -588,16 +639,31 @@ export class AdaptiveQualitySystem {
         return;
       }
     }
-    this._maybePromote(nowMs, stats);
-    if (this._deferredReload || !result.changed) return;
+    if (!this._interim) this._maybePromote(nowMs, stats);
+    if ((this._deferredReload && !this._interim) || !result.changed) return;
 
     this._log(
       `render scale → ${result.renderScale} (p95 ${stats.frameMs.p95} ms vs ` +
-        `${(1000 / this.policy.targetFps).toFixed(1)} ms budget, achieved ${result.achievedFps} fps)`
+        `${(1000 / this.policy.targetFps).toFixed(1)} ms budget, achieved ${result.achievedFps} fps)` +
+        (this._interim ? ' — interim, not persisted' : '')
     );
     ctx.get('render').setRenderScale(result.renderScale);
     this._adaptiveStartFrame = ctx.perf.count;
-    this._persist({ renderScale: result.renderScale });
+    if (!this._interim) this._persist({ renderScale: result.renderScale });
+  }
+
+  _resetCalibrationWindow(ctx) {
+    this._calibrationStartFrame = ctx.perf.count;
+    this._calibrationStartMs = null;
+    this._warmedUp = false;
+    this._warmupStartMs = null;
+  }
+
+  /** The scene changed under an in-flight calibration: measure the new one. */
+  _restartCalibration(ctx, why) {
+    if (!this.calibrating || (this._warmupStartMs === null && !this._warmedUp)) return;
+    this._log(`calibration restarted — ${why}`);
+    this._resetCalibrationWindow(ctx);
   }
 
   _calibrate(nowMs, ctx) {
@@ -645,15 +711,64 @@ export class AdaptiveQualitySystem {
     });
 
     if (tier !== ctx.config.quality && loadGraphicsSettings(this.storage).tier === tier) {
-      // Immediate, not deferred: the UI blocks play behind a scrim for the
-      // whole calibration phase, so nobody is mid-fight here — and the deferred
-      // path would wait on a death that cannot happen behind the blocker.
-      this._status.state = 'reloading';
-      this._reloadPending = true;
-      this.location?.reload?.();
+      // The booted pipeline is the wrong one, and only a reload swaps it. On
+      // an idle lobby that is free — nothing is lost and the player sees the
+      // notice when it lands. Anywhere else the player is in, or committed
+      // to, a match: they keep it, on the boot tier with the scaler running,
+      // and the reload waits for the lobby.
+      this._writeTunedNotice(tier);
+      if (this._lobby()?.reloadSafe) {
+        this._status.state = 'reloading';
+        this._reloadPending = true;
+        this.location?.reload?.();
+        return;
+      }
+      this._log(`calibration done away from an idle lobby — staying on ${ctx.config.quality} until it is`);
+      this._interim = true;
+      this._activatePolicy({ tier: ctx.config.quality, renderScale: ctx.config.q.renderScale });
+      this._status.tier = tier;
+      this._requestReload({ lobbyOnly: true });
       return;
     }
+    this.tunedTier = tier;
     this._activatePolicy();
+  }
+
+  /**
+   * The match system, when this boot has one. It owns the lobby and answers
+   * `reloadSafe`: on the lobby screen, idle — not readied, not counting down,
+   * not mid map change, not typing. Duck-typed so `?match=0` boots and the
+   * headless tests (no `peek`) simply have no lobby.
+   */
+  _lobby() {
+    const match = this.ctx?.peek?.('match');
+    return typeof match?.reloadSafe === 'boolean' ? match : null;
+  }
+
+  _canReloadNow(ctx = this.ctx) {
+    if (this._lobbyOnly) return !!this._lobby()?.reloadSafe;
+    return !this._roomMatch && (!ctx || !this.isActive(ctx));
+  }
+
+  _writeTunedNotice(tier) {
+    try {
+      this.session?.setItem?.(TUNED_NOTICE_KEY, tier);
+    } catch {
+      // No notice is the whole cost of a locked-down storage.
+    }
+  }
+
+  /** One-shot: the boot a calibration reload lands in announces the tier. */
+  _readTunedNotice() {
+    let tier = null;
+    try {
+      tier = this.session?.getItem?.(TUNED_NOTICE_KEY) ?? null;
+      if (tier !== null) this.session.removeItem?.(TUNED_NOTICE_KEY);
+    } catch {
+      return;
+    }
+    if (tier && this.settings.mode === 'auto' && this.settings.calibrated && tier === this.settings.tier)
+      this.tunedTier = tier;
   }
 
   /**
@@ -702,11 +817,15 @@ export class AdaptiveQualitySystem {
   }
 
   /** Ask for a reload at the next safe boundary; immediate if already at one. */
-  _requestReload() {
+  _requestReload({ lobbyOnly = false } = {}) {
     if (this._reloadPending || this._deferredReload) return;
     this._deferredReload = true;
+    // Without a lobby (`?match=0`) there is nowhere better to wait for, so a
+    // lobby-only request falls back to the ordinary boundaries.
+    this._lobbyOnly = lobbyOnly && !!this._lobby();
     this._status.state = 'reload-pending';
-    if (!this._roomMatch && (!this.ctx || !this.isActive(this.ctx))) this._fireDeferredReload();
+    if (this._canReloadNow()) this._fireDeferredReload();
+    else if (this._lobbyOnly) this._log('reload queued — waiting for the lobby');
     else if (this._roomMatch) this._log('reload queued — room match running, waiting for it to end');
     else this._log('reload queued — waiting for a safe boundary (death, match end, or pause)');
   }
@@ -744,19 +863,19 @@ export class AdaptiveQualitySystem {
     this.location?.reload?.();
   }
 
-  _activatePolicy() {
+  _activatePolicy({ tier = this.settings.tier, renderScale = this.settings.renderScale } = {}) {
     const targetFps = this._resolveTarget(this.settings.targetFps);
     this.policy = new AdaptiveQualityPolicy({
       targetFps,
-      initialScale: this.settings.renderScale,
-      minScale: QUALITY_PRESETS[this.settings.tier]?.minRenderScale ?? 0.5,
-      maxScale: QUALITY_PRESETS[this.settings.tier]?.maxRenderScale ?? 1,
+      initialScale: renderScale,
+      minScale: QUALITY_PRESETS[tier]?.minRenderScale ?? 0.5,
+      maxScale: QUALITY_PRESETS[tier]?.maxRenderScale ?? 1,
     });
     this._adaptiveStartFrame = this.ctx?.perf.count ?? 0;
     this._nextSampleMs = 0;
     this._status.targetFps = targetFps;
-    this._status.tier = this.settings.tier ?? this.ctx?.config.quality ?? 'ultra';
-    this._status.renderScale = this.settings.renderScale;
+    this._status.tier = tier ?? this.ctx?.config.quality ?? 'ultra';
+    this._status.renderScale = renderScale;
     this._status.state = 'stable';
   }
 
@@ -910,11 +1029,10 @@ export class AdaptiveQualitySystem {
   }
 
   /**
-   * True while the measurement phase is running. Other systems key protective
-   * behaviour off this — the UI's blocking scrim and input freeze, the player's
-   * calibration camera pan, and damage immunity (a frozen player is a sitting
-   * duck, and a death mid-measurement respawns the camera and pollutes the
-   * frames being scored).
+   * True while the measurement phase is running. Nothing is blocked by it: the
+   * lobby shows a status line and pans its backdrop so the score covers more
+   * than one sightline, and a player who deploys anyway just plays — the
+   * measurement restarts on the live match and its result waits for the lobby.
    */
   get calibrating() {
     return this.enabled && this._status.state === 'calibrating';

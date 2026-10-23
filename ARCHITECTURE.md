@@ -100,9 +100,9 @@ export class MySystem {
 | `ai` | `src/ai/` | enemy characters, navigation, perception, cover selection, combat behaviour |
 | `ui` | `src/ui/` | HUD, crosshair, hitmarkers, damage indicators, ammo, killfeed, menus |
 | `audio` | `src/audio/` | sampled + synthesized weapon/foley audio, spatialisation, reverb, occlusion, mix |
-| `quality` | `src/core/quality.js` | per-browser graphics calibration, FPS targeting, dynamic render scale, persisted graphics mode, and the advanced per-option graphics overrides (schema in `src/core/graphics.js`) |
+| `quality` | `src/core/quality.js` | per-browser graphics calibration, FPS targeting, dynamic render scale, persisted graphics mode, and the advanced per-option graphics overrides (schema in `src/core/graphics.js`). Calibration never blocks play: it measures behind the lobby, restarts on deploy, and a tier change it decides waits for `match.reloadSafe` before reloading |
 | `net` | `src/net/` | web multiplayer: room transport, remote player puppets, PvP hit settlement, invite bar / scoreboard, the match-start lobby on the wire |
-| `match` | `src/match/` | the Match Start view: map choice, bot-garrison choice, ready-up, countdown, and when the match goes live |
+| `match` | `src/match/` | the Match Start view: map choice, bot-garrison choice, ready-up, countdown, and when the match goes live. Answers `reloadSafe` (idle on the lobby: not readied, not counting down, not typing or in settings) for `quality`, and shows its calibration status line |
 
 Shared, owned by the lead (do not edit): `src/core/`, `src/main.js`,
 `src/boot.js`, `src/dev/`, `tools/`, `vite.config.js`.
