@@ -221,6 +221,18 @@ export class Agent {
     this.stateTime = 0;
     this.squad = opts.squad ?? null;
     this.team = opts.team ?? 1;
+    /** Killfeed callsign (src/ai/names.js) and gun ('carbine' | 'ak'). */
+    this.name = opts.name ?? null;
+    this.weaponId = def.variant.weapon ?? 'ai_rifle';
+    /**
+     * The last hit's attacker, weapon and whether it was a headshot — stamped
+     * by `noteHit()` just before `applyDamage()`, so whichever hit kills is the
+     * one `actor:death` reports. `killer` is what `damage:dealt.source` /
+     * `explosion.source` carried: 'player', a bot Agent, 'ai' or null.
+     */
+    this.killer = null;
+    this.killerWeapon = null;
+    this.killerHeadshot = false;
 
     /* ---------------- perception ---------------- */
     this.eyeHeight = RIG.eyeHeight * this.scale;
@@ -911,6 +923,14 @@ export class Agent {
    * @param point   world impact point
    * @param dir     incident direction (unit)
    */
+  /** Record who is about to hit this body — see `killer` above. */
+  noteHit(source, weapon, headshot) {
+    if (!this.alive) return;
+    this.killer = source ?? null;
+    this.killerWeapon = typeof weapon === 'string' ? weapon : weapon?.id ?? null;
+    this.killerHeadshot = !!headshot;
+  }
+
   applyDamage(amount, part, point, dir) {
     if (!this.alive) return;
     this.health -= amount;
@@ -982,7 +1002,9 @@ export class Agent {
       actor: this,
       point: hitPoint,
       impulse,
-      headshot: false,
+      by: this.killer,
+      weapon: this.killerWeapon,
+      headshot: this.killerHeadshot,
     });
     this.deadTime = 0;
   }

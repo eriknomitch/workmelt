@@ -1,68 +1,74 @@
-import { el, svg, setText, setStyle, setClass, Pool, ease, clamp01 } from './util.js';
+import { el, svg, setText, setStyle, Pool, ease, clamp01 } from './util.js';
+import { KILL_ICONS, killIcon } from './killicons.js';
 
-function rifleIcon(parent) {
-  const s = svg('svg', { viewBox: '0 0 28 11', fill: 'rgba(240,246,250,.9)' }, parent);
-  svg('polygon', { points: '0.5,4.2 6,4.2 6,8 2.2,8' }, s); // stock
-  svg('rect', { x: 6, y: 3.6, width: 8.2, height: 3.4 }, s); // receiver
-  svg('rect', { x: 14.2, y: 4.2, width: 6.4, height: 2.1 }, s); // handguard
-  svg('rect', { x: 20.6, y: 4.6, width: 6.9, height: 1.2 }, s); // barrel
-  svg('rect', { x: 23.6, y: 2.6, width: 1.1, height: 2 }, s); // front sight
-  svg('polygon', { points: '9,7 12.6,7 11.9,11 9.7,11' }, s); // magazine
-  svg('polygon', { points: '13,7 15,7 14.1,10.2 12.5,10.2' }, s); // grip
-  return s;
-}
-
-function skullIcon(parent) {
-  const s = svg('svg', { viewBox: '0 0 11 11', fill: 'rgba(255,194,71,.95)' }, parent);
-  svg('path', { d: 'M5.5.8c2.4 0 4.1 1.7 4.1 4 0 1.5-.7 2.4-1.5 3v1.3H3v-1.3c-.9-.6-1.6-1.5-1.6-3 0-2.3 1.7-4 4.1-4z' }, s);
-  svg('circle', { cx: 3.9, cy: 4.6, r: 1.15, fill: 'rgba(10,12,14,.9)' }, s);
-  svg('circle', { cx: 7.1, cy: 4.6, r: 1.15, fill: 'rgba(10,12,14,.9)' }, s);
-  svg('rect', { x: 5.05, y: 6.1, width: 0.9, height: 1.3, fill: 'rgba(10,12,14,.9)' }, s);
-  svg('rect', { x: 3.4, y: 9.2, width: 1.4, height: 1.5 }, s);
-  svg('rect', { x: 6.2, y: 9.2, width: 1.4, height: 1.5 }, s);
-  return s;
-}
+const SIDES = ['me', 'ally', 'enemy'];
+const sideOf = (s) => (SIDES.includes(s) ? s : 'enemy');
 
 /**
- * Killfeed, top right. Newest row on top, six visible, 5.6s dwell.
- * Rows the local player is involved in get the amber treatment so your own
- * kills are readable at a glance without reading the names.
+ * Killfeed, CoD style: left edge, between the minimap and the vitals. Each row
+ * is `Attacker  <weapon>  Victim` on its own dark bar, names coloured by side
+ * (you and your side blue, the other side orange), the weapon drawn as a
+ * side-profile silhouette and a headshot drawn as the reticle skull in its
+ * place. Newest row at the bottom; older rows climb and expire from the top, so
+ * an expiry never shoves the rows you are still reading. Six visible, 5.6 s.
+ *
+ * A row with no attacker (a fall, a stray blast, your own grenade) is just the
+ * skull and the victim.
  */
 export class Killfeed {
   constructor(parent) {
     this.root = el('div', 'ow-killfeed', parent);
-    this.pool = new Pool(
-      6,
-      () => {
-        const row = el('div', 'ow-kf-row');
-        const a = el('span', 'ow-kf-a', row, 'PLAYER');
-        const w = el('span', 'ow-kf-w', row);
-        const hs = el('span', 'ow-kf-hs', w);
-        skullIcon(hs);
-        rifleIcon(w);
-        const v = el('span', 'ow-kf-v', row, 'ENEMY');
-        row._a = a;
-        row._v = v;
-        row._hs = hs;
-        return row;
-      },
-      this.root
-    );
+    this.pool = new Pool(6, () => {
+      const row = el('div', 'ow-kf-row');
+      const a = el('span', 'ow-kf-name', row);
+      const icon = svg('svg', { class: 'ow-kf-icon', 'aria-hidden': 'true' }, row);
+      const path = svg('path', {}, icon);
+      const v = el('span', 'ow-kf-name', row);
+      row._a = a;
+      row._v = v;
+      row._icon = icon;
+      row._path = path;
+      row._key = '';
+      return row;
+    }, this.root);
     this.life = 5.6;
   }
 
-  /** @param {object} e { attacker, victim, headshot, mine, attackerFriendly } */
+  /**
+   * @param {object} e
+   *   attacker      display name, or null for an uncredited death
+   *   attackerSide  'me' | 'ally' | 'enemy'
+   *   victim        display name
+   *   victimSide    'me' | 'ally' | 'enemy'
+   *   weapon        weapon id ('rifle', 'melee', 'frag', ...) or def object
+   *   headshot      draws the reticle skull in place of the weapon
+   */
   push(e) {
     const it = this.pool.acquire();
     it.life = this.life;
     const n = it.node;
-    this.root.prepend(n); // newest on top
-    setText(n._a, (e.attacker ?? 'UNKNOWN').toUpperCase());
-    setText(n._v, (e.victim ?? 'UNKNOWN').toUpperCase());
-    setStyle(n._hs, 'display', e.headshot ? '' : 'none');
-    setClass(n, 'mine', !!e.mine);
-    setStyle(n._a, 'color', e.attackerFriendly === false ? 'var(--enemy)' : '');
-    setStyle(n._v, 'color', e.attackerFriendly === false ? 'var(--friend)' : '');
+    this.root.appendChild(n); // newest at the bottom
+
+    const hasAttacker = !!e.attacker;
+    setText(n._a, hasAttacker ? e.attacker : '');
+    setStyle(n._a, 'display', hasAttacker ? '' : 'none');
+    setText(n._v, e.victim ?? 'Unknown');
+    n._a.className = `ow-kf-name ${sideOf(e.attackerSide)}`;
+    n._v.className = `ow-kf-name ${sideOf(e.victimSide)}`;
+    n.className = e.attackerSide === 'me' || e.victimSide === 'me' ? 'ow-kf-row mine' : 'ow-kf-row';
+
+    const key = killIcon(e.weapon, !!e.headshot, hasAttacker);
+    if (key !== n._key) {
+      n._key = key;
+      const ic = KILL_ICONS[key];
+      const [, , vw, vh] = ic.vb;
+      n._icon.setAttribute('viewBox', ic.vb.join(' '));
+      n._path.setAttribute('d', ic.d);
+      // Height is per icon (the reticle sits a touch taller than a gun) and
+      // the width follows the viewBox, so every silhouette keeps its proportions.
+      setStyle(n._icon, 'height', `calc(${ic.h}px * var(--k))`);
+      setStyle(n._icon, 'width', `calc(${((ic.h * vw) / vh).toFixed(2)}px * var(--k))`);
+    }
     return it;
   }
 
@@ -76,9 +82,9 @@ export class Killfeed {
         this.pool.release(it);
         continue;
       }
-      const inT = clamp01(it.t / 0.16);
+      const inT = clamp01(it.t / 0.18);
       const outT = clamp01((it.t - (it.life - 0.45)) / 0.45);
-      const x = (1 - ease.outQuint(inT)) * 26;
+      const x = (1 - ease.outQuint(inT)) * -22;
       const a = ease.outQuad(inT) * (1 - ease.inQuad(outT));
       setStyle(it.node, 'transform', `translateX(${x.toFixed(2)}px)`);
       setStyle(it.node, 'opacity', a.toFixed(3));

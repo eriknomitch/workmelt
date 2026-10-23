@@ -122,12 +122,15 @@ Emit and listen via `ctx.events`. Payloads are plain objects. The canonical set:
 | `bullet:impact` | `{ point, normal, surface, incident, damage, exit, actor, part, trace }` | physics |
 | ↳ | ONE ROUND EMITS SEVERAL. This is a SURFACE CROSSING, not a shot: a penetrating round reports an entry, an exit (`exit: true`) and another pair for each further layer, and a thick solid reports a spurious pair per layer because `penetration.js` gives up looking for the backface past `EXIT_PROBE` (1.6 m). `trace` is a monotonic id shared by every impact of one `fireBullet` call, and it is the only way a listener that means *per round* can get there — counting events gives ~3× on a solid. `actor` is set when the round landed on a body, which is not the world. `world`'s power grid filters on all three; see its `bullet:impact` handler. | |
 | `bullet:tracer` | `{ from, to, speed }` | weapons |
-| `damage:dealt` | `{ target, amount, headshot, killed, point, applied?, source? }` | ai / physics / weapons |
+| `damage:dealt` | `{ target, amount, headshot, killed, point, applied?, source?, weapon? }` | ai / physics / weapons |
 | ↳ | `source` says who pulled the trigger: `'player'` (local player's rounds and melee) or `'ai'` (a bot's rounds), threaded through `physics.fireBullet({ source })`. Absent on payloads that predate it; a listener that keys behaviour off the shooter (the roo detonates only for `'player'`) must treat a missing source as "not the player". | |
 | ↳ | means *damage dealt **to** `target`*. `target` is the local player when an enemy round connects (`'player'`, the player system, or anything with `isPlayer === true`) — filter it out before drawing a hitmarker. Damage is applied by the target's own listener, never by the emitter as well. | |
 | ↳ | `applied: true` inverts that one rule: the emitter already applied the damage and the event is purely the report of it, for the hitmarker / announcer / killstreak listeners. `ai` emits these for player-sourced blast damage, which it applies itself inside its `explosion` listener; anything that applies damage off this event must skip a payload carrying the flag. | |
-| `damage:taken` | `{ amount, from: Vector3, health }` | player |
-| `actor:death` | `{ actor, point, impulse }` | ai |
+| ↳ | `weapon` is the id the damage was done with — a `WEAPON_DEFS` key, `'melee'`, `'frag'`, `'mortar'`, or `'ai_rifle'` for a bot's carbine. Purely a label for the killfeed (`src/ui/killicons.js` maps it to a silhouette); nothing may key damage off it. | |
+| `damage:taken` | `{ amount, from: Vector3, health, by, weapon, headshot }` | player |
+| ↳ | `by` is who did it, as the hit carried it: `'player'` (your own grenade), a bot Agent, `{ name, remote: true }` for a PvP hit, or null. `ui` keeps the last one and names it on your death's killfeed row. | |
+| `actor:death` | `{ actor, point, impulse, by, weapon, headshot }` | ai |
+| ↳ | `by` / `weapon` / `headshot` describe the hit that killed, stamped by `ai` before applying it: `by` is the `source` that hit carried (`'player'`, a bot Agent, `'ai'`, or null for an uncredited blast). This is the one killfeed row per bot death; `damage:dealt { killed }` drives only the hit feedback. | |
 | `actor:footstep` | `{ actor, position, surface, speed, running, crouched, left }` — a bot or a remote player planted a foot | ai |
 | ↳ | NOT interchangeable with `player:footstep`, which means *the local player* stepped and is what `ai` perception and `fx` dust read. Only `audio` consumes this one; anything that would react to the player moving must keep listening to `player:footstep`. `ai` gates emission on range, so an inaudible body is silent, not merely quiet. | |
 | `roo:speak` | `{ position }` — Shivam's kangaroo muttered something at a player who wandered up to him. `audio` answers with `audio.critter('roo', position)`: a recorded line from the `roo` vox key, spatialised from his head. The line is NOT in the payload — the sample bank picks among the takes and refuses an immediate repeat, and a build with no encoded vox simply says nothing. | ai |
@@ -136,7 +139,7 @@ Emit and listen via `ctx.events`. Payloads are plain objects. The canonical set:
 | ↳ | Local only, and `audio` plays it head-locked rather than at a position. A landing is always directly under your own head, so panning it encodes nothing and 1.6 m sits inside `attenuation()`'s flat near field — the 3D path gave it maximum gain. | |
 | `player:footstep` | `{ position, surface, running }` | player |
 | `player:state` | `{ stance, sprinting, sliding, ads }` | player |
-| `explosion` | `{ position, radius, damage }` | any |
+| `explosion` | `{ position, radius, damage, source?, weapon? }` — `source` as on `damage:dealt` (a bot's grenade carries the throwing Agent), `weapon` the killfeed id (`'frag'`, `'mortar'`) | any |
 | `power:out` | `{ mapId, generator, seconds }` — a map's destructible power grid has been tripped: for `seconds`, the `power.mains` keys fall to `power.dim`, the `power.emergency` keys come UP from dark, and the sky stops down. Two circuits driven from one level so they cannot disagree. Only emitted by a map that declares a `power` block (Site Work). `world` owns the grid and the lights; this is purely the announcement, so `ui`, `audio` and `fx` can react without `world` knowing they exist. | world |
 | `power:restored` | `{ mapId }` — the outage ended and the mains are ramping back. Every generator is repaired with them, so the feature is repeatable rather than spent. | world |
 | `equipment:flash` | `{ position, radius, duration, source }` — a stun grenade detonated. Every listener folds in its own range / line-of-sight / facing falloff rather than trusting a pre-scaled intensity, so the player's whiteout (`ui`) and the bots' blindness (`ai`) stay consistent with each other. | weapons |
@@ -147,7 +150,7 @@ Emit and listen via `ctx.events`. Payloads are plain objects. The canonical set:
 | `net:lobby` | `{ connected, everConnected, live, players, myId, ready }` | net |
 | `net:join` / `net:leave` | `{ id, name, colour, count }` — somebody else entered or left the room. `colour` is their livery as a CSS colour (null until the relay has assigned a slot) and `count` is how many are in the room afterwards, so a listener can raise the presence card (`src/ui/presence.js`) without reaching into `net`'s peer table | net |
 | `net:countdown` | `{ ms }` — the relay fired the pre-match start signal | net |
-| `net:kill` | `{ by, victim, headshot, mine }` — a relay-confirmed PvP kill | net |
+| `net:kill` | `{ by, victim, headshot, mine, byName, victimName, weapon }` — a relay-confirmed PvP kill. Never your own death: `net` handles that locally and `ui` draws it from `player:death` | net |
 | `net:matchend` | `{ reason: 'score'\|'time', winner, limit, standings, mine }` — the relay ended the room's bounded match (first to the kill target, or the leader at full time). `winner` is a peer id or null for a draw; `standings` is the final sorted board. `match` renders the ceremony off this. | net |
 | `match:start` | `{ bots, squads, perSquad, mode, map }` — the match is live | match |
 | `match:countdown` | `{ seconds }` | match |

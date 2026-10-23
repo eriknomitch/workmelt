@@ -63,6 +63,7 @@ import { Squad } from './squad.js';
 import { GroundShadows } from './grounding.js';
 import { NetPuppet } from './puppet.js';
 import { Roo } from './roo.js';
+import { botName } from './names.js';
 
 /**
  * How long a body stays on the ground before it is retired, and how long the
@@ -122,6 +123,8 @@ export class AiSystem {
     this._liveryMats = new Map();
     /** Livery slots handed to bots. Players' slots come from the relay. */
     this._botSlots = new Set();
+    /** Next killfeed callsign (src/ai/names.js). Sequential, so deterministic. */
+    this._nameSeq = 0;
     this.agents = [];
     this.squads = [];
     this.grid = null;
@@ -431,6 +434,7 @@ export class AiSystem {
       const a = e.target;
       if (!a.alive) return;
       const amount = e.amount * this._falloff(e.point);
+      a.noteHit(e.source, e.weapon, !!e.headshot);
       a.applyDamage(amount, e.headshot ? 'head' : e.part ?? 'torso', e.point ?? a.position, e.incident);
       if (!a.alive) e.killed = true;
     });
@@ -448,6 +452,7 @@ export class AiSystem {
         this._v.copy(a.position).sub(e.position).normalize();
         a.suppress(1.4 * f);
         const amount = (e.damage ?? 100) * f * f;
+        a.noteHit(e.source, e.weapon, false);
         a.applyDamage(amount, 'torso', a.eye, this._v);
         // Blast damage is applied here, not by the emitter, so nothing else
         // can report it — without this a frag or mortar kill earned no
@@ -461,6 +466,8 @@ export class AiSystem {
             killed: !a.alive,
             point: a.eye,
             applied: true,
+            source: 'player',
+            weapon: e.weapon ?? null,
           });
         }
       }
@@ -766,7 +773,8 @@ export class AiSystem {
    */
   spawn(variantName, position, yaw = 0, opts = {}) {
     const livery = opts.livery ?? this.takeLivery();
-    const a = new Agent(this, { variant: variantName, position, yaw, ...opts, livery });
+    const name = opts.name ?? botName(this._nameSeq++);
+    const a = new Agent(this, { variant: variantName, position, yaw, ...opts, livery, name });
     this.agents.push(a);
     return a;
   }
@@ -1155,6 +1163,7 @@ export class AiSystem {
         maxDist: 200,
         mask: phys.MASK.BULLET,
         source: 'ai',
+        weapon: agent.weaponId,
       });
       if (impacts.length) end = impacts[0].point;
     }
@@ -1208,6 +1217,7 @@ export class AiSystem {
       point: p,
       from: this._v2,
       source: agent,
+      weapon: agent.weaponId,
     });
     return miss;
   }
@@ -1271,6 +1281,7 @@ export class AiSystem {
         radius: 6.5,
         damage: 120,
         source: g.agent,
+        weapon: 'frag',
       });
       this.phys?.removeRigidBody(g.body);
       this.root.remove(g.mesh);

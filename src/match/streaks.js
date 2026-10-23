@@ -114,6 +114,7 @@ export class StreakTracker {
       radius: MORTAR.radius,
       damage: MORTAR.damage,
       source: 'player',
+      weapon: 'mortar',
     };
     this._tracer = { from: new THREE.Vector3(), to: new THREE.Vector3(), speed: 0 };
     this._killsEvent = { kills: 0 };

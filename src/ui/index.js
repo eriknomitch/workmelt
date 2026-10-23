@@ -37,7 +37,7 @@ const MAX_BLIPS = 48;
  *   ui.hitmarker(kind)                  'hit' | 'armour' | 'head' | 'kill'
  *   ui.damageNumber(worldPos, n, kind)  'hit' | 'hs' | 'armour' | 'kill'
  *   ui.hurt(amount, dirX, dirZ)         directional arc + flash + flinch
- *   ui.killfeed.push({attacker,victim,headshot,mine,attackerFriendly})
+ *   ui.killfeed.push({attacker,attackerSide,victim,victimSide,weapon,headshot})
  *   ui.banner.show(title, sub, life)    kill / objective confirmation
  *   ui.setPrompt({key,text,sub,progress}) / ui.clearPrompt()
  *   ui.setObjectives([{position,label,name}])
@@ -62,10 +62,10 @@ const MAX_BLIPS = 48;
  *   audio.playUi(id, gain) | audio.play(id) — hit ticks, heartbeat, warnings
  *
  * Events consumed: weapon:fire, weapon:reload, damage:dealt, damage:taken,
- * actor:death, player:state, explosion, equipment:flash, resize, and the
- * killstreak set — streak:kills, streak:earned, streak:activated,
- * streak:designate, streak:uav (plus match:start / match:end to reset the
- * meter).
+ * actor:death, player:death, net:kill, player:state, explosion,
+ * equipment:flash, resize, and the killstreak set — streak:kills,
+ * streak:earned, streak:activated, streak:designate, streak:uav (plus
+ * match:start / match:end to reset the meter).
  * Events emitted:  ui:pause, ui:quality, ui:sensitivity, ui:fov, ui:setting.
  */
 export class UiSystem {
@@ -199,7 +199,8 @@ export class UiSystem {
     this.hudVisible = 1;
     this.hudTarget = 1;
     this._lastRaw = ctx.time.raw;
-    this._lastKillAt = -10;
+    /** Who last hurt the local player — the attacker on their killfeed row. */
+    this._lastHit = { by: null, weapon: null, headshot: false };
     this._regenTimer = 0;
     this._hadPointerLock = false;
     this._menuWasOpen = false;
@@ -271,14 +272,9 @@ export class UiSystem {
           e.killed ? 'kill' : e.headshot ? 'hs' : e.armour ? 'armour' : 'hit'
         );
       }
+      // The killfeed row for this kill comes from `actor:death`, which carries
+      // the killer and the weapon — this event only drives the hit feedback.
       if (e.killed) {
-        this._lastKillAt = ctx.time.elapsed;
-        this.killfeed.push({
-          attacker: 'YOU',
-          victim: e.target?.name ?? e.name ?? 'ENEMY',
-          headshot: !!e.headshot,
-          mine: true,
-        });
         this.banner.show('Enemy Eliminated', e.headshot ? '+150 XP · HEADSHOT' : '+100 XP');
         this.state.scoreUs++;
       }
@@ -286,6 +282,11 @@ export class UiSystem {
 
     on('damage:taken', (e) => {
       const amount = e?.amount ?? 10;
+      if (e?.by !== undefined) {
+        this._lastHit.by = e.by;
+        this._lastHit.weapon = e.weapon ?? null;
+        this._lastHit.headshot = !!e.headshot;
+      }
       if (e?.health !== undefined) this.state.health = e.health;
       else this.state.health = Math.max(0, this.state.health - amount);
       let dx = 0;
@@ -298,12 +299,50 @@ export class UiSystem {
       this.hurt(amount, dx, dz);
     });
 
+    // Every bot death is one row, whoever did it: `ai` stamps the killer, the
+    // weapon and the headshot on the event (see ARCHITECTURE.md).
     on('actor:death', (e) => {
-      if (ctx.time.elapsed - this._lastKillAt < 0.3) return; // already credited
+      const by = this._attacker(e?.by);
       this.killfeed.push({
-        attacker: e?.by?.name ?? 'ENEMY',
-        victim: e?.actor?.name ?? 'OPERATOR',
-        attackerFriendly: false,
+        attacker: by.name,
+        attackerSide: by.side,
+        victim: e?.actor?.name ?? 'Enemy',
+        victimSide: 'enemy',
+        weapon: e?.weapon,
+        headshot: !!e?.headshot,
+      });
+    });
+
+    // The local player's own death. The killer is whoever `damage:taken` last
+    // named; a blast of your own (or nobody at all) is a skull row.
+    on('player:death', () => {
+      const h = this._lastHit;
+      const by = this._attacker(h.by);
+      this.killfeed.push({
+        attacker: by.side === 'me' ? null : by.name,
+        attackerSide: by.side,
+        victim: this._myName(),
+        victimSide: 'me',
+        weapon: h.weapon,
+        headshot: by.side !== 'me' && h.headshot,
+      });
+      h.by = null;
+      h.weapon = null;
+      h.headshot = false;
+    });
+
+    // A relay-confirmed PvP kill between two other players, or one of ours.
+    // Our own death never arrives here — `net` handles it locally, and the row
+    // above already drew it.
+    on('net:kill', (e) => {
+      if (!e) return;
+      this.killfeed.push({
+        attacker: e.mine ? this._myName() : e.byName || null,
+        attackerSide: e.mine ? 'me' : 'enemy',
+        victim: e.victimName || 'Enemy',
+        victimSide: 'enemy',
+        weapon: e.weapon,
+        headshot: !!e.headshot,
       });
     });
 
@@ -393,6 +432,27 @@ export class UiSystem {
   }
 
   /** True when a `damage:dealt` payload is aimed at the local player. */
+  /**
+   * Killfeed name and side for a killer as events carry it: `'player'` (the
+   * local player), a bot (anything with a `name`), a remote player
+   * (`{ name, remote: true }`), or nothing — a fall, a stray blast.
+   */
+  _attacker(by) {
+    if (!by) return { name: null, side: 'enemy' };
+    if (this._isPlayerTarget(by)) return { name: this._myName(), side: 'me' };
+    return { name: by.name ?? null, side: 'enemy' };
+  }
+
+  /**
+   * The local player's killfeed name: their multiplayer callsign when there is
+   * one. Capture boots always say "You" — the callsign is per-browser, and the
+   * pixel gate compares frames byte for byte.
+   */
+  _myName() {
+    if (this.ctx.config.deterministic) return 'You';
+    return this.ctx.peek('net')?.name || 'You';
+  }
+
   _isPlayerTarget(t) {
     if (!t) return false;
     return t === 'player' || t === this.ctx.peek('player') || t.isPlayer === true;

@@ -228,8 +228,9 @@ non-capture run (disable with `?mp=0`). It:
 - replicates shots as muzzle flash + tracers through `fx`, and settles PvP hits
   with a **trust-the-shooter** model: the shooter ray-tests remote bodies locally
   and the victim applies the damage the shooter claims (headshots included);
-- drives the overlay (`src/net/ui.js`): invite bar, live scoreboard, kill / join
-  toasts, connection status; and
+- drives the overlay (`src/net/ui.js`): invite bar, live scoreboard, toasts for
+  your own kills / death and for joins, connection status (everybody else's
+  kills reach the HUD killfeed through `net:kill`); and
 - carries the match-start lobby, reporting it as `net:lobby` / `net:countdown` /
   `net:join` / `net:leave` events. The screen that renders it, the bot choice and
   the countdown belong to the separate `match` subsystem (`src/match/`), which
@@ -250,7 +251,7 @@ non-capture run (disable with `?mp=0`). It:
 | C→S | `state {s:{p,y,pt,sp,cr,ad,hp,dead,v,sk}}` | transform snapshot (20 Hz). `v` is my body variant, `sk` my relay-assigned colour slot echoed back |
 | C→S | `fire {o,d,w,seed}` | a shot (origin, dir) |
 | C→S | `hit {target,dmg,part,o,w}` | shooter's damage claim |
-| C→S | `kill {by,headshot}` | victim confirms its own death |
+| C→S | `kill {by,headshot,w}` | victim confirms its own death; `w` is the killing weapon id (from the last `hit`), relayed to the room for the killfeed |
 | C→S | `spawn {p}` | "I am coming in here" — a spawn claim, relayed to the room |
 | C→S | `name` / `chat` / `respawn` / `ping` | misc |
 | S→C | `welcome {id,room,skin,live,map,startIn,limit,matchLeft,peers}` | you joined; who's here; which level; is the match already live. `startIn` is non-zero when you walked into a countdown. `skin` is your colour slot — see below. `limit`/`matchLeft` state the bounded-match contract for a joiner walking into a live match |

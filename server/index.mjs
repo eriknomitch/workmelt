@@ -707,6 +707,8 @@ function handle(peer, msg) {
         victim: peer.id,
         victimName: peer.name,
         headshot: !!msg.headshot,
+        // Killfeed weapon id. A label, never logic: clamp it and move on.
+        w: typeof msg.w === 'string' ? msg.w.slice(0, 16) : null,
       });
       broadcast(room, { t: 'score', roster: roster(room) });
       maybeEndOnScore(room, killer);

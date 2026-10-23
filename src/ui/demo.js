@@ -58,12 +58,15 @@ export class CombatDemo {
     ui.hit.clear();
     ui.markers.clear();
 
-    // Killfeed seeded with three rows at different ages so the column shows the
-    // full fade ramp instead of three identical rows.
+    // Killfeed seeded oldest-first with rows at different ages, covering both
+    // sides, a headshot and a non-rifle silhouette, so one frame shows the
+    // whole vocabulary rather than five identical rows.
     const seed = [
-      { attacker: 'VOSS', victim: 'M. RIDLEY', headshot: false, age: 3.2 },
-      { attacker: 'KRAUSE', victim: 'HOLT', headshot: true, age: 1.9, attackerFriendly: false },
-      { attacker: 'YOU', victim: 'A. SOKOL', headshot: false, age: 0.55, mine: true },
+      { attacker: 'Timnak', attackerSide: 'ally', weapon: 'rifle', victim: 'Villena', victimSide: 'enemy', age: 3.4 },
+      { attacker: 'Englerth', attackerSide: 'ally', headshot: true, victim: 'Allaway', victimSide: 'enemy', age: 2.6 },
+      { attacker: 'Villena', attackerSide: 'enemy', weapon: 'smg', victim: 'Isibor', victimSide: 'ally', age: 1.8 },
+      { attacker: 'Tawarotip', attackerSide: 'ally', weapon: 'sniper', victim: 'Keele', victimSide: 'enemy', age: 1.1 },
+      { attacker: 'You', attackerSide: 'me', weapon: 'rifle', victim: 'Kowalczyk', victimSide: 'enemy', age: 0.55 },
     ];
     for (const e of seed) {
       const it = ui.killfeed.push(e);
@@ -134,7 +137,7 @@ export class CombatDemo {
         ui.hurt(11, 0.62, -0.78);
         break;
       case 100:
-        ui.killfeed.push({ attacker: 'YOU', victim: 'D. KOVACS', headshot: true, mine: true });
+        ui.killfeed.push({ attacker: 'You', attackerSide: 'me', headshot: true, victim: 'Reyes', victimSide: 'enemy' });
         break;
       case 128:
         ui.hitmarker('kill');

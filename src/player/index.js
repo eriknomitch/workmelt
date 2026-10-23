@@ -453,7 +453,9 @@ export class PlayerSystem {
     // `point` to where the round landed (which is the player), and `from` to the
     // muzzle. Using `point` pinned every arc to dead ahead.
     const from = e.from ?? e.source?.position ?? e.point ?? null;
-    this.applyDamage(e.amount ?? 0, from, { type: 'bullet' });
+    this.applyDamage(e.amount ?? 0, from, {
+      type: 'bullet', by: e.source ?? null, weapon: e.weapon ?? null, headshot: !!e.headshot,
+    });
   }
 
   _onExplosion(e) {
@@ -468,7 +470,9 @@ export class PlayerSystem {
     this.rig.addTrauma(clamp01(falloff * 1.4));
     this.health.addSuppression(HEALTH.suppression.perExplosion * falloff);
     if (clear && falloff > 0.02) {
-      this.applyDamage((e.damage ?? 90) * falloff, e.position, { type: 'explosion' });
+      this.applyDamage((e.damage ?? 90) * falloff, e.position, {
+        type: 'explosion', by: e.source ?? null, weapon: e.weapon ?? null,
+      });
     }
   }
 

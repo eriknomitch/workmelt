@@ -122,6 +122,7 @@ export class Melee {
       part: 'torso',
       incident: this._incident,
       source: 'player', // melee is only ever the local player's swing
+      weapon: 'melee',
     };
   }
 
