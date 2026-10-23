@@ -24,24 +24,44 @@ iterate on a take; identical prompts converge, so reword to get variants.
 `duration_seconds: 3.0`, `prompt_influence: 0.4`. Plays on `power:restored`
 as group `world`, key `powerup`.
 
-## whizz_0..3.mp3 — not generated yet
+## whizz_0.mp3, whizz_1.mp3
 
-Near-miss crack for group `whizz`, key `pass` (a round passing the
-listener's head; replaces the synthesized `bulletWhizz()` when present).
-Four reworded prompts, because identical prompts converge on one take.
-All `duration_seconds: 0.6` (the API minimum is 0.5),
-`prompt_influence: 0.5`. None of them may contain the gunshot: the shooter's
-report is a separate voice, played from the muzzle at the speed of sound.
+Group `whizz`, key `pass` — the near-miss fly-by (`_onTracer` /
+`_onImpact` in `src/audio/index.js`). Both `duration_seconds: 0.6`,
+`prompt_influence: 0.5`.
 
-- `whizz_0`: Supersonic rifle bullet passing inches from the listener's
-  head: a sharp snapping crack followed by a fast descending whoosh, close
-  perspective, completely dry recording, no reverb, no gunshot, no room tone
-- `whizz_1`: Bullet near miss: a violent whip-crack of a supersonic round
-  flying past the ear, a high hiss dropping steeply in pitch, very short,
-  completely dry, no reverb, no gun firing
-- `whizz_2`: Close bullet fly-by: a tearing zip of air and a hard snap as a
-  rifle round whizzes past the ear, sharp Doppler pitch drop, dry close mic,
-  no echo, no gunshot
-- `whizz_3`: A high-velocity bullet cracking past overhead: a sharp
-  supersonic snap and a brief buzzing whine fading fast, extremely short,
-  completely dry, no reverb, no gunshot report
+whizz_0:
+
+> Sniper bullet flying by inches away: a whip-like sonic crack immediately
+> followed by a brief descending whistle-whoosh, close perspective, dry studio
+> recording, no reverb, no firing sound, no background
+
+whizz_1:
+
+> Sniper round passing just past the ear: a single bright crack like a
+> cracking whip, then a short airy whoosh dropping in pitch as the bullet flies
+> away, close perspective, completely dry, no reverb, no gunshot, no background
+
+whizz_0 ships high-passed at 2.6 kHz (the `af` on its entry in
+`tools/sfx-sources.mjs`): as generated it carries a pitched glide under the
+whoosh that reads as a laser, not a bullet. Prompts that ask for a "whistle"
+are the likely cause; leave that word out.
+
+These are 2 keepers out of 17 generations. What the rejects did, so the next
+pass does not repeat them:
+
+- Prompts without "sniper"/"whip" (e.g. "supersonic rifle bullet passing
+  inches from the listener's head: a sharp snapping crack followed by a fast
+  descending whoosh") returned volleys of several cracks, a whoosh with the
+  crack at the end, or a low whoomp.
+- Most rejects were dark: more energy below 500 Hz than above 3 kHz, by
+  9–23 dB. Both keepers are within ~2 dB of even. Adding "no bass" / "no low
+  rumble" did not fix it.
+- One take had 130 ms of silence before the crack — check onset, it delays
+  the cue against the round's flight time.
+- Six whistle-free rewordings of whizz_1's prompt ("rush of air like tearing
+  cloth", "breathy hiss", "bullwhip snap", "real field recording", …) gave
+  nothing usable: onsets 39–137 ms late, two volleys, mostly dark again.
+
+Screen a take with a spectrogram and the <500 Hz vs >3 kHz band RMS before
+encoding; the synthesized voice it overlays has almost nothing below 900 Hz.

@@ -58,7 +58,7 @@ from the packs below — trimmed, normalized, downmixed to mono and encoded to
 - **Author:** Generated with ElevenLabs sound-generation (prompts in assets-src/eleven/prompts.md)
 - **License:** ElevenLabs commercial licence (paid plan) — verify the account tier
 - **Source:** https://elevenlabs.io/terms-of-use
-- **Used for:** the power-grid blackout and restore (world/powerdown, world/powerup)
+- **Used for:** the power-grid blackout and restore (world/powerdown, world/powerup) and the near-miss bullet fly-by (whizz/pass)
 
 ---
 

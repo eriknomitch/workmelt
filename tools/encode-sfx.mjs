@@ -102,8 +102,12 @@ async function findPeak(file) {
  * `fade` applies the tail fade in `whole` mode too. The windowed path gets one
  * for free from `atrim`; a whole file ends wherever it ends, and a hard cut on
  * a decaying clip clicks.
+ *
+ * `af` is a per-source ffmpeg filter (see the `{ path, af }` form in
+ * sfx-sources.mjs), applied before the trim and fade so they see the filtered
+ * signal. The transient search still reads the unfiltered master.
  */
-async function encodeOne(file, dest, { lead, dur, bitrate, whole = false, app, fade = false }) {
+async function encodeOne(file, dest, { lead, dur, bitrate, whole = false, app, fade = false, af }) {
   let start = 0;
   if (!whole) {
     const peak = await findPeak(file);
@@ -119,6 +123,7 @@ async function encodeOne(file, dest, { lead, dur, bitrate, whole = false, app, f
   // loudnorm would flatten the dynamics that make a gunshot read as one, so
   // this is peak normalization only.
   const filters = [
+    ...(af ? [af] : []),
     ...(whole ? [] : [
       `atrim=0:${dur.toFixed(4)}`,
       'asetpts=PTS-STARTPTS',
@@ -226,14 +231,18 @@ async function main() {
     const urls = [];
 
     for (let i = 0; i < src.length; i++) {
-      const from = join(SRC, src[i]);
+      // A source is a path or `{ path, af }`. Editing only `af` does not touch
+      // the master's mtime, so the up-to-date check below will not notice:
+      // delete that .opus to re-encode it.
+      const { path, af } = typeof src[i] === 'string' ? { path: src[i] } : src[i];
+      const from = join(SRC, path);
       const name = `${key}_${i}.opus`;
       const dest = join(OUT, group, name);
 
       try {
         await stat(from);
       } catch {
-        console.warn(`  MISS ${src[i]}`);
+        console.warn(`  MISS ${path}`);
         missing++;
         continue;
       }
@@ -245,8 +254,8 @@ async function main() {
         continue;
       }
 
-      const res = await encodeOne(from, dest, opts);
-      if (!res) { console.warn(`  SILENT ${src[i]}`); missing++; continue; }
+      const res = await encodeOne(from, dest, { ...opts, af });
+      if (!res) { console.warn(`  SILENT ${path}`); missing++; continue; }
       urls.push(`${group}/${name}`);
       bytes += res.size;
       files++;

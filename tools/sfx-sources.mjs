@@ -8,6 +8,9 @@
  * `key` is the variant within it (weapon profile, surface, ui name). Every
  * entry lists source files that become interchangeable random variants — more
  * files means less repetition, which matters most for shots and footsteps.
+ * A source is a path, or `{ path, af }` when one take needs an ffmpeg filter
+ * the others in its pool do not — the master stays the raw file, and the
+ * processing lives here where a reviewer can see it.
  *
  * A group/key absent from this table is not a bug: src/audio/samples.js falls
  * through to the procedural synthesis in weapons.js / foley.js for anything it
@@ -38,6 +41,14 @@ const RELOAD = { whole: true, fade: true, app: 'audio', bitrate: '64k' };
  * window, and a slightly higher bitrate because a descending transformer hum
  * is all low-frequency tonal content, which Opus spends bits on. */
 const WORLD = { whole: true, fade: true, app: 'audio', bitrate: '72k' };
+/* Bullet fly-bys: `whole`, NOT a peak window, even though the generations
+ * carry ~0.2 s of dead tail a window would drop. The encoder finds its peak on
+ * an 8 kHz decode, and a supersonic crack lives almost entirely above 4 kHz —
+ * so on a take with a loud whoosh the "peak" lands in the whoosh, the window
+ * starts after the crack, and the snap that makes it a bullet is cut off
+ * (whizz_0 lost it exactly this way at lead 0.03 / dur 0.42). The masters
+ * already start on the crack, so end to end is correct. */
+const WHIZZ = { whole: true, fade: true, app: 'audio', bitrate: '64k' };
 
 const fa = (dir, ...files) => files.map((f) => `firearms/${dir}/${f}.wav`);
 const fs = (dir, n) => Array.from({ length: n }, (_, i) => `footsteps/${dir}/${i}.ogg`);
@@ -148,6 +159,25 @@ export const SOURCES = [
   // The mirror: `power:restored`, the hum spinning back up.
   { group: 'world', key: 'powerup', ...WORLD, src: ['eleven/powerup_0.mp3'] },
 
+  /* ── bullet fly-bys ────────────────────────────────────────────────────
+   * The `whizz` kind: a round's closest approach to the listener, from a
+   * tracer or an impact within 6 m. Spatialised at that point; the callers
+   * pass loudness as `level` from the miss distance (whizzLevel() in
+   * src/audio/weapons.js). Two takes, ElevenLabs-generated; prompts and the
+   * rejected-take notes are in assets-src/eleven/prompts.md.
+   *
+   * whizz_0 is high-passed at 2.6 kHz (8th order). Under its whoosh the
+   * generation carries a clean tone gliding ~1.3 kHz → 600 Hz, with a harmonic
+   * near 2.2 kHz, and that glide is what made it read as a laser "pew" rather
+   * than a bullet. The crack and the whoosh live above it — so does the
+   * synthesized bulletWhizz(), a 900 Hz–5.2 kHz band — so the filter takes
+   * the tone and leaves the event. */
+  { group: 'whizz', key: 'pass', ...WHIZZ,
+    src: [
+      { path: 'eleven/whizz_0.mp3', af: 'highpass=f=2600,highpass=f=2600,highpass=f=2600,highpass=f=2600' },
+      'eleven/whizz_1.mp3',
+    ] },
+
   /* ── announcer ─────────────────────────────────────────────────────────
    * Text-to-speech lines, one take each, kept as masters in assets-src/vox/
    * (committed — unlike the packs above, they are not fetchable). Keys are the
@@ -253,6 +283,6 @@ export const CREDITS = [
     authors: 'Generated with ElevenLabs sound-generation (prompts in assets-src/eleven/prompts.md)',
     license: 'ElevenLabs commercial licence (paid plan) — verify the account tier',
     url: 'https://elevenlabs.io/terms-of-use',
-    used: 'the power-grid blackout and restore (world/powerdown, world/powerup)',
+    used: 'the power-grid blackout and restore (world/powerdown, world/powerup) and the near-miss bullet fly-by (whizz/pass)',
   },
 ];
