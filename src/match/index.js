@@ -78,6 +78,8 @@ const DEFAULT_BOTS = 'off';
 const RESPAWN_MS = 3200;
 /** How long the ceremony holds the screen before walking back to the lobby. */
 const CEREMONY_MS = 10_000;
+/** How long the lobby shows "Graphics set to <tier>" once Auto has settled. */
+const TUNED_NOTE_MS = 8_000;
 
 export class MatchSystem {
   static id = 'match';
@@ -109,6 +111,25 @@ export class MatchSystem {
     this._tally = null;
     /** When the ceremony walks itself back to the lobby. 0 outside it. */
     this._ceremonyUntil = 0;
+    /** When the lobby first showed the settled-tier notice. 0 = not yet. */
+    this._tunedSince = 0;
+  }
+
+  /**
+   * True when a page reload would cost the player nothing: on the lobby
+   * screen, not readied up (a reload drops out of the room's ready set), not
+   * counting down, not mid map change, not typing a callsign and not in the
+   * settings panel. The quality system holds a calibration reload until this
+   * is true — calibration never takes a match, or a half-made choice, away.
+   */
+  get reloadSafe() {
+    return (
+      this.state === 'setup' &&
+      !this._mapBusy &&
+      !this.net?.ready &&
+      !this.ui?.busy &&
+      !this.uiSys?.menu?.open
+    );
   }
 
   async init(ctx) {
@@ -403,11 +424,30 @@ export class MatchSystem {
     console.info('[match] pulled out of the warm-up — the room is starting');
   }
 
+  /**
+   * Mirror the Auto graphics calibration onto the lobby: a status line while
+   * it measures behind this screen, then the tier it settled on for a few
+   * seconds of lobby time — including on the boot a calibration reload lands
+   * in, which is the moment the player would otherwise wonder why it blinked.
+   */
+  _updateTuning() {
+    const quality = this.ctx.peek('quality');
+    let state = null;
+    if (quality?.calibrating) state = 'measuring';
+    else if (quality?.tunedTier && this.state === 'setup') {
+      const now = performance.now();
+      if (!this._tunedSince) this._tunedSince = now;
+      if (now - this._tunedSince < TUNED_NOTE_MS) state = quality.tunedTier;
+    }
+    this.ui.setTuning(state);
+  }
+
   _paintCountdown(n) {
     this.ui.setCountdown(n, this._countCopy.label, this._countCopy.sub);
   }
 
   update(dt) {
+    this._updateTuning();
     this._updateRespawn();
     this.streaks?.update(dt);
     this._updateBounds();

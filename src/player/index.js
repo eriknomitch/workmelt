@@ -86,7 +86,11 @@ import { CameraRig } from './camera.js';
 import { Health } from './health.js';
 import { LowHealthPass } from './lowhealth.js';
 import { STANCE, MOVE, CAMERA, HEALTH, FOOTSTEP, JUMP_SPEED } from './tuning.js';
-import { clamp, clamp01, lerp, approach, DEG } from './springs.js';
+import { clamp, clamp01, lerp, approach, moveToward, DEG } from './springs.js';
+
+/** Lobby calibration pan, rad/s — a full circle in ~12.6 s, about one window. */
+const CALIBRATION_PAN = 0.5;
+const WORLD_UP = new THREE.Vector3(0, 1, 0);
 
 export class PlayerSystem {
   static id = 'player';
@@ -108,6 +112,7 @@ export class PlayerSystem {
     this.adsRequested = false;
 
     this._lookFrame = -1;
+    this._panRate = 0;
     this._prevYaw = 0;
 
     // preallocated event payloads
@@ -276,12 +281,6 @@ export class PlayerSystem {
       dPitch *= 0.55;
     }
 
-    // Calibration pan: while the quality system measures this machine, sweep
-    // the view in a slow full circle so the score reflects every sightline
-    // from the spawn rather than whichever way it happened to face. Input is
-    // frozen behind the calibration scrim, so this is the only camera motion.
-    if (this.ctx.peek?.('quality')?.calibrating) dYaw += 0.5 * dt;
-
     m.yaw += dYaw;
     m.pitch = clamp(m.pitch + dPitch, -CAMERA.pitchLimit, CAMERA.pitchLimit);
     // Keep yaw bounded so long sessions never lose float precision.
@@ -290,6 +289,20 @@ export class PlayerSystem {
 
     m.yawRate = dt > 1e-5 ? dYaw / dt : 0;
     this._prevYaw = m.yaw;
+  }
+
+  /**
+   * Lobby backdrop pan while the quality system measures this machine: the
+   * view sweeps a slow circle so the score reflects every sightline from where
+   * the camera stands rather than whichever way it happened to face. Only when
+   * nobody is driving the camera — a deployed player keeps their own view and
+   * the measurement just takes the live match as it comes. Eased in and out at
+   * a constant rate so the backdrop never starts or stops with a jolt.
+   */
+  _calibrationPan(dt, ctx) {
+    const target = this.ctx.peek?.('quality')?.calibrating ? CALIBRATION_PAN : 0;
+    this._panRate = moveToward(this._panRate, target, CALIBRATION_PAN, dt);
+    if (this._panRate > 0) ctx.camera.rotateOnWorldAxis(WORLD_UP, this._panRate * dt);
   }
 
   /* ==================================================================== */
@@ -316,7 +329,10 @@ export class PlayerSystem {
 
     this.rig.update(dt, this.movement, this.health);
     if (this.controlEnabled) this.rig.applyTo(ctx.camera);
-    else this.rig.forward.set(0, 0, -1).applyQuaternion(ctx.camera.quaternion);
+    else {
+      this._calibrationPan(dt, ctx);
+      this.rig.forward.set(0, 0, -1).applyQuaternion(ctx.camera.quaternion);
+    }
 
     this.lowHealthPass?.sync(this.health);
     this._syncHitbox();

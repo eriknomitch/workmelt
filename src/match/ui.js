@@ -69,6 +69,8 @@ import { pushPresence } from '../ui/presence.js';
 
 /** How long a newly-arrived roster row stays highlighted. */
 const ROW_FLASH_MS = 1600;
+/** Display names for the quality tiers the Auto status line can report. */
+const TIER_LABELS = { performance: 'Performance', low: 'Low', medium: 'Medium', high: 'High', ultra: 'Ultra' };
 
 const CSS = `
 .wm-lobby {
@@ -376,6 +378,19 @@ const CSS = `
   border: 1px solid var(--wm-border); border-radius: var(--wm-r-sm); padding: 3px 6px;
   margin-right: 7px; color: var(--wm-fg-dim);
 }
+/* Auto graphics status, under everything else in the dock because it is the
+   least important thing on it: a fact about the machine, not a choice. Same
+   flag treatment as the callsign's "Random" — Warning amber while it is not
+   settled yet, OK green once it is. Static on purpose: a pulsing dot would be
+   decoration, and DESIGN.md keeps motion functional. */
+.wm-lobby .tune {
+  display: flex; align-items: center; justify-content: center; gap: 8px; padding-top: 2px;
+  font-family: var(--wm-mono); font-size: 9px; font-weight: 500; letter-spacing: .18em;
+  text-transform: uppercase; color: var(--wm-muted-fg);
+}
+.wm-lobby .tune .sq { width: 6px; height: 6px; flex: none; background: var(--wm-warn); }
+.wm-lobby .tune.done .sq { background: var(--wm-ok); }
+
 /* The escape hatch under the primary button, only shown when the primary is
    waiting on somebody else. A link, not a third button — it must not compete. */
 .wm-lobby .alt {
@@ -715,6 +730,7 @@ export class MatchStartUI {
                 <span><span class="key">Esc</span>Settings</span>
               </div>
               <button type="button" class="alt hide" data-alt>Warm up against bots while you wait</button>
+              <div class="tune hide" data-tune role="status"><span class="sq"></span><span data-tune-lbl></span></div>
             </div>
           </div>
         </section>
@@ -788,6 +804,9 @@ export class MatchStartUI {
     this.cereAuto = q('[data-cere-auto]');
     this.stripNet = q('[data-strip-net]');
     this.stripPrimary = q('[data-strip-primary]');
+    this.tuneEl = q('[data-tune]');
+    this.tuneLbl = q('[data-tune-lbl]');
+    this._tuneKey = '';
 
     // The lobby has exactly one visual treatment: the WORKMELT brand system as
     // documented in DESIGN.md. A browser still carrying a preference from the
@@ -1114,6 +1133,38 @@ export class MatchStartUI {
   _hidePrompt() {
     this._promptFor = null;
     this.identNote.classList.add('hide');
+  }
+
+  /**
+   * Something on this screen is mid-interaction: the callsign prompt is up, or
+   * the field holds an edit that has not been committed. A graphics reload
+   * would throw either away, so the quality system waits it out (see
+   * `MatchSystem.reloadSafe`). Focus alone is not busy — `focusEntry` parks
+   * the cursor in the field for every new player, and a reload loses nothing
+   * from a field that still says what was saved.
+   */
+  get busy() {
+    if (this._promptFor != null) return true;
+    return document.activeElement === this.nameIn && this.nameIn.value.trim() !== this._name;
+  }
+
+  /**
+   * The Auto graphics status line under the dock. `'measuring'` while the
+   * quality system calibrates behind this screen, a tier id once it has
+   * settled, null to hide. Cached, because the match system calls it per frame.
+   */
+  setTuning(state) {
+    const key = state ?? '';
+    if (key === this._tuneKey) return;
+    this._tuneKey = key;
+    this.tuneEl.classList.toggle('hide', !state);
+    this.tuneEl.classList.toggle('done', !!state && state !== 'measuring');
+    this.tuneLbl.textContent =
+      state === 'measuring'
+        ? 'Tuning graphics for this device'
+        : state
+          ? `Graphics set to ${TIER_LABELS[state] ?? state} for this device`
+          : '';
   }
 
   /** Both copy buttons confirm together — they are the same action. */

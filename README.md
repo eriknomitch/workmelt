@@ -30,7 +30,9 @@ classic default — and `toggle`. Both are stored per browser.
 Graphics default to **Auto** per browser profile. On first launch the game
 estimates the active display cadence, calibrates a
 Performance/Low/Medium/High/Ultra pipeline, then adjusts internal resolution
-within that tier to pursue stable p95 frame pacing. Open the pause menu to
+within that tier to pursue stable p95 frame pacing. Calibration runs behind the
+lobby and never blocks play: deploy before it finishes and it completes on the
+live match, with any tier change applied when you are next idle in the lobby. Open the pause menu to
 choose a fixed preset or a target from 30–240 FPS; settings are stored locally
 and never synchronized in multiplayer.
 
