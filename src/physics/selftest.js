@@ -14,6 +14,7 @@ import { EventBus } from '../core/registry.js';
 import { Rng } from '../core/rng.js';
 import { PhysicsSystem } from './index.js';
 import { MASK, LAYER, SURFACE } from './surfaces.js';
+import { MOVE, STANCE } from '../player/tuning.js';
 
 let failures = 0;
 let checks = 0;
@@ -65,6 +66,32 @@ function buildLevel(phys) {
     stairs.add(s);
   }
   scene.add(stairs);
+
+  // The two flights a 0.18 m staircase never exercises, both from Graving
+  // Dock: the altar bank (0.4 m rises, just under the player's 0.42 m step, on
+  // 0.9 m treads, each a solid block) and a steep 0.275 x 0.3 m flight of
+  // floating treads, each with a deck at the top. See 'Stair flights' below.
+  for (let i = 0; i < 8; i++) {
+    const h = 0.4 * (i + 1);
+    const s = new THREE.Mesh(new THREE.BoxGeometry(2, h, 0.9), new THREE.MeshBasicMaterial());
+    s.position.set(30, h / 2, -2.45 - i * 0.9);
+    s.name = 'altar_concrete';
+    stairs.add(s);
+  }
+  const altarTop = new THREE.Mesh(new THREE.BoxGeometry(2, 3.2, 3), new THREE.MeshBasicMaterial());
+  altarTop.position.set(30, 1.6, -10.7);
+  altarTop.name = 'altar_concrete';
+  stairs.add(altarTop);
+  for (let i = 0; i < 12; i++) {
+    const s = new THREE.Mesh(new THREE.BoxGeometry(2, 0.275, 0.3), new THREE.MeshBasicMaterial());
+    s.position.set(36, (i + 0.5) * 0.275, -2.15 - i * 0.3);
+    s.name = 'step_concrete';
+    stairs.add(s);
+  }
+  const flightTop = new THREE.Mesh(new THREE.BoxGeometry(2, 0.275, 3), new THREE.MeshBasicMaterial());
+  flightTop.position.set(36, 3.3 - 0.1375, -7.1);
+  flightTop.name = 'step_concrete';
+  stairs.add(flightTop);
 
   // A 30 degree ramp and a 70 degree (unwalkable) ramp.
   const ramp = new THREE.Mesh(new THREE.BoxGeometry(4, 0.2, 6), new THREE.MeshBasicMaterial());
@@ -275,6 +302,76 @@ section('Character controller');
   ok(nan === 0, 'no NaN over 20 000 random moves');
   ok(embedded === 0, 'never ends a step inside geometry', `${embedded} embedded samples`);
   ok(maxY < 4.2, 'never launched by a crease', `maxY=${maxY.toFixed(2)}`);
+  phys.removeCharacter(c);
+}
+
+/* ---------------- stair flights ---------------- */
+section('Stair flights');
+{
+  // The player's controller (movement.js init()), walked straight up and down each flight at every
+  // movement speed the way movement.js drives it: velocity zeroed on the
+  // ground, gravity added, the clipped velocity read back. A flight must read
+  // as ground the whole way. An airborne tick on it is a hop: the air branch,
+  // a landing (dip, thud, footstep reset) and, going up, a plain slide into
+  // the nose that clips the speed away. Each check below failed before the
+  // step-up / snap fix in character.js; the descents also need the player's
+  // snapDistance to cover a 0.4 m tread.
+  const c = phys.createCharacter({
+    radius: 0.32,
+    height: STANCE.stand.height,
+    stepHeight: STANCE.stand.stepHeight,
+    slopeLimit: 48 * (Math.PI / 180),
+    snapDistance: MOVE.snapDistance,
+  });
+  const h = 1 / 120;
+  const walk = (x, z0, z1, speed) => {
+    c.teleport(x, 5, z0);
+    c.velocity.x = c.velocity.y = c.velocity.z = 0;
+    for (let i = 0; i < 240; i++) {
+      c.velocity.y += phys.gravity * h;
+      c.move(0, c.velocity.y * h, 0);
+      if (c.grounded) c.velocity.y = 0;
+    }
+    const dir = Math.sign(z1 - z0);
+    let air = 0, stalls = 0, ticks = 0;
+    while (dir * (z1 - c.position.z) > 0 && ticks < 1200) {
+      ticks++;
+      if (c.grounded && c.velocity.y < 0) c.velocity.y = 0;
+      c.velocity.x = 0;
+      c.velocity.z = dir * speed;
+      c.velocity.y += phys.gravity * h;
+      const zBefore = c.position.z;
+      c.move(0, c.velocity.y * h, c.velocity.z * h);
+      if (!c.grounded) air++;
+      if (dir * (c.position.z - zBefore) < 0.5 * speed * h) stalls++;
+    }
+    return { air, stalls, done: ticks < 1200 };
+  };
+  const flights = [
+    { name: '0.4 m altars', x: 30, bottom: -1.2, top: -10.5 },
+    { name: '0.275 m flight', x: 36, bottom: -1.2, top: -7.5 },
+  ];
+  for (const f of flights) {
+    for (const speed of [2.44, 4.57, 7.01, 8.38]) {
+      const up = walk(f.x, f.bottom, f.top, speed);
+      ok(up.done && up.air === 0 && up.stalls === 0, `walks up the ${f.name} at ${speed} m/s without a hop`,
+        `${up.air} airborne ticks, ${up.stalls} stalled ticks`);
+      const down = walk(f.x, f.top, f.bottom, speed);
+      ok(down.done && down.air === 0, `walks down the ${f.name} at ${speed} m/s without a hop`,
+        `${down.air} airborne ticks`);
+    }
+  }
+
+  // The snap must still refuse a drop it cannot reach: off the 3.2 m top of
+  // the altar bank's side is a fall, not a 3 m teleport to the floor.
+  c.teleport(30, 3.3, -10.7);
+  for (let i = 0; i < 60; i++) c.move(0, -0.001, 0);
+  let fell = false;
+  for (let i = 0; i < 60 && !fell; i++) {
+    c.move(4.57 * h, -0.001, 0);
+    if (!c.grounded && c.position.y > 2.5) fell = true;
+  }
+  ok(fell, 'walks off a ledge taller than the snap and falls', `y=${c.position.y.toFixed(2)}`);
   phys.removeCharacter(c);
 }
 

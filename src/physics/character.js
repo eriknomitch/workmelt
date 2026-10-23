@@ -27,6 +27,8 @@ import { MASK, SURFACE_PROPS, surfaceName } from './surfaces.js';
 
 const MAX_PLANES = 5;
 const SKIN = 0.008;
+/** probeGround()'s narrow trace, as a fraction of the radius. */
+const PROBE_THIN = 0.6;
 
 export class CharacterController {
   constructor(world, opts = {}) {
@@ -170,9 +172,33 @@ export class CharacterController {
       if (dropped < 0) {
         // Nothing under us: fall exactly what was asked, no more.
         this.position.y = yBefore - want;
-      } else if (dropped > want && this._hit2.ny < this.cosSlope) {
-        // The only thing within snap range is a cliff face — don't cling to it.
-        this.position.y = yBefore - want;
+      } else if (this._hit2.ny < this.cosSlope) {
+        // Resting on something steep. Either a cliff face, which we must not
+        // cling to, or a stair nose: one we are rolling off (past ~3/4 of the
+        // radius its normal fails the slope test) or one we are stepping up
+        // onto. The probe's thin trace tells them apart — it passes a convex
+        // edge but not a face, so a tread under the capsule means a stair.
+        //
+        // On a stair, ride the nose while probeGround() can see it, and settle
+        // onto the tread with the thin trace once it cannot: in the last few
+        // millimetres of the rim, which neither of its traces reaches. Both of
+        // the old outcomes read the frame as airborne. Down a flight, the
+        // cliff rule made every nose a ballistic hop and a landing (2 m of
+        // flight off the top of a 43 deg flight at a walk, landing hard enough
+        // to hurt at a sprint). Up one, the rim left the air branch a plain
+        // slide into the nose that clipped the speed away and the velocity
+        // upward, then a fall back and a landing: a stall and a hop on every
+        // few 0.4 m altars. depenetrate() gives back the overlap with the nose.
+        const yRest = this.position.y;
+        this.position.y = yBefore;
+        const tread = this._sweepDown(want + snap, PROBE_THIN) >= 0 && this._hit2.ny >= this.cosSlope;
+        if (!tread) {
+          this.position.y = dropped > want ? yBefore - want : yRest;
+        } else {
+          const yTread = this.position.y;
+          this.position.y = yRest;
+          if (!this.probeGround()) this.position.y = yTread;
+        }
       }
       const gained = this.position.y - st.y;
       if (gained > 1e-4) this.steppedUp = gained;
@@ -416,9 +442,9 @@ export class CharacterController {
     const w = this.world;
 
     const thin = w.sweepCapsule(
-      this.position.x, this.position.y + this.radius * 0.6, this.position.z,
-      this.position.x, this.position.y + this.height - this.radius * 0.6, this.position.z,
-      this.radius * 0.6, 0, -1, 0, probe, this.mask, hit
+      this.position.x, this.position.y + this.radius * PROBE_THIN, this.position.z,
+      this.position.x, this.position.y + this.height - this.radius * PROBE_THIN, this.position.z,
+      this.radius * PROBE_THIN, 0, -1, 0, probe, this.mask, hit
     );
 
     let found = thin && hit.ny >= cos;

@@ -145,7 +145,7 @@ export class Movement {
       height: STANCE.stand.height,
       stepHeight: STANCE.stand.stepHeight,
       slopeLimit: 48 * (Math.PI / 180),
-      snapDistance: 0.34,
+      snapDistance: MOVE.snapDistance,
     });
     if (spawn) {
       this.character.teleport(spawn.x, spawn.y, spawn.z);
