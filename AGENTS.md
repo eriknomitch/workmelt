@@ -158,6 +158,13 @@ either works: `test:quality` = `src/core/selftest.mjs`, `test:graphics` =
   this failure is invisible in a capture — the frame is correct, and the thing
   that is wrong is the thing that is not drawn. Mutation-checked by re-running
   the market with its barricade geometry withheld.
+- `node src/world/stairs.selftest.mjs` checks that every stair flight reads as
+  stairs from the floor: no drawn box may enclose the air above a tread or in
+  front of a riser, and the soffit under each step must still be carried. The
+  old full-size stringer box broke the first two — every flight rendered as a
+  solid cube until you stood on it and its faces back-culled — and nothing
+  else notices: collision is per step and a still frame shows a plausible
+  block. Mutation-checked both ways.
 - `node src/world/spawns.selftest.mjs` checks the spawn director's scoring headlessly; `node src/world/spawns.probe.mjs` verifies spawn placement, the bot garrison and 30 respawns inside the real built level (needs a browser).
 - `node tools/capture.mjs` (`npm run shot`) is the visual smoke test — but read
   the `visual-check` skill before running it, especially without a GPU.
@@ -311,13 +318,14 @@ Read on demand, not loaded at session start:
 ## Verifying a change
 
 **Default to not rendering.** The Node-only self-tests carry most of the real
-coverage and are effectively free — all twenty-eight of them (`physics`, `ai`,
+coverage and are effectively free — all twenty-nine of them (`physics`, `ai`,
 `ai/lod`, `ai/footstep`, `ai/roo`, `fx/tracers`, `weapons/balance`, `weapons/throwables`,
 `weapons/loadout`, `weapons/autoreload`, `weapons/melee`, `weapons/baked`,
 `audio/attenuation`,
 `audio/reload`,
 `core` × 4, `render/resolution`, `render/dof`, `ui/touch`, `ui/killicons`, `match/bounds`,
-`match/streaks`, `world/maps`, `world/collision`, `world/power`, `world/spawns`)
+`match/streaks`, `world/maps`, `world/collision`, `world/power`, `world/spawns`,
+`world/stairs`)
 run in ~10 s
 combined, and `world/maps.selftest.mjs` builds every map headlessly without a
 browser at all. Run those plus `npm run build` and stop there unless the change
@@ -331,7 +339,7 @@ find src server \( -name 'selftest.*' -o -name '*.selftest.*' \) | sort
 
 Note both halves of that pattern — four suites are a bare `selftest.js`/`.mjs`
 (`physics`, `ai`, `core`, `audio`) and `-name '*.selftest.*'` alone silently
-misses them. It returns 33 files; the twenty-eight above are the free ones. The
+misses them. It returns 34 files; the twenty-nine above are the free ones. The
 other five are not: `server/{bounds,lobby,map,skin}.selftest.mjs` each stand up
 a real relay on a real socket, and `src/audio/selftest.js` is a library the audio
 probe drives from a page — run directly it exits 0 having asserted nothing.

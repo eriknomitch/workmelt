@@ -790,18 +790,31 @@ export function stairRun(A, pm, x, y, z, w, steps, rise, run, opts = {}) {
     const wp = worldOf(pm, x, sy, sz);
     A.box(A.surfaceOf(key), wp[0], wp[1], wp[2], w, rise, run, ryOf(pm));
   }
-  // side stringer / spine so it doesn't read as floating slabs
+  // Waist slab under the flight so it doesn't read as floating slabs. It must
+  // be a SLOPED slab tucked under the steps, never an axis-aligned box: an
+  // H × D box encloses every tread, so from outside the flight renders as a
+  // solid cube, and only once the eye is inside it (i.e. standing on the
+  // stairs) do its single-sided faces back-cull and reveal the steps.
+  // The top face runs along the line through each step's lower-front corner,
+  // just inside the treads; the underside sits `rise + 0.1` below it, which
+  // covers the sawtooth of the step soffits with one clean slope.
   const H = steps * rise;
   const D = steps * run;
+  const ang = Math.atan2(H, D);
+  const len = Math.hypot(H, D);
   if (opts.stringer !== false) {
-    A.add(key, box, LL(pm, x, y + H / 2 - 0.1, z + D / 2, 0, w * 1.02, H, D * 0.99), {
-      masks: [0.4, 0.6, 0.4],
-    });
+    const T = (rise + 0.1) * Math.cos(ang);
+    const ca = Math.cos(ang);
+    const sa = Math.sin(ang);
+    A.add(
+      key,
+      box,
+      LL(pm, x, y + H / 2 - 0.01 - (T / 2) * ca, z + D / 2 + (T / 2) * sa, 0, w * 1.02, T, len, -ang),
+      { masks: [0.4, 0.6, 0.4] }
+    );
   }
   if (opts.railing) {
     const bar = BOX_THIN(A);
-    const ang = Math.atan2(H, D);
-    const len = Math.hypot(H, D);
     for (const sx of [-1, 1]) {
       if (opts.railing === 'right' && sx < 0) continue;
       if (opts.railing === 'left' && sx > 0) continue;
