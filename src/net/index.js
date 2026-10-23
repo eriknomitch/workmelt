@@ -52,6 +52,8 @@ export class NetSystem {
     this.myId = null;
     this.room = null;
     this.name = null;
+    /** False while `name` is the random draw nobody has confirmed (net/config.js). */
+    this.nameChosen = false;
     this.variant = 0;
 
     /** id -> { name, kills, deaths, puppet, buf:[], last, hp, dead, variant, livery } */
@@ -126,7 +128,7 @@ export class NetSystem {
     this.room = resolveRoom();
     /** True when the URL already named a room — i.e. somebody invited us. */
     this.arrivedByInvite = arrivedByInvite;
-    this.name = resolveName();
+    ({ name: this.name, chosen: this.nameChosen } = resolveName());
     this.token = resolveToken();
     this.serverUrl = resolveServerUrl();
     const variants = this.ai.variantNames ?? ['vanguard'];
@@ -1027,11 +1029,18 @@ export class NetSystem {
   /**
    * Rename this operator. Public because the lobby owns a callsign field too,
    * and both fields have to agree — hence the `net:name` echo.
+   *
+   * Any call is a decision, so it also settles `nameChosen` — including one
+   * that keeps the random draw, which is how the lobby's "press Play again to
+   * keep it" sticks across reloads.
    */
   setName(n) {
     const before = this.name;
+    const wasChosen = this.nameChosen;
     this._setName(n);
-    if (this.name !== before) this.ctx.events.emit('net:name', { name: this.name });
+    if (this.name === before && this.nameChosen === wasChosen) return;
+    this.ui.setName(this.name);
+    this.ctx.events.emit('net:name', { name: this.name, chosen: this.nameChosen });
   }
 
   /** Hide the invite bar / toasts while another view (the lobby) owns the screen. */
@@ -1126,7 +1135,9 @@ export class NetSystem {
 
   _setName(n) {
     if (!n) return;
+    if (n.slice(0, 20) === this.name && this.nameChosen) return;
     this.name = n.slice(0, 20);
+    this.nameChosen = true;
     saveName(this.name);
     this._send({ t: 'name', name: this.name });
   }

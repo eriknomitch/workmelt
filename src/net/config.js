@@ -57,16 +57,24 @@ export function resolveServerUrl() {
   return `${proto}://${location.host}/ws`;
 }
 
+/**
+ * This browser's callsign, and whether anybody actually picked it.
+ *
+ * `chosen` is false only for the random draw: a `?name=` link or a saved name
+ * is somebody's decision. The draw is deliberately not saved, so `cod_name`
+ * keeps meaning "the player said so" — the lobby reads `chosen` to decide
+ * whether to nudge (see `setName` in src/match/ui.js).
+ */
 export function resolveName() {
   const params = new URLSearchParams(location.search);
   const fromUrl = params.get('name');
-  if (fromUrl) return fromUrl.slice(0, 20);
+  if (fromUrl) return { name: fromUrl.slice(0, 20), chosen: true };
   try {
     const saved = localStorage.getItem('cod_name');
-    if (saved) return saved;
+    if (saved) return { name: saved, chosen: true };
   } catch {}
   const name = `${CALLSIGNS[(Math.random() * CALLSIGNS.length) | 0]}-${(Math.random() * 90 + 10) | 0}`;
-  return name;
+  return { name, chosen: false };
 }
 
 /**
