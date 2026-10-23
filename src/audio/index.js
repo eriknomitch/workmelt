@@ -44,7 +44,7 @@ import { Mixer } from './mixer.js';
 import { SpatialField } from './spatial.js';
 import { Ambience, ambientOneShot, ONE_SHOTS } from './ambience.js';
 import { DEFAULT_GAME_CONFIG, loadGameConfig } from '../core/gameConfig.js';
-import { WEAPON_PROFILES, resolveProfile, weaponShot, bulletWhizz, dryFire } from './weapons.js';
+import { WEAPON_PROFILES, resolveProfile, weaponShot, bulletWhizz, whizzLevel, dryFire } from './weapons.js';
 import {
   surfaceImpact, footstep, shellCasing, reloadPhase, explosion, bodyFall, uiSound,
   heartbeat, cloth, powerDown, powerUp,
@@ -438,7 +438,7 @@ export class AudioSystem {
           echoBoost: 0.75 + this._space.street * 0.7 + this._space.tight * 0.35 +
             this._space.tunnel * 0.8 + this._space.open * 0.2,
         });
-      case 'whizz': return bulletWhizz(actx, bank, rng, { when, miss: o.miss, gain: o.gain });
+      case 'whizz': return bulletWhizz(actx, bank, rng, { when, miss: o.miss, level: o.level, gain: o.gain });
       case 'dryfire': return dryFire(actx, bank, rng, { when });
       case 'impact': return surfaceImpact(actx, bank, rng, { when, surface: o.surface, energy: o.energy });
       case 'step': return footstep(actx, bank, rng, { when, surface: o.surface, gait: o.gait, level: o.level, gear: o.gear });
@@ -809,7 +809,8 @@ export class AudioSystem {
     }, 'foley', 0.55);
     // The round cracking past you is a separate sound from the impact itself.
     if (dist < 6) {
-      this._playAt('whizz', pt.x, pt.y, pt.z, { miss: dist, noDelay: true }, 'foley', 0.7);
+      this._playAt('whizz', pt.x, pt.y, pt.z,
+        { miss: dist, level: whizzLevel(dist), noDelay: true }, 'foley', 0.7);
     }
   }
 
@@ -828,7 +829,8 @@ export class AudioSystem {
     if (miss > 5) return;
     if (Math.hypot(lp.x - ax, lp.y - ay, lp.z - az) < 3) return; // our own muzzle
     const flight = (Math.sqrt(len2) * t) / (p.speed ?? 850);
-    this._playAt('whizz', cx, cy, cz, { miss, noDelay: true, extraDelay: flight }, 'foley', 0.75);
+    this._playAt('whizz', cx, cy, cz,
+      { miss, level: whizzLevel(miss), noDelay: true, extraDelay: flight }, 'foley', 0.75);
   }
 
   _onExplosion(p) {

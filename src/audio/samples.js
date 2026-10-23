@@ -36,6 +36,11 @@ const GROUP = {
   shot: { jitter: 0.02, send: 0.5 },
   step: { jitter: 0.09, send: 0.18 },
   impact: { jitter: 0.08, send: 0.3 },
+  // Near-miss crack. A take pool plus jitter, like impacts: a burst of rounds
+  // past your head is the most repetitive thing this group ever plays. `send`
+  // matches weapons.js bulletWhizz(). Loudness rides in on `level` from
+  // whizzLevel(), since a sample has no `miss` to read.
+  whizz: { jitter: 0.06, send: 0.25 },
   ui: { jitter: 0, send: 0 },
   // Announcer: one take per line, so no jitter (a detuned voice reads as a
   // different, wrong announcer) and a touch of room so it is not glued to the
@@ -157,6 +162,9 @@ export class SampleBank {
     if (kind === 'shot') { group = 'shot'; key = o.profile?.name; }
     else if (kind === 'step') { group = 'step'; key = o.surface ?? 'concrete'; }
     else if (kind === 'impact') { group = 'impact'; key = o.surface ?? 'concrete'; }
+    // One pool: a crack does not depend on the surface or the gun. Without this
+    // branch a whizz fell into `ui` — no jitter, no send, no distance level.
+    else if (kind === 'whizz') { group = 'whizz'; key = 'pass'; }
     // 'announce' has no synthesized counterpart: it is a recorded line or it is
     // nothing, which is why AudioSystem.announce() checks has() before playing.
     else if (kind === 'announce') { group = 'vox'; key = o.line; }

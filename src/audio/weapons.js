@@ -323,13 +323,23 @@ export function weaponShot(actx, bank, rng, profile, o = {}) {
 }
 
 /**
+ * How loud a near miss is, from how close it passed (metres from the ear).
+ * Exported because the callers pass it as `level`: a sampled whizz has no
+ * `miss` to read, and without it every round would crack at full level
+ * whether it passed at 0.3 m or 5 m.
+ */
+export function whizzLevel(miss) {
+  return clamp(1.1 - clamp(miss ?? 1.5, 0.15, 6) / 6, 0.1, 1);
+}
+
+/**
  * Supersonic round passing near the listener. Tiny, cheap, and enormously
  * effective at making incoming fire feel dangerous.
  */
 export function bulletWhizz(actx, bank, rng, o = {}) {
   const t0 = o.when ?? actx.currentTime;
   const miss = clamp(o.miss ?? 1.5, 0.15, 6); // metres from the ear
-  const level = clamp(1.1 - miss / 6, 0.1, 1) * (o.gain ?? 1);
+  const level = (o.level ?? whizzLevel(miss)) * (o.gain ?? 1);
   const out = gain(actx, 3.2); // VOICE TRIM
   const src = bank.source('white', rng, rng.range(0.9, 1.2));
   const bp = biquad(actx, 'bandpass', 2400, 3.2);
