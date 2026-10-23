@@ -1,4 +1,4 @@
-import { el, setStyle, clamp, clamp01, damp, ease } from './util.js';
+import { el, setStyle, setClass, clamp, clamp01, damp, ease } from './util.js';
 
 /**
  * Dynamic four-blade reticle.
@@ -26,6 +26,7 @@ export class Crosshair {
     this.adsBlend = 0;
     this.hitPulse = 0;
     this.visible = 1;
+    this.enemy = false;
 
     // preallocated transform scratch — string concat only, no objects
     this._rot = [0, 90, 180, 270];
@@ -44,6 +45,13 @@ export class Crosshair {
 
   onHit() {
     this.hitPulse = 1;
+  }
+
+  /** Reticle over an enemy turns red, CoD-style (driven by nameplates.js). */
+  setEnemy(on) {
+    if (on === this.enemy) return;
+    this.enemy = on;
+    setClass(this.root, 'enemy', on);
   }
 
   /**

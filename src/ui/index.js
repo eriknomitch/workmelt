@@ -10,6 +10,7 @@ import { Killfeed } from './killfeed.js';
 import { Compass, MatchBar } from './compass.js';
 import { Minimap } from './minimap.js';
 import { WorldMarkers } from './markers.js';
+import { Nameplates } from './nameplates.js';
 import { Prompt, Banner } from './prompts.js';
 import { StreakMeter } from './streaks.js';
 import { PauseMenu } from './menu.js';
@@ -59,6 +60,10 @@ const MAX_BLIPS = 48;
  *                              move, sprint, crouch, ads, airborne, position }
  *                            (or plain `player.health` / `player.position`)
  *   ai.getHudActors()     -> [{ position, alive, friendly, heading }]
+ *   ai.getNameplates() / net.getNameplates()
+ *                         -> [{ key, name, colour, feet, head }] — enemy
+ *                            nameplates; see nameplates.js for the CoD rules
+ *   physics.lineOfSight(from, to) — one ray per frame, for the nameplate
  *   audio.playUi(id, gain) | audio.play(id) — hit ticks, heartbeat, warnings
  *
  * Events consumed: weapon:fire, weapon:reload, damage:dealt, damage:taken,
@@ -88,6 +93,7 @@ export class UiSystem {
 
     this.health = new HealthFx(this.hurtLayer, this.chromeLayer);
     this.markers = new WorldMarkers(this.worldLayer, this.rng.fork());
+    this.nameplates = new Nameplates(this.worldLayer);
     this.arcs = new DamageArcs(this.centreLayer);
     this.crosshair = new Crosshair(this.centreLayer);
     this.hit = new Hitmarkers(this.centreLayer);
@@ -217,6 +223,8 @@ export class UiSystem {
     this._screen = [50, 50];
     this._objectives = [];
     this._compassObjs = [];
+    /** Nameplate candidates gathered from `ai` + `net` each frame. */
+    this._plateList = [];
     this._blips = new Array(MAX_BLIPS);
     for (let i = 0; i < MAX_BLIPS; i++) this._blips[i] = { x: 0, z: 0, kind: 'enemy', heading: 0 };
     this._blipCount = 0;
@@ -608,6 +616,7 @@ export class UiSystem {
       this.arcs.clear();
       this.hit.clear();
       this.markers.clear();
+      this.nameplates.clear();
       this.clearPrompt();
       return { state: 'clean' };
     }
@@ -807,6 +816,14 @@ export class UiSystem {
     this.markers.updateGrenades(dt, ctx.camera, this.vw, this.vh, this.k);
     this.markers.updateDamage(dt, ctx.camera, this.vw, this.vh, this.k);
 
+    // ---- enemy nameplates (the red name under the reticle) ----------------
+    const plates = this._collectNameplates();
+    const aiming = !this.menu.open && !player?.dead && !this.demo?.active;
+    this.nameplates.update(
+      dt, plates, plates.length, ctx.camera, ctx.peek('physics'), aiming, this.vw, this.vh
+    );
+    this.crosshair.setEnemy(this.nameplates.target !== null);
+
     // ---- minimap ---------------------------------------------------------
     if (!this.minimap.bakeDone && ++this._bakeFrame > 6 && this._bakeFrame % 20 === 0) {
       this.minimap.tryBake(ctx);
@@ -849,6 +866,22 @@ export class UiSystem {
       b.heading = a.heading ?? (a.yaw !== undefined ? (a.yaw * 180) / Math.PI : 0);
     }
     this._blipCount = n;
+  }
+
+  /**
+   * Bots and remote players, in one list (see src/ui/nameplates.js). Both
+   * providers are duck-typed and pooled; this copies references, not records.
+   */
+  _collectNameplates() {
+    const out = this._plateList;
+    out.length = 0;
+    const ai = this.ctx.peek('ai');
+    const net = this.ctx.peek('net');
+    const a = typeof ai?.getNameplates === 'function' ? ai.getNameplates() : null;
+    const b = typeof net?.getNameplates === 'function' ? net.getNameplates() : null;
+    if (a) for (let i = 0; i < a.length; i++) out.push(a[i]);
+    if (b) for (let i = 0; i < b.length; i++) out.push(b[i]);
+    return out;
   }
 
   _buildCompassObjectives(pos) {
@@ -894,6 +927,7 @@ export class UiSystem {
     this.minimap.dispose();
     this.streakMeter.dispose();
     this.markers.dispose();
+    this.nameplates.dispose();
     this.prompt.dispose();
     this.banner.dispose();
     this.perf?.dispose();
