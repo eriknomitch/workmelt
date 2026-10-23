@@ -106,7 +106,13 @@ either works: `test:quality` = `src/core/selftest.mjs`, `test:graphics` =
 - `node src/core/selftest.mjs` covers adaptive quality and the option persistence/live-apply contract.
 - `npm run playtest:{ads,graphics,grenade,lobby}` drive real browsers against real
   binds and menus. They judge DOM and engine state, not pixels, so they run
-  anywhere. See the `visual-check` skill for what each one covers.
+  anywhere — and they boot with `?draw=0`, which keeps the whole engine and HUD
+  running but issues no GPU passes, so there are no shader compiles and frames
+  run at real time even under SwiftShader. Passing a screenshot path, or
+  `OW_DRAW=1`, turns drawing back on. A new state-only harness should use
+  `stateQuery()` / `waitFrames()` / `waitGameTime()` from `tools/lib/harness.mjs`
+  rather than a wall-clock sleep sized for a slow rasteriser. See the
+  `visual-check` skill for what each one covers.
 - `npm run playtest:lobby-ui` checks the lobby surface alone — map cards,
   garrison chips, keyboard shortcuts — over
   `?renderGame=false`, so no engine boots and it runs in seconds even without

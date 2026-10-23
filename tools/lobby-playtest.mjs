@@ -25,20 +25,24 @@
  * It also checks the ammunition reset end to end: A empties a magazine during
  * the warm-up and must deploy into the match with a full one.
  *
- * Boot is slow on a software rasteriser (minutes, not seconds) and this boots
- * twice; the waits are sized for that.
+ * Both clients boot with `?draw=0` unless a screenshot is asked for; drawing,
+ * boot under a software rasteriser is minutes, not seconds, and this boots
+ * twice. The waits are sized for the slow case.
  */
 
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
-import { ROOT, browserArgs, ensureServer, resolveChromium, resolveGpuMode } from './lib/harness.mjs';
+import { ROOT, browserArgs, ensureServer, resolveChromium, resolveGpuMode, stateQuery } from './lib/harness.mjs';
 
 const PORT = Number(process.env.OW_PORT ?? 5191);
 const RELAY = Number(process.env.OW_RELAY_PORT ?? 8791);
 const ROOM = 'playtest';
 const SHOT = process.argv[2] ?? null;
+// The join flow is judged on DOM and net state, so neither client draws unless
+// a screenshot was asked for — see `stateQuery` in tools/lib/harness.mjs.
 const url = (name) =>
-  `http://127.0.0.1:${PORT}/?room=${ROOM}&name=${name}&server=ws://127.0.0.1:${RELAY}/ws&q=performance`;
+  `http://127.0.0.1:${PORT}/?room=${ROOM}&name=${name}&server=ws://127.0.0.1:${RELAY}/ws&q=performance` +
+  `&${stateQuery({ draw: !!SHOT })}`;
 
 const vite = await ensureServer(PORT);
 // A short countdown: this harness cares that the countdown happens and who it
@@ -128,7 +132,16 @@ try {
   // waiting on a navigation that never comes. A dispatched click is the same code
   // path for everything this harness is testing.
   await press(a, '[data-primary]');
-  await a.waitForTimeout(2500);
+  // Wait on the state, not a fixed 2.5 s: the garrison fills in over the frames
+  // after the deploy, and a fixed sleep raced it once several harnesses shared
+  // the cores. A real failure still lands — the snapshot below reports it.
+  await a
+    .waitForFunction(
+      () => window.__MATCH__.state === 'live' && window.__ENGINE__.ctx.get('ai').stats.alive > 0,
+      null,
+      { timeout: 30000 }
+    )
+    .catch(() => {});
   sa = await snapshot(a);
   eq('pressing it deploys A', sa.state, 'live');
   eq('as a warm-up, not the room’s match', sa.mode, 'bots');

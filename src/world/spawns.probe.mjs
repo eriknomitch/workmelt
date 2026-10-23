@@ -70,11 +70,12 @@ let error = null;
 try {
   // ?match=0 boots straight into a live match with the default garrison and
   // ?mp=0 keeps the relay out of it, so this measures the offline path.
-  // ?prewarm=0 is the difference between a 40 s boot and a 100 s one here; it
-  // is proven pixel-neutral and this probe takes no pictures.
+  // ?draw=0 runs the engine without drawing: this probe takes no pictures, and
+  // under SwiftShader the shader compiles a draw needs are most of the boot.
+  // See `stateQuery` in tools/lib/harness.mjs.
   // --map=<id> probes another level's spawn table; default is the boot map.
   const mapQ = args.map ? `&map=${encodeURIComponent(args.map)}` : '';
-  await page.goto(`http://127.0.0.1:${PORT}/?match=0&mp=0&prewarm=0&q=low${mapQ}`, {
+  await page.goto(`http://127.0.0.1:${PORT}/?match=0&mp=0&draw=0&q=low${mapQ}`, {
     waitUntil: 'domcontentloaded',
   });
   await page.waitForFunction('window.__READY__ === true', null, { timeout: TIMEOUT });

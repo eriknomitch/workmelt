@@ -12,21 +12,23 @@
  *
  *   node tools/graphics-playtest.mjs [screenshot.png]
  *
- * Boot is slow on a software rasteriser (minutes, not seconds); the ready waits
- * are sized for that, and pre-warm is off because this harness measures
- * settings plumbing, not shader compilation.
+ * It boots with `?draw=0` (see `stateQuery` in tools/lib/harness.mjs): this
+ * harness measures settings plumbing, not pixels, so nothing draws and nothing
+ * compiles. The ready waits stay sized for a software rasteriser regardless.
  */
 
 import { chromium } from 'playwright';
-import { ensureServer } from './lib/harness.mjs';
+import { ensureServer, stateQuery, waitFrames } from './lib/harness.mjs';
 import { launchOpts } from './lib/chromium.mjs';
 
 // Falls back to OW_PORT (5273) so this can share an already-running dev server
 // with the rest of the playtest/capture suite instead of always booting its
 // own — GFX_PLAYTEST_PORT still wins when set explicitly.
 const PORT = Number(process.env.GFX_PLAYTEST_PORT ?? process.env.OW_PORT ?? 5183);
-const URL = `http://127.0.0.1:${PORT}/?match=0&mp=0&prewarm=0`;
 const SHOT = process.argv[2] ?? null;
+// Settings plumbing, not pixels: the engine runs without drawing unless a
+// screenshot was asked for — see `stateQuery` in tools/lib/harness.mjs.
+const URL = `http://127.0.0.1:${PORT}/?match=0&mp=0&${stateQuery({ draw: !!SHOT })}`;
 const READY_MS = 900000;
 
 const vite = await ensureServer(PORT);
@@ -71,7 +73,7 @@ const seed = (overrides = {}) =>
     [overrides]
   );
 
-const settle = () => page.waitForTimeout(500);
+const settle = () => waitFrames(page, 3);
 const ready = () => page.waitForFunction('window.__READY__ === true', null, { timeout: READY_MS });
 /** Advanced rows are keyed by their uppercased label. */
 const rowHandle = (label) =>
@@ -151,7 +153,9 @@ try {
   const textureRows = await tabRows('Textures & Detail');
   check(
     'the Textures tab shows the bake controls',
-    textureRows.includes('TEXTURE QUALITY') && textureRows.includes('CHARACTER TEXTURES'),
+    // Not CHARACTER TEXTURES: characters stopped baking textures, and the
+    // option went with them — this check had been failing on that ever since.
+    textureRows.includes('TEXTURE QUALITY') && textureRows.includes('ANISOTROPIC FILTER'),
     textureRows.join('|')
   );
   eq(
@@ -281,7 +285,9 @@ try {
   eq('the renderer boots at the stored DPR cap', live.pixelRatio, 1);
   eq('the renderer boots at the stored scale', Math.abs(live.renderScale - 0.7) < 0.001, true);
   const bakes = await page.evaluate(() =>
-    [...window.__ENGINE__.ctx.get('materials')._sets.values()].map((s) => s.size)
+    // `requestedSize`: under `?draw=0` the forge bakes at a 128 px floor, so the
+    // size the texture setting decided is the one to check.
+    [...window.__ENGINE__.ctx.get('materials')._sets.values()].map((s) => s.requestedSize)
   );
   check(
     'the world textures were actually baked smaller',

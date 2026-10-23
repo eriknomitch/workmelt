@@ -124,9 +124,23 @@ of guessing.
 
 ## Browser playtests
 
-These drive DOM and engine state rather than judging pixels, so they run
-anywhere — including the GPU-less container, where `npm run playtest:ads` passes
-21/21 in ~88 s against a shared dev server.
+These drive DOM and engine state rather than judging pixels, so they boot
+with `?draw=0`: the engine, input and HUD run, nothing is drawn, nothing
+compiles. Measured in the GPU-less container against a shared dev server:
+
+| | drawing | `draw=0` |
+|---|---|---|
+| `playtest:ads` | 89 s | 14 s |
+| `playtest:grenade` | 75 s, 5 checks failed | 18 s |
+| `playtest:graphics` | 177 s | 22 s |
+| `playtest:lobby` | 279 s | 30 s |
+
+The grenade failures are the reason the waits are on the engine's clock now
+(`waitFrames` / `waitGameTime` in `tools/lib/harness.mjs`): at 2 fps the engine
+clamps each step to 0.1 s, so a 3.6 s wall-clock sleep was ~0.7 s of fuse.
+
+Passing a screenshot path to any of them turns drawing back on, since that
+picture is worth looking at; so does `OW_DRAW=1`.
 
 - `npm run playtest:ads` — pause menu and ADS binds.
 - `npm run playtest:graphics` — advanced graphics menu, including a reload that
@@ -139,5 +153,5 @@ anywhere — including the GPU-less container, where `npm run playtest:ads` pass
   chips, keyboard shortcuts, `?mp=0`. Rides
   `?renderGame=false`, so no engine boots and it finishes in ~2 s even here.
 
-They are a minute or more each under SwiftShader — except `playtest:lobby-ui`,
-which skips the engine. Run the one that covers your change, not the set.
+Run the one that covers your change, not the set — or, now that each is
+seconds, the set in parallel against one server.
