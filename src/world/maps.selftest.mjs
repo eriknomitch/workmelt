@@ -149,6 +149,24 @@ import {
   inSolidLoop,
 } from './loop.js';
 
+import {
+  DOCK,
+  SHIP,
+  BROWS,
+  TOWERS,
+  DOCK_STAIRS,
+  DECK_CARGO,
+  BOXES as DOCK_BOXES,
+  FC_STAIR,
+  GRAVING_SPAWNS,
+  bankY,
+  gravingSolids,
+  inSolidGraving,
+  groundYGraving,
+} from './graving.js';
+import { NavGrid } from '../ai/nav.js';
+import { MOVE, STANCE, JUMP_APEX } from '../player/tuning.js';
+
 let pass = 0;
 let fail = 0;
 const B = (s) => `\x1b[1m${s}\x1b[0m`;
@@ -2145,6 +2163,209 @@ ok(!sitework.isOpen(0, SITE.halfZ + 3) && !sitework.isOpen(SITE.halfX + 3, 0),
     }
   const frac = open / total;
   ok(frac > 0.45 && frac < 0.9, 'walkable fraction sits in the open-yard band', frac.toFixed(2));
+}
+
+/* ───────────────────────────────────────────────────── graving — the dock ── */
+console.log(B('\ngraving — the dock'));
+
+const graving = mapById('graving');
+
+/**
+ * The numbers the dock is designed AROUND, read from the systems that own
+ * them rather than copied: a bot's nav grid refuses any cell-to-cell rise
+ * over `maxStep`, a player walks up `stepHeight` without mantling, and the
+ * mantle reaches `maxHeight`. Every vertical decision on this map is one of
+ * those three numbers, so if any of them moves, these checks are the only
+ * place that will notice the dock no longer fits it.
+ */
+const NAV = new NavGrid(null, { bounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } } });
+const NAV_STEP = NAV.maxStep;
+const NAV_CELL = NAV.cell;
+const STEP = STANCE.stand.stepHeight;
+const MANTLE = MOVE.mantle.maxHeight;
+
+{
+  const solids = gravingSolids();
+  const overlaps = [];
+  for (let i = 0; i < solids.length; i++)
+    for (let j = i + 1; j < solids.length; j++) {
+      const a = solids[i];
+      const b = solids[j];
+      if (a[1] < b[3] && a[3] > b[1] && a[2] < b[4] && a[4] > b[2]) overlaps.push(`${a[0]} ∩ ${b[0]}`);
+    }
+  ok(overlaps.length === 0, 'nothing solid is inside anything else solid', overlaps.slice(0, 3).join(', '));
+  const out = solids.filter((r) => r[1] < DOCK.x0 || r[2] < DOCK.z0 || r[3] > DOCK.seaX || r[4] > DOCK.z1);
+  ok(out.length === 0, 'everything solid is inside the yard walls and the sea palisade', out.map((r) => r[0]).join(' '));
+}
+
+/**
+ * THE ALTAR BANK — the one route into the pit that bots can use, so the
+ * whole lower level is only reachable by them if every one of its numbers
+ * fits the nav grid. A real dock's 0.6-1.0 m altars would build, render and
+ * walk fine for a player, and silently wall every bot out of half the map.
+ */
+{
+  const Bk = DOCK.bank;
+  ok(Bk.rise <= NAV_STEP && Bk.rise <= STEP, 'every altar is a step a bot paths over and a player walks up',
+    `${Bk.rise} m vs nav ${NAV_STEP} / stride ${STEP}`);
+  ok(Bk.tread > NAV_CELL, 'and every tread is wider than a nav cell, so no cell spans two risers',
+    `${Bk.tread} m vs ${NAV_CELL} m cells`);
+  // Walk down the bank on a 5 cm pitch: the profile must only ever step
+  // DOWN, by at most one altar at a time, and arrive on the dock floor.
+  let worst = 0;
+  let upward = false;
+  let prev = bankY(Bk.zTop - 0.5);
+  for (let z = Bk.zTop - 0.5; z <= DOCK.floor.z0 + 0.5; z += 0.05) {
+    const y = bankY(z);
+    worst = Math.max(worst, prev - y);
+    if (y > prev + 1e-9) upward = true;
+    prev = y;
+  }
+  ok(!upward && worst <= Bk.rise + 1e-9, 'the bank descends one altar at a time', `largest drop ${worst.toFixed(2)} m`);
+  ok(Math.abs(bankY(Bk.zTop - 0.01) - DOCK.quayY) < 1e-9 && Math.abs(bankY(DOCK.floor.z0) - DOCK.floorY) < 1e-9,
+    'from the quay at the top to the dock floor at the foot');
+  ok(Math.abs(bankY((Bk.broadZ0 + Bk.broadZ1) / 2) - Bk.broadY) < 1e-9 && Bk.broadZ1 - Bk.broadZ0 >= 2.5,
+    'with a broad altar halfway that is a lane, not a step', `${(Bk.broadZ1 - Bk.broadZ0).toFixed(1)} m at ${Bk.broadY}`);
+  // The analytic ground the spawns, props and minimap trust says the same.
+  ok(groundYGraving(0, (Bk.broadZ0 + Bk.broadZ1) / 2) === Bk.broadY && groundYGraving(0, 6) === DOCK.floorY,
+    'groundY answers the bank and the pit');
+}
+
+/**
+ * THE RIM IS THE HIGH GROUND — the map's whole idea, and four separate
+ * numbers could undo it without a frame looking wrong.
+ */
+{
+  ok(SHIP.deckY < DOCK.quayY, 'the main deck sits under the quay', `${SHIP.deckY} m`);
+  ok(SHIP.fcY < DOCK.quayY + 1.0, 'the forecastle, the highest deck in the dock, stays within a metre of the rim',
+    `+${SHIP.fcY} m`);
+  const roof = SHIP.deckY + SHIP.house.h + 0.22;
+  ok(roof - SHIP.deckY > MANTLE, 'the deckhouse roof is out of mantle reach from the deck',
+    `${(roof - SHIP.deckY).toFixed(2)} m vs ${MANTLE} m`);
+  // The hatch covers are the one mantle-able ledge on the main deck.
+  ok(SHIP.deckY + 1.0 <= DOCK.quayY + 0.3, 'and the hatch-cover ledges stay level with the rim',
+    `+${(SHIP.deckY + 1.0).toFixed(1)} m`);
+  /**
+   * DECK CARGO. The containers on the hatches are what stop the two quays
+   * duelling across 36 m of open pit end to end — they have to stand above a
+   * rim player's eye, and they must not become the perch they were added to
+   * deny: the hatch-cover ledge beside each stack is the highest thing a
+   * player can stand on next to it.
+   */
+  const hatchTop = SHIP.deckY + 1.0;
+  const tall = DECK_CARGO.filter(([, , p]) => hatchTop + p.length * 2.59 > DOCK.quayY + STANCE.stand.eye);
+  ok(tall.length === DECK_CARGO.length, 'every deck-cargo stack stands over a rim player\'s eye line',
+    `${tall.length}/${DECK_CARGO.length}`);
+  ok(2.59 > MANTLE, 'and a container is out of mantle reach from the hatch cover beside it');
+  ok(new Set(DECK_CARGO.map(([x]) => x)).size >= 2, 'with cargo on both hatches, so the windows are at the ends and midships');
+}
+
+/**
+ * EVERY ROUTE LANDS, and the two that bots need are shallow enough to use.
+ * A stair is quantised: walked on a 0.8 m grid, a cell can cross
+ * ceil(0.8 / going) risers, and that is the rise the nav grid sees.
+ */
+{
+  const navRise = (rise, run) => Math.ceil(NAV_CELL / run) * rise;
+  const f = BROWS.flying;
+  const fSteps = Math.round((f.y1 - f.y0) / 0.2);
+  ok(Math.abs(f.y0 - bankY(f.z0 - 0.01)) < 1e-9 && f.z1 === SHIP.z0 && f.y1 === SHIP.deckY,
+    'the flying brow runs from the broad altar onto the deck');
+  ok(navRise((f.y1 - f.y0) / fSteps, (f.z1 - f.z0) / fSteps) <= NAV_STEP, 'and bots can climb it',
+    `${navRise((f.y1 - f.y0) / fSteps, (f.z1 - f.z0) / fSteps).toFixed(2)} m per cell`);
+  const a = BROWS.aft;
+  const aSteps = Math.round((a.y1 - a.y0) / 0.2);
+  ok(a.z0 === SHIP.z1 && a.z1 === DOCK.floor.z1 && a.y0 === SHIP.deckY && a.y1 === DOCK.quayY,
+    'the aft brow runs from the deck to the south quay edge');
+  ok(navRise((a.y1 - a.y0) / aSteps, (a.z1 - a.z0) / aSteps) <= NAV_STEP, 'and bots can climb it');
+  ok(navRise((SHIP.fcY - SHIP.deckY) / FC_STAIR.steps, FC_STAIR.run) <= NAV_STEP,
+    'the forecastle stairs are bot-climbable too', `${FC_STAIR.steps} x ${((SHIP.fcY - SHIP.deckY) / FC_STAIR.steps).toFixed(2)} m`);
+  // Towers: the top landing meets the hull face it serves, the whole tower
+  // stands on the dock floor, and its foot has open floor to walk in from.
+  for (const t of TOWERS) {
+    const meets = t.hullX === (t.dir < 0 ? SHIP.x0 : SHIP.x1);
+    const onFloor = t.x0 >= DOCK.floor.x0 && t.x1 <= DOCK.floor.x1 && t.z0 >= DOCK.floor.z0 && t.z1 <= DOCK.floor.z1;
+    const riser = (t.top - DOCK.floorY) / (2 * t.steps);
+    ok(meets && onFloor && riser > 0.2 && riser < 0.3,
+      `the ${t.id} tower stands in its pit and lands against the hull`,
+      `${t.x0.toFixed(1)}..${t.x1.toFixed(1)}, ${t.steps * 2} x ${riser.toFixed(3)} m`);
+  }
+  for (const st of DOCK_STAIRS) {
+    const ax = st.foot - st.dir * 1.0;
+    ok(st.x0 >= DOCK.floor.x0 && st.x1 <= DOCK.floor.x1 && graving.isOpen(ax, DOCK.floor.z1 - 0.8),
+      `the ${st.id} dock stair has open floor at its foot`, `(${ax.toFixed(1)}, ${(DOCK.floor.z1 - 0.8).toFixed(1)})`);
+  }
+}
+
+/**
+ * THE UNDERCROFT is a standing lane. Lower the keel blocks to a real dock's
+ * 1.4 m and it becomes a crouch crawl nobody designed for.
+ */
+ok(SHIP.bottomY - DOCK.floorY >= STANCE.stand.height + 0.15,
+  'a player stands up under the hull', `${(SHIP.bottomY - DOCK.floorY).toFixed(2)} m clear`);
+
+/**
+ * THE PERIMETER. The sea palisade is the edge that cannot be a wall you can
+ * see over the top of, and anything a mantle plus a jump can clear is a
+ * door into water with no floor. The yard gate is open in the wall and must
+ * be shut by the container parked across its first metres.
+ */
+{
+  ok(DOCK.fenceH > MANTLE + JUMP_APEX, 'the sea palisade is out of reach of a jump and a mantle',
+    `${DOCK.fenceH} m vs ${(MANTLE + JUMP_APEX).toFixed(2)} m`);
+  ok(DOCK.wallH > MANTLE + JUMP_APEX, 'so are the yard walls');
+  const leaks = [];
+  for (let z = DOCK.gate.z0 + 0.2; z < DOCK.gate.z1 - 0.1; z += 0.2) {
+    let solid = false;
+    for (let x = DOCK.x0 + 0.1; x <= DOCK.x0 + 2.5 && !solid; x += 0.2) if (inSolidGraving(x, z, 0)) solid = true;
+    if (!solid) leaks.push(z.toFixed(1));
+  }
+  ok(leaks.length === 0, 'the yard gate is sealed', leaks.length ? `leaks at z=${leaks.slice(0, 4).join(',')}` : 'container across it');
+  ok(!graving.isOpen(39, 5) && !graving.isOpen(DOCK.seaX + 2, -20) && !graving.isOpen(0, DOCK.z1 + 2),
+    'the water and the world outside the walls are not playable ground');
+}
+
+/**
+ * SPAWNS stay off the bank and the ship: those are places you go to. A spawn
+ * on the deck is a spawn the whole quay ring can see.
+ */
+{
+  const odd = GRAVING_SPAWNS.filter(([x, z]) => {
+    const y = groundYGraving(x, z);
+    return y !== DOCK.quayY && y !== DOCK.floorY;
+  });
+  ok(odd.length === 0, 'every spawn is on the quay or the dock floor', odd.map(([x, z, , zn]) => `${zn}(${x},${z})`).join(' '));
+  /**
+   * The sightline breakers. The quay ring sees across an open pit, and
+   * without these the spawn director found three safe zones out of nine
+   * (`spawns.probe.mjs`). Asserted as a count because "this container is in
+   * the way, move it" is the most natural tidy-up there is.
+   */
+  // Nine is the measured set — the spawn probe passed with all nine and failed
+  // without them — so knocking ANY of them down to one tier trips this.
+  const tall = DOCK_BOXES.filter(([, , , p]) => p.length >= 2);
+  ok(tall.length >= 9, 'the quay ring is broken up by two-high stacks', `${tall.length} stacks`);
+}
+
+/**
+ * Sample the yard. The pit floor counts, the hull and the buildings do not,
+ * so this sits in the open-yard band with the estates.
+ */
+{
+  let open = 0;
+  let total = 0;
+  for (let x = DOCK.x0; x <= DOCK.seaX; x += 1)
+    for (let z = DOCK.z0; z <= DOCK.z1; z += 1) {
+      total++;
+      if (graving.isOpen(x, z)) open++;
+    }
+  const frac = open / total;
+  ok(frac > 0.55 && frac < 0.85, 'walkable fraction sits in the open-yard band', frac.toFixed(2));
+}
+
+{
+  const env = graving.environment;
+  ok(env && env.hour >= 16 && env.hour <= 19.5, 'graving is a late-afternoon map, lit by the sun', `hour ${env?.hour}`);
 }
 
 console.log(
