@@ -13,11 +13,11 @@
  * ---------------------------------------------------------------------------
  *
  *   left rail    the ROOM — the invite eyebrow, the active room code, the
- *                relay status and the roster; below them, this client's own
- *                setup (garrison, settings)
+ *                relay status and the roster; below them, the wordmark and
+ *                settings
  *   stage        the CURRENT MAP — its name written large, its artwork (or
  *                its blueprint floorplan when no artwork ships), and the
- *                action dock: callsign, primary, copy-invite, key hints
+ *                action dock: callsign, bots, primary, copy-invite, key hints
  *   right rail   the MAP SELECTOR — one card per enabled map, thumbnail
  *                floorplan plus name and description; the selected card is
  *                the one wearing the Signal Blue border
@@ -209,23 +209,10 @@ const CSS = `
   letter-spacing: .14em; text-transform: uppercase; color: var(--wm-muted-fg);
 }
 
-/* this client's setup — pinned under the room, above the sign-off mark */
+/* the sign-off — pinned under the room */
 .wm-lobby .setup {
   margin-top: auto; display: flex; flex-direction: column; gap: 18px;
   padding-top: 18px; border-top: 1px solid var(--wm-border);
-}
-.wm-lobby .opts .lbl { margin-bottom: 9px; }
-.wm-lobby .chips { display: flex; gap: 6px; flex-wrap: wrap; }
-.wm-lobby .chip {
-  font-family: var(--wm-mono); font-size: 9.5px; font-weight: 500; letter-spacing: .14em;
-  text-transform: uppercase; padding: 8px 11px;
-  border-radius: var(--wm-r-sm); border: 1px solid var(--wm-border);
-  background: transparent; color: var(--wm-muted-fg); cursor: pointer;
-  transition: color var(--wm-t), border-color var(--wm-t), background var(--wm-t);
-}
-.wm-lobby .chip:hover { color: var(--wm-fg); border-color: var(--wm-muted-fg); }
-.wm-lobby .chip[aria-pressed="true"] {
-  color: var(--wm-fg); border-color: var(--wm-accent); background: rgb(var(--wm-accent-rgb) / .1);
 }
 .wm-lobby .note {
   font-size: 11px; line-height: 1.55; color: var(--wm-muted-fg); margin-top: 9px; min-height: 17px;
@@ -276,21 +263,34 @@ const CSS = `
 }
 
 /* The hero viewport. Artwork when public/maps/<id>.png exists; otherwise the
-   map's own floorplan on a faint graticule — the blueprint, not a blank. */
-.wm-lobby .hero-view { position: relative; flex: 1 1 auto; min-height: 240px; margin-top: 22px; }
-.wm-lobby .hero-img {
-  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
-  object-position: center; display: none;
+   map's own floorplan on a faint graticule — the blueprint, not a blank.
+
+   A column: the floorplan takes whatever height the dock leaves it, and the
+   dock sits in flow at the foot. The dock's height depends on the room state
+   (callsign, bots row, alt link), so a fixed reservation under the plan was
+   always wrong for one of them — the plan ran under the dock on a short
+   window, and the dock rode up over the map's name on a shorter one. */
+.wm-lobby .hero-view {
+  position: relative; flex: 1 1 auto; min-height: 240px; margin-top: 22px;
+  display: flex; flex-direction: column; align-items: center; padding: 0 22px 22px;
 }
-.wm-lobby .stage.has-art .hero-img { display: block; }
-.wm-lobby .hero-plan { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px 40px 260px; }
-.wm-lobby .hero-plan::before {
+.wm-lobby .hero-view::before {
   content: ''; position: absolute; inset: 0; pointer-events: none;
   background:
     linear-gradient(to right, rgb(var(--wm-fg-rgb) / .03) 1px, transparent 1px) 0 0 / 32px 32px,
     linear-gradient(to bottom, rgb(var(--wm-fg-rgb) / .03) 1px, transparent 1px) 0 0 / 32px 32px;
 }
-.wm-lobby .stage.has-art .hero-plan { display: none; }
+.wm-lobby .stage.has-art .hero-view::before { display: none; }
+.wm-lobby .hero-img {
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+  object-position: center; display: none;
+}
+.wm-lobby .stage.has-art .hero-img { display: block; }
+.wm-lobby .hero-plan {
+  position: relative; flex: 1 1 0; min-height: 0; align-self: stretch;
+  display: grid; grid-template-rows: minmax(0, 1fr); place-items: center; padding: 24px 18px;
+}
+.wm-lobby .stage.has-art .hero-plan { visibility: hidden; }
 /* The plan is drawn one cell per couple of device pixels; "pixelated" keeps the
    blocks square instead of smearing them at 6x. Its .35 was calibrated against
    a black stage — on the open stage the scene fills the gaps between the plan's
@@ -301,14 +301,15 @@ const CSS = `
   image-rendering: pixelated; opacity: .6;
 }
 
-/* the action dock — primary, copy, key hints, and the optional alt link */
+/* the action dock — callsign, bots, primary, copy, key hints, and the
+   optional alt link: every choice that shapes the next click, in the order
+   it is read, directly above the click itself */
 /* The dock is the one thing on the open stage that needs a stable ground: the
    primary CTA's contrast cannot depend on what the scene happens to be doing
    behind it. .68 Void over the .75 floor composites to α .92, so it still
    reads as part of the window rather than a black slab pasted onto it. */
 .wm-lobby .dock {
-  position: absolute; z-index: 3; left: 50%; bottom: 22px; transform: translateX(-50%);
-  width: min(440px, calc(100% - 44px));
+  position: relative; z-index: 3; flex: none; width: min(440px, 100%);
   background: rgb(var(--wm-bg-rgb) / .68); border: 1px solid var(--wm-border);
   padding: 20px 20px 14px; display: flex; flex-direction: column; gap: 10px;
 }
@@ -344,6 +345,34 @@ const CSS = `
 .wm-lobby .ident.unset input:not(:focus) { color: var(--wm-muted-fg); }
 .wm-lobby .ident-note { font-size: 11px; line-height: 1.55; color: var(--wm-fg-dim); }
 .wm-lobby .ident-note b { font-weight: 500; color: var(--wm-fg); }
+/* Who you deploy against. It lives here rather than in the left rail because
+   it rewrites the button under it ("Play vs 6 bots") — a control and the label
+   it changes belong in one glance. One row of equal segments so the four
+   presets read as a single exclusive choice, and the preset's one-line note
+   under it says what the pick means. When only the warm-up link uses it, it
+   moves down beside that link behind a hairline — sitting over READY UP it
+   would read as configuring the room's match, which has no bots. Hidden while
+   no control would use it (a running match, a stalled ready); see _paintBots. */
+.wm-lobby .bots { display: flex; flex-direction: column; gap: 8px; padding-bottom: 10px; }
+.wm-lobby .bots.for-alt {
+  order: 1; padding: 12px 0 0; margin-top: 2px; border-top: 1px solid var(--wm-border);
+}
+.wm-lobby .bots.for-alt ~ .alt { order: 2; }
+.wm-lobby .bots .lbl { font-size: 10px; }
+.wm-lobby .chips { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.wm-lobby .chip {
+  font-family: var(--wm-mono); font-size: 9.5px; font-weight: 500; letter-spacing: .14em;
+  text-transform: uppercase; padding: 8px 6px; min-width: 0; text-align: center;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  border-radius: var(--wm-r-sm); border: 1px solid var(--wm-border);
+  background: transparent; color: var(--wm-muted-fg); cursor: pointer;
+  transition: color var(--wm-t), border-color var(--wm-t), background var(--wm-t);
+}
+.wm-lobby .chip:hover { color: var(--wm-fg); border-color: var(--wm-muted-fg); }
+.wm-lobby .chip[aria-pressed="true"] {
+  color: var(--wm-fg); border-color: var(--wm-accent); background: rgb(var(--wm-accent-rgb) / .1);
+}
+.wm-lobby .bots .note { margin-top: 0; min-height: 0; }
 .wm-lobby .btn {
   font-family: var(--wm-body); font-size: 12px; font-weight: 500; letter-spacing: .24em;
   text-transform: uppercase; cursor: pointer; border-radius: var(--wm-r);
@@ -524,6 +553,15 @@ body.wm-touch .wm-lobby {
 }
 
 /* ── responsive ──────────────────────────────────────────────────────────── */
+/* Three rails: the selector scrolls inside its own rail rather than setting
+   the page's height. Nine cards are ~1000px of grid, and with the rail sizing
+   the row a 900px window pushed the dock — the primary with it — below the
+   fold. Size containment takes the cards out of the row's sizing; the rail
+   still stretches to whatever the stage and the room need. Only here: once the
+   selector drops to a row of its own, its content IS its height. */
+@media (min-width: 1241px) {
+  .wm-lobby .rail-right { contain: size; }
+}
 /* Semantic thresholds, not device names: the selector drops under the stage as
    soon as three rails would squeeze the display type. */
 @media (max-width: 1240px) {
@@ -546,10 +584,12 @@ body.wm-touch .wm-lobby {
   .wm-lobby .rail-left, .wm-lobby .rail-right { padding: 16px; }
   .wm-lobby .stage-hd { padding: 16px 22px 0; }
   .wm-lobby .hero-name { font-size: clamp(30px, 4vw, 44px); margin: 10px 0 6px; }
-  .wm-lobby .hero-view { margin-top: 12px; min-height: 170px; }
-  .wm-lobby .dock { padding: 12px 14px 10px; gap: 7px; bottom: 14px; }
+  .wm-lobby .hero-view { margin-top: 12px; min-height: 170px; padding-bottom: 14px; }
+  .wm-lobby .dock { padding: 12px 14px 10px; gap: 7px; }
   .wm-lobby .ident { gap: 7px; padding-bottom: 4px; }
   .wm-lobby .ident input { padding: 9px 12px; font-size: 16px; }
+  .wm-lobby .bots { gap: 6px; padding-bottom: 4px; }
+  .wm-lobby .bots .note { display: none; }
   .wm-lobby .btn { padding: 11px 16px; }
   .wm-lobby .mapcard .thumb { height: 64px; }
   .wm-lobby .mapcard canvas { max-height: 52px; }
@@ -675,11 +715,6 @@ export class MatchStartUI {
           </div>
 
           <div class="setup">
-            <div class="opts">
-              <span class="lbl">Garrison</span>
-              <div class="chips" data-bots role="group" aria-label="Garrison size"></div>
-              <p class="note" data-bot-note></p>
-            </div>
             <div class="rail-foot">
               <span class="wm-mark rail-mark">${WORDMARK_HTML}</span>
               <button type="button" class="icon-btn" data-settings title="Settings (Esc)"
@@ -706,6 +741,11 @@ export class MatchStartUI {
                 <input id="wm-callsign" data-name maxlength="20" spellcheck="false" autocomplete="off"
                   enterkeyhint="go" aria-describedby="wm-callsign-note" />
                 <p class="ident-note hide" id="wm-callsign-note" data-ident-note></p>
+              </div>
+              <div class="bots" data-bots-row>
+                <span class="lbl" id="wm-bots-lbl" data-bots-lbl>Bots</span>
+                <div class="chips" data-bots role="group" aria-labelledby="wm-bots-lbl"></div>
+                <p class="note" data-bot-note></p>
               </div>
               <button type="button" class="btn btn-primary" data-primary>${PLAY_SVG}<span data-primary-lbl>Play</span></button>
               <button type="button" class="btn btn-ghost" data-copy>${LINK_SVG}<span data-copy-lbl>Copy invite link</span></button>
@@ -759,6 +799,8 @@ export class MatchStartUI {
     this.heroSub = q('[data-hero-sub]');
     this.heroImg = q('[data-hero]');
     this.heroPlanEl = q('[data-hero-plan]');
+    this.botsRow = q('[data-bots-row]');
+    this.botsLbl = q('[data-bots-lbl]');
     this.botChips = q('[data-bots]');
     this.botNote = q('[data-bot-note]');
     this.primaryBtn = q('[data-primary]');
@@ -1280,6 +1322,23 @@ export class MatchStartUI {
     this.primaryBtn.className = this._mode === 'unready' ? 'btn btn-ghost' : 'btn btn-primary';
     this.stripPrimary.textContent = this.mapBusy ? 'Loading map' : label;
     this._paintAlt();
+    this._paintBots();
+  }
+
+  /**
+   * The bots row only matters to a control that would start a bots match. When
+   * the primary is that control it is plain "Bots", over the primary; when only
+   * the link under it is (somebody else is here, so the primary readies up for
+   * a players match), it moves down to that link and says it is for the
+   * warm-up, so a pick never looks like it changed the room's match. With
+   * neither, it is out of the way.
+   */
+  _paintBots() {
+    const forPrimary = this._mode === 'solo';
+    const forAlt = this._altMode === 'solo';
+    this.botsRow.classList.toggle('hide', !forPrimary && !forAlt);
+    this.botsRow.classList.toggle('for-alt', !forPrimary);
+    this.botsLbl.textContent = forPrimary ? 'Bots' : 'Warm-up bots';
   }
 
   /**
