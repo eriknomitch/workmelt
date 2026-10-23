@@ -29,6 +29,7 @@ export function resolveChromium() {
     .sort()
     .reverse()
     .flatMap((d) => [
+      join(base, d, 'chrome-linux64', 'chrome'),
       join(base, d, 'chrome-linux', 'chrome'),
       join(base, d, 'chrome-mac', 'Chromium.app', 'Contents', 'MacOS', 'Chromium'),
       join(base, d, 'chrome-win', 'chrome.exe'),
