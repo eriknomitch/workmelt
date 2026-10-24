@@ -84,10 +84,7 @@ const FPS_TARGETS = ['display', '30', '60', '90', '120', '144', '165', '240'];
  */
 export class PauseMenu {
   constructor(parent, ctx) {
-    // This menu is the only brand surface that exists on a capture run (the
-    // lobby and the multiplayer overlay are both off), so it is also the one
-    // that has to keep the webfont out of the pixel gate. See installBrandFont.
-    installBrand({ webfont: !ctx.config.deterministic });
+    installBrand();
     this.ctx = ctx;
     this.root = el('div', 'ow-menu', parent);
 

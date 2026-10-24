@@ -29,6 +29,7 @@ import { MatchStartUI } from '../match/ui.js';
 import { detectTouchMode } from '../core/input.js';
 import { mapSummaries, resolveBootMap, saveMapPreference } from '../world/maps.js';
 import { resolveName, saveName } from '../net/config.js';
+import { fontsReady } from '../ui/fonts.js';
 
 const DEFAULT_BOTS = 'off';
 
@@ -94,6 +95,8 @@ export async function bootUiOnly() {
   requestAnimationFrame(() => ui.focusEntry());
 
   window.__UIONLY__ = ui;
+  // Same reason as boot.js: a harness must never see the fallback face.
+  await fontsReady;
   window.__READY__ = true;
   console.info('[boot] renderGame=false — engine skipped, HTML UI only');
 }

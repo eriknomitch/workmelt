@@ -7,7 +7,8 @@ A first-person shooter built in the browser with Three.js r180 and WebGL2. Rough
 
 Every texture, mesh and animation is generated procedurally at load time from
 code — no models, no HDRIs, no image files. Audio combines a procedural synthesis
-layer with sampled sound effects. The only runtime dependency is `three`.
+layer with sampled sound effects. The only runtime code dependency is `three`;
+the UI's Geist faces ship in the bundle from npm.
 
 ```bash
 npm install

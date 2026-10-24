@@ -73,8 +73,8 @@ async function player(name) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   const page = await ctx.newPage();
   page.on('pageerror', (e) => console.log(`[pageerror ${name}]`, e.message));
-  // `domcontentloaded`, like every other harness here: `load` also waits on the
-  // brand webfont, which is deliberately non-blocking. `__READY__` is the gate.
+  // `domcontentloaded`, like every other harness here. The real gate is
+  // `__READY__`, which also holds for the bundled brand faces (src/ui/fonts.js).
   //
   // The long timeout is not paranoia: by the time the second player loads, the
   // first one is rendering a live match on a software rasteriser in the same

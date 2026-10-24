@@ -215,8 +215,10 @@ accent that is rationed hard, plus state colours that never become decoration.
   lamp once it is online. 8.0:1 on the Void.
 - **Warning** (`#f2b643`): Warm-up state, `RESTART`-gated settings, in-match
   keycap highlights.
-- **Danger** (`#d95c5c`): Destructive actions and disconnected state. Large
-  text and icons only — it may fill a button, but it never sets small copy.
+- **Danger** (`#d95c5c`): Destructive actions and connection failures. 5.6:1
+  on the Void and 4.9:1 on Well, so it clears small text — but it is kept for
+  things that are actually wrong (a full room, a dropped relay, Leave match),
+  never for emphasis, so red keeps meaning "error".
 - **Information** (`#5f7cf9`): The same value as Signal Blue — information IS
   the accent in this system; there is no second blue.
 
@@ -237,7 +239,7 @@ accent that is rationed hard, plus state colours that never become decoration.
 - **Steel** (`#62666e`): Structural strokes and metadata at 16px+, and icons.
 - **Steel Lift** (`#9ca0a8`): Every string under 16px that wants to read as
   secondary — the mono labels live here. 7.0:1.
-- **Hairline** (`#23262e`): 1px rules, dividers, and resting borders — Ice
+- **Hairline** (`#23262e`): 1px rules, dividers, and panel borders — Ice
   White at ~14% resolved over the Void. The single most used colour in the
   system after the Void itself.
 
@@ -263,9 +265,17 @@ contrast. A primary CTA is therefore a Signal Blue *border* over a faint blue
 wash (8–16% alpha) with Ice White text on black. Where a solid light fill is
 genuinely required (the active tab), its text is the Void.
 
-**The 16px Floor Rule.** Steel and Danger are large-text and icon colours
-only. Any string under 16px that wants to read as secondary uses Steel Lift or
-Ice White Dim instead.
+**The 16px Floor Rule.** Steel is a large-text and icon colour only (3.6:1).
+Any string under 16px that wants to read as secondary uses Steel Lift or Ice
+White Dim instead. Danger is exempt at 5.6:1, but only for errors and
+destructive actions.
+
+**The Visible Control Rule.** Anything clickable — buttons, chips, inputs,
+tabs, segmented controls — rests on a Steel border (`--wm-border-ctl`, 3.6:1),
+not Hairline (1.4:1), which drops below the 3:1 WCAG 1.4.11 asks of a
+control's outline and disappears on a dim laptop panel. Dividers, rails and
+panels stay Hairline. Map cards are the one exception: the floorplan inside
+already says "this is a thing to pick".
 
 **The One Token File Rule.** Every colour, font, radius, and duration on a menu
 surface comes from the custom properties in `src/ui/brand.js`. A literal hex in
@@ -304,12 +314,15 @@ face.
 only; body copy is never tracked past `.06em` and never uppercase. A paragraph
 in the label register is a status readout, and it is kept to two sentences.
 
-**The Progressive Webfont Rule.** The webfont is a progressive enhancement,
-never a dependency. Geist is requested with `media="print"` so it can never
-render-block, and it is not requested at all on a deterministic capture run,
-because a pending webfont leaves `document.fonts.ready` unresolved and would
-hang every screenshot in `tools/`. The fallback stack is legible before,
-during and after.
+**The Bundled Face Rule.** Geist and Geist Mono ship in the build from npm
+(`@fontsource-variable/geist`, `@fontsource-variable/geist-mono`). They are
+served from our own origin, never a font CDN (ARCHITECTURE.md rule 3), and
+registered as `'Geist Variable'` / `'Geist Mono Variable'`, which is why the
+stacks lead with those names. `src/ui/fonts.js` starts the Latin subsets
+loading from `src/main.js`, alongside the boot chunk. Play never waits on
+them, but `window.__READY__` does, so a capture always renders in Geist rather
+than sometimes in the fallback. The fallback stack stays legible before,
+during and after. The OFL notice ships in `public/fonts/CREDITS.md`.
 
 **The Tabular Figure Rule.** Any number that changes in place — ammo, scores,
 countdowns, slider values — is set with `font-variant-numeric: tabular-nums` so
@@ -415,8 +428,8 @@ Rectangular, near-square. The working radius is 2px everywhere — panels,
 cards, buttons, chips, inputs, keycaps — with the 99px pill reserved for the
 scrollbar thumb. Nothing else is ever a pill.
 
-Borders are always exactly 1px. The resting border is Hairline; hover lifts it
-to Steel Lift; selection and focus lift it to Signal Blue. Selection is
+Borders are always exactly 1px. The resting border is Hairline for structure
+and Steel for controls (The Visible Control Rule); hover lifts it to Steel Lift; selection and focus lift it to Signal Blue. Selection is
 expressed by border colour plus one small accent badge, never by adding weight
 or a second ring.
 
@@ -440,17 +453,17 @@ stays rationed while still appearing wherever a decision was made.
   (`rgb(accent / .08)`) behind it. Hover deepens the wash to `.16`; active
   presses down `translateY(1px)` over 90ms linear. The leading icon is the
   accent.
-- **Ghost:** Hairline border, Ice White Dim text. Hover lifts border to Steel
+- **Ghost:** Steel border, Ice White Dim text. Hover lifts border to Steel
   Lift and text to Ice White. A completed action (`.done`) turns border and
   text to Success.
-- **Icon:** 32px square, Hairline border, icon in Steel Lift; hover lifts the
+- **Icon:** 32px square, Steel border, icon in Steel Lift; hover lifts the
   border to the accent.
 - **Keycap:** Key hints are Geist Mono 9px in a Hairline-bordered 2px chip.
 - **Disabled:** 42–45% opacity and `cursor: not-allowed`. No colour change.
 
 ### Chips
 
-- **Style:** Transparent, Hairline border, 2px radius, Geist Mono 9.5px
+- **Style:** Transparent, Steel border, 2px radius, Geist Mono 9.5px
   tracked uppercase, `8px 11px`. Used for bot-garrison counts and other small
   exclusive choices.
 - **State:** Hover lifts text to Ice White and the border to Steel Lift.
@@ -473,7 +486,7 @@ stays rationed while still appearing wherever a decision was made.
 
 ### Inputs / Fields
 
-- **Style:** Well background, 1px Hairline, 2px radius, `8px 10px`, Geist 500
+- **Style:** Well background, 1px Steel border, 2px radius, `8px 10px`, Geist 500
   at 12px. The label above is a Geist Mono eyebrow.
 - **Hover:** Border lifts to Steel Lift.
 - **Focus:** `outline: none`, replaced by a Signal Blue border. The outline is
@@ -532,7 +545,8 @@ sign-off to whatever a title screen asks of it.
 - **Don't** introduce a literal hex into `src/match/ui.js`, `src/ui/menu.js`,
   the menu block of `src/ui/style.js`, or `src/net/ui.js`.
 - **Don't** put light text on a Signal Blue fill, or use the accent as a wash.
-- **Don't** set Steel or Danger below 16px.
+- **Don't** set Steel below 16px, or use Danger for anything but an error or
+  a destructive action.
 - **Don't** default any WORKMELT surface to a white page. The light theme is a
   derived inversion, not the source of truth.
 - **Don't** add a glossy gradient, glassmorphism, or a skeuomorphic texture
@@ -543,7 +557,8 @@ sign-off to whatever a title screen asks of it.
   scrollbar thumb is the only pill.
 - **Don't** track body copy like a label, or set a paragraph in the mono
   register beyond a two-sentence status readout.
-- **Don't** let a webfont block a render or a capture.
+- **Don't** load a face from a font CDN, or let one block a render. Faces come
+  from npm and ship in the bundle.
 - **Don't** use skulls, crosshairs, blood spatter, or bullet vectors as icons.
   Icons read as enterprise-software logic — folders, boxes, network nodes,
   clipboards, terminal prompts — at a uniform 1.5px stroke.

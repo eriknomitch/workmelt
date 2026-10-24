@@ -39,14 +39,15 @@ const CSS = `
 .cod-mp .room b { font-family: var(--wm-display); font-size: 17px; letter-spacing: .12em;
   font-weight: 400; color: var(--wm-fg); text-transform: uppercase; }
 .cod-mp .count { font-size: 11px; color: var(--wm-muted-fg); white-space: nowrap; }
-.cod-mp .btn { pointer-events: auto; cursor: pointer; border: 1px solid var(--wm-border);
+.cod-mp .count.err { color: var(--wm-danger); }
+.cod-mp .btn { pointer-events: auto; cursor: pointer; border: 1px solid var(--wm-border-ctl);
   background: transparent; color: var(--wm-fg-dim); font-size: 12px; font-weight: 600;
   letter-spacing: .02em; padding: 5px 10px; border-radius: var(--wm-r-sm); white-space: nowrap;
   transition: color var(--wm-t), border-color var(--wm-t), background var(--wm-t); }
 .cod-mp .btn:hover { color: var(--wm-fg); border-color: var(--wm-accent); background: var(--wm-panel-2); }
 .cod-mp .btn.copied { color: var(--wm-ok); border-color: var(--wm-ok); background: transparent; }
 .cod-mp .name-in { pointer-events: auto; width: 104px; background: var(--wm-panel-2);
-  border: 1px solid var(--wm-border); border-radius: var(--wm-r-sm); color: var(--wm-fg);
+  border: 1px solid var(--wm-border-ctl); border-radius: var(--wm-r-sm); color: var(--wm-fg);
   font-size: 12px; font-weight: 600; padding: 5px 8px; transition: border-color var(--wm-t); }
 .cod-mp .name-in:hover { border-color: var(--wm-muted-fg); }
 .cod-mp .name-in:focus { outline: none; border-color: var(--wm-accent); }
@@ -165,6 +166,7 @@ export class NetUI {
     if (state === 'on') this.countEl.textContent = count <= 1 ? 'waiting for players…' : `${count} in match`;
     else if (state === 'wait') this.countEl.textContent = 'connecting…';
     else this.countEl.textContent = 'offline — reconnecting…';
+    this.countEl.classList.toggle('err', state !== 'on' && state !== 'wait');
   }
   flashCopied() {
     this.copyBtn.classList.add('copied');
