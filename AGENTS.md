@@ -127,6 +127,12 @@ either works: `test:quality` = `src/core/selftest.mjs`, `test:graphics` =
   contract: the default kill target and time cap (and that the relay and Durable
   Object default to the same numbers), the bots-match tally that can be won and
   lost, and the time-expiry outcomes including the draw.
+- `node src/match/share.selftest.mjs` checks the ceremony's share card — the
+  pasteable emoji result (`src/match/share.js`): that the paste opens on
+  `workmelt.com`, one mark per kill / death in match order, ten to a line so an
+  emoji is never split, the cut past the cap counted rather than hidden, and a
+  result line that gives a room its placing and a bots match its verdict. Every failure is
+  silent in game — it only shows up in somebody else's chat. Mutation-checked.
 - `node server/map.selftest.mjs` walks the relay's room-map protocol against a real server on a real socket.
 - `node server/bounds.selftest.mjs` does the same for the bounded match: the
   fresh scoreline at the start signal, `match_end` on the winning kill, the
@@ -351,13 +357,13 @@ Read on demand, not loaded at session start:
 ## Verifying a change
 
 **Default to not rendering.** The Node-only self-tests carry most of the real
-coverage and are effectively free — all thirty-one of them (`physics`, `ai`,
+coverage and are effectively free — all thirty-two of them (`physics`, `ai`,
 `ai/lod`, `ai/footstep`, `ai/roo`, `fx/tracers`, `weapons/balance`, `weapons/throwables`,
 `weapons/loadout`, `weapons/autoreload`, `weapons/melee`, `weapons/baked`,
 `audio/attenuation`,
 `audio/reload`,
 `core` × 5, `render/resolution`, `render/dof`, `ui/touch`, `ui/killicons`, `ui/nameplates`, `match/bounds`,
-`match/streaks`, `world/maps`, `world/collision`, `world/power`, `world/spawns`,
+`match/share`, `match/streaks`, `world/maps`, `world/collision`, `world/power`, `world/spawns`,
 `world/stairs`)
 run in ~10 s
 combined, and `world/maps.selftest.mjs` builds every map headlessly without a
@@ -372,7 +378,7 @@ find src server \( -name 'selftest.*' -o -name '*.selftest.*' \) | sort
 
 Note both halves of that pattern — four suites are a bare `selftest.js`/`.mjs`
 (`physics`, `ai`, `core`, `audio`) and `-name '*.selftest.*'` alone silently
-misses them. It returns 36 files; the thirty-one above are the free ones. The
+misses them. It returns 37 files; the thirty-two above are the free ones. The
 other five are not: `server/{bounds,lobby,map,skin}.selftest.mjs` each stand up
 a real relay on a real socket, and `src/audio/selftest.js` is a library the audio
 probe drives from a page — run directly it exits 0 having asserted nothing.

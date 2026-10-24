@@ -54,7 +54,10 @@
  *   referees a bots match, because nobody else can see it. Either way the end
  *   lands here, in the CEREMONY: the winner's name in their livery, the final
  *   standings, and a timed walk back to the lobby — which is where the
- *   existing rematch flow was already waiting.
+ *   existing rematch flow was already waiting. The ceremony also carries the
+ *   SHARE CARD (./share.js): the result as a few lines of emoji text opening
+ *   on workmelt.com, built from `_timeline` — every kill and death the local
+ *   player had in that match, in order.
  *
  * EVENTS EMITTED
  *   match:start { bots, squads, perSquad, mode }   the match is live
@@ -67,6 +70,7 @@ import * as THREE from 'three';
 import { MatchStartUI, BOT_PRESETS } from './ui.js';
 import { StreakTracker } from './streaks.js';
 import { SCORE_LIMIT, MATCH_MS, BotMatchTally } from './bounds.js';
+import { MatchTimeline, roomResult, shareText } from './share.js';
 
 /**
  * No garrison until somebody asks for one: the lobby exists to fill a room with
@@ -113,6 +117,8 @@ export class MatchSystem {
     this._ceremonyUntil = 0;
     /** When the lobby first showed the settled-tier notice. 0 = not yet. */
     this._tunedSince = 0;
+    /** The local player's kills and deaths this match, for the share card. */
+    this._timeline = new MatchTimeline();
   }
 
   /**
@@ -168,6 +174,7 @@ export class MatchSystem {
 
     const on = (t, fn) => this._off.push(ctx.events.on(t, fn));
     on('player:death', () => {
+      if (this.state === 'live') this._timeline.death();
       this._onPlayerDeath();
       this._onTallyDeath();
     });
@@ -176,6 +183,11 @@ export class MatchSystem {
       this._lastAttackValid = !!e?.from;
     });
     on('damage:dealt', (e) => this._onDamageDealt(e));
+    // A PvP kill is only ever confirmed by the relay — same rule the streak
+    // ladder counts by (./streaks.js).
+    on('net:kill', (e) => {
+      if (e?.mine && this.state === 'live') this._timeline.kill();
+    });
     on('net:lobby', (e) => this._onLobby(e));
     on('net:name', (e) => this.ui.setName(e?.name ?? '', e?.chosen ?? true));
     on('net:countdown', (e) => this._onCountdown(e));
@@ -183,6 +195,9 @@ export class MatchSystem {
     on('net:join', (e) => this._onPresence('join', e));
     on('net:leave', (e) => this._onPresence('leave', e));
     this.ui.onCeremonyDone = () => this._ceremonyDone();
+    // Somebody reaching for the share card is reading it: the auto-return
+    // must not pull the screen out from under a half-made paste.
+    this.ui.onShareUsed = () => this._holdCeremony();
 
     // The killstreak ladder (./streaks.js). It listens for its own kills and
     // resets, so all this system owes it is a frame tick and a teardown.
@@ -483,6 +498,7 @@ export class MatchSystem {
     // A bots match is scored here — nobody else can see it. A room match is
     // scored by the relay, whose `match_end` arrives as `net:matchend`.
     this._tally = mode === 'bots' ? new BotMatchTally({ now: performance.now() }) : null;
+    this._timeline.reset();
     const preset = BOT_PRESETS.find((p) => p.key === bots) ?? BOT_PRESETS[0];
 
     // Deploy the player FIRST, then the garrison: the bots' anchors are scored
@@ -590,9 +606,12 @@ export class MatchSystem {
    * hitmarker applies).
    */
   _onDamageDealt(e) {
-    if (!e?.killed || !this._tally || this.state !== 'live') return;
+    if (!e?.killed || this.state !== 'live') return;
     const t = e.target;
     if (t === 'player' || t === this.player || t?.isPlayer === true) return;
+    // Before the tally: the kill that ends the match belongs on the card.
+    this._timeline.kill();
+    if (!this._tally) return;
     if (this._tally.noteKill() === 'score') this._endBots('score');
   }
 
@@ -672,6 +691,12 @@ export class MatchSystem {
         { name: myName, kills: t.kills, deaths: t.deaths, colour: myColour, me: true, win: winner === 'you' },
         { name: 'Garrison', kills: t.deaths, deaths: t.kills, colour: null, me: false, win: winner === 'garrison' },
       ].sort((a, b) => b.kills - a.kills),
+      share: shareText({
+        outcome: winner === 'you' ? 'win' : winner === 'garrison' ? 'loss' : 'draw',
+        kills: t.kills,
+        deaths: t.deaths,
+        events: this._timeline.events,
+      }),
     });
   }
 
@@ -686,12 +711,16 @@ export class MatchSystem {
     const rows = e?.standings ?? [];
     const winner = rows.find((r) => r.id === e?.winner) ?? null;
     for (const r of rows) r.win = !!winner && r.id === winner.id;
+    // The relay's standings are the referee's figures; the timeline only
+    // supplies the order things happened in.
+    const result = roomResult({ standings: rows, winner: e?.winner ?? null, myId: this.net?.myId });
     this._enterCeremony({
       eyebrow: 'Match complete',
       verdict: e?.mine ? 'Victory' : winner ? `${winner.name} wins` : 'Draw',
       colour: winner?.colour ?? null,
       how: e?.reason === 'time' ? 'Full time — the leader takes it' : `First to ${e?.limit || SCORE_LIMIT}`,
       rows,
+      share: result ? shareText({ ...result, events: this._timeline.events }) : null,
     });
   }
 
@@ -724,6 +753,13 @@ export class MatchSystem {
     this._sfx('matchstart', 0.9);
     this.ctx.events.emit('match:end', { reason: 'complete' });
     console.info(`[match] ceremony: ${view.verdict}`);
+  }
+
+  /** Stop the ceremony's walk back to the lobby; the button still leaves. */
+  _holdCeremony() {
+    if (this.state !== 'ceremony' || !this._ceremonyUntil) return;
+    this._ceremonyUntil = 0;
+    this.ui.setCeremonyReturn(0);
   }
 
   /** Leave the ceremony for the lobby — the button, Enter, or the timer. */
