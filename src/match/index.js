@@ -55,8 +55,8 @@
  *   lands here, in the CEREMONY: the winner's name in their livery, the final
  *   standings, and a timed walk back to the lobby — which is where the
  *   existing rematch flow was already waiting. The ceremony also carries the
- *   SHARE CARD (./share.js): the result as a few lines of emoji text ending on
- *   workmelt.com, built from `_timeline` — every kill and death the local
+ *   SHARE CARD (./share.js): the result as a few lines of emoji text opening
+ *   on workmelt.com, built from `_timeline` — every kill and death the local
  *   player had in that match, in order.
  *
  * EVENTS EMITTED
@@ -186,7 +186,7 @@ export class MatchSystem {
     // A PvP kill is only ever confirmed by the relay — same rule the streak
     // ladder counts by (./streaks.js).
     on('net:kill', (e) => {
-      if (e?.mine && this.state === 'live') this._timeline.kill(!!e.headshot);
+      if (e?.mine && this.state === 'live') this._timeline.kill();
     });
     on('net:lobby', (e) => this._onLobby(e));
     on('net:name', (e) => this.ui.setName(e?.name ?? '', e?.chosen ?? true));
@@ -610,7 +610,7 @@ export class MatchSystem {
     const t = e.target;
     if (t === 'player' || t === this.player || t?.isPlayer === true) return;
     // Before the tally: the kill that ends the match belongs on the card.
-    this._timeline.kill(!!e.headshot);
+    this._timeline.kill();
     if (!this._tally) return;
     if (this._tally.noteKill() === 'score') this._endBots('score');
   }
@@ -693,7 +693,6 @@ export class MatchSystem {
       ].sort((a, b) => b.kills - a.kills),
       share: shareText({
         outcome: winner === 'you' ? 'win' : winner === 'garrison' ? 'loss' : 'draw',
-        map: this._mapName(),
         kills: t.kills,
         deaths: t.deaths,
         events: this._timeline.events,
@@ -721,7 +720,7 @@ export class MatchSystem {
       colour: winner?.colour ?? null,
       how: e?.reason === 'time' ? 'Full time — the leader takes it' : `First to ${e?.limit || SCORE_LIMIT}`,
       rows,
-      share: result ? shareText({ ...result, map: this._mapName(), events: this._timeline.events }) : null,
+      share: result ? shareText({ ...result, events: this._timeline.events }) : null,
     });
   }
 
@@ -761,12 +760,6 @@ export class MatchSystem {
     if (this.state !== 'ceremony' || !this._ceremonyUntil) return;
     this._ceremonyUntil = 0;
     this.ui.setCeremonyReturn(0);
-  }
-
-  /** The display name of the level we are on, for the share card. */
-  _mapName() {
-    const id = this.world?.mapId;
-    return (this.world?.maps ?? []).find((m) => m.id === id)?.name ?? null;
   }
 
   /** Leave the ceremony for the lobby — the button, Enter, or the timer. */

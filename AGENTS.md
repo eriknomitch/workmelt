@@ -128,10 +128,10 @@ either works: `test:quality` = `src/core/selftest.mjs`, `test:graphics` =
   Object default to the same numbers), the bots-match tally that can be won and
   lost, and the time-expiry outcomes including the draw.
 - `node src/match/share.selftest.mjs` checks the ceremony's share card — the
-  pasteable emoji result (`src/match/share.js`): one mark per kill / headshot /
-  death in match order, ten to a line so an emoji is never split, the cut past
-  the cap counted rather than hidden, a room placing that never says Victory
-  for 2nd, and that the paste always ends on `workmelt.com`. Every failure is
+  pasteable emoji result (`src/match/share.js`): that the paste opens on
+  `workmelt.com`, one mark per kill / death in match order, ten to a line so an
+  emoji is never split, the cut past the cap counted rather than hidden, and a
+  result line that gives a room its placing and a bots match its verdict. Every failure is
   silent in game — it only shows up in somebody else's chat. Mutation-checked.
 - `node server/map.selftest.mjs` walks the relay's room-map protocol against a real server on a real socket.
 - `node server/bounds.selftest.mjs` does the same for the bounded match: the

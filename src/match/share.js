@@ -3,19 +3,19 @@
  *
  * The ceremony offers a "Share your result" block: a few lines of plain text
  * that survive any chat client — Slack, iMessage, Discord, a work Teams thread
- * — and end on the site's address, so the paste is also the invite:
+ * — and open on the site's address, so the paste is also the invite:
  *
- *   WORKMELT 🏆 Victory · 1st of 4
- *   Site Work · FFA · 15K/6D
- *   🎯🎯💥🎯💀🎯🎯🎯🎯🎯
- *   💥🎯💀🎯🎯🎯💀🎯💀🎯
- *   🎯💀🎯💥🎯🎯
  *   workmelt.com
+ *   🏆 1st · K/D 15-6
+ *   🎯🎯💀🎯🎯🎯🎯💀🎯🎯
+ *   🎯💀🎯🎯🎯🎯💀🎯🎯🎯
  *
- * The grid is the match as it happened, one cell per event in order: a kill,
- * a headshot kill, or a death. That is the whole point of the format — a
- * scoreline says who won, the strip says HOW (the early collapse, the run of
- * ten at the end), and it reads at a glance without a legend.
+ * Modelled on the daily-puzzle share (catfishing.net, Wordle): the address
+ * first, because the first line is what a notification preview shows and it
+ * says what the paste IS; one short result line; then the grid. The grid is
+ * the match as it happened, one cell per event in order — a kill or a death.
+ * Two marks only: the scoreline says who won, the strip says HOW (the early
+ * collapse, the run of ten at the end), and two marks read without a legend.
  *
  * Pure and DOM-free — `MatchTimeline` records, `shareText` formats — so the
  * contract is checkable in Node: see ./share.selftest.mjs. The clipboard and
@@ -29,22 +29,25 @@
 export const SHARE_URL = 'workmelt.com';
 
 /** One cell per event. Picked to stay distinct at emoji size on every OS. */
-export const MARKS = { kill: '🎯', headshot: '💥', death: '💀' };
+export const MARKS = { kill: '🎯', death: '💀' };
 
 /** Cells per line — about what a phone-width chat bubble fits without wrapping. */
 export const ROW = 10;
-/** Past this the strip is cut and the remainder counted, so a paste stays a paste. */
-export const MAX_CELLS = 40;
+/**
+ * Past this the strip is cut and the remainder counted, so a paste stays a
+ * paste. Unlike a daily puzzle the grid is not a fixed size: a clean 15-kill
+ * win is ~20 cells, a rough match can run past 40.
+ */
+export const MAX_CELLS = 30;
 
 /**
- * The badge in front of the headline. 🫠 for everything below the podium is
+ * The badge in front of the result. 🫠 for everything below the podium is
  * the brand's own joke — you melted.
  */
 const BADGES = { win: '🏆', draw: '🤝', 2: '🥈', 3: '🥉', loss: '🫠' };
 
 /** Event codes in the timeline. Single characters keep a long match cheap. */
 const KILL = 'k';
-const HEAD = 'h';
 const DEATH = 'd';
 
 /**
@@ -54,7 +57,7 @@ const DEATH = 'd';
 export class MatchTimeline {
   constructor(limit = 256) {
     this.limit = limit;
-    /** 'k' | 'h' | 'd' in the order they happened. */
+    /** 'k' | 'd' in the order they happened. */
     this.events = [];
   }
 
@@ -62,8 +65,8 @@ export class MatchTimeline {
     this.events.length = 0;
   }
 
-  kill(headshot = false) {
-    if (this.events.length < this.limit) this.events.push(headshot ? HEAD : KILL);
+  kill() {
+    if (this.events.length < this.limit) this.events.push(KILL);
   }
 
   death() {
@@ -72,7 +75,7 @@ export class MatchTimeline {
 
   get kills() {
     let n = 0;
-    for (const e of this.events) if (e !== DEATH) n++;
+    for (const e of this.events) if (e === KILL) n++;
     return n;
   }
 
@@ -119,20 +122,18 @@ export function ordinal(n) {
 }
 
 /**
- * The emoji strip, `ROW` cells to a line. Over `MAX_CELLS` the last cell slot
- * becomes a count of what was cut — an honest "+12" rather than a silent
+ * The emoji strip, `ROW` cells to a line. Over `MAX_CELLS` the last line
+ * ends on a count of what was cut — an honest "+12" rather than a silent
  * truncation that makes a long match look short.
  *
  * Emoji are counted as cells, not UTF-16 units, so a line never splits one.
  *
- * @param {string[]} events 'k' | 'h' | 'd'
+ * @param {string[]} events 'k' | 'd'
  * @returns {string[]} one string per line; empty for an empty match
  */
 export function timelineRows(events = []) {
   const cells = [];
-  for (const e of events) {
-    cells.push(e === DEATH ? MARKS.death : e === HEAD ? MARKS.headshot : MARKS.kill);
-  }
+  for (const e of events) cells.push(e === DEATH ? MARKS.death : MARKS.kill);
   let more = 0;
   if (cells.length > MAX_CELLS) {
     more = cells.length - MAX_CELLS;
@@ -147,51 +148,24 @@ export function timelineRows(events = []) {
 /**
  * The shareable text.
  *
+ * The result line is a badge and a placing in a room ('🏆 1st', '🥈 2nd',
+ * '🫠 4th') — the people it is sent to were usually in that room, so "of N"
+ * is noise. Against bots a placing means nothing, so it is the verdict
+ * instead ('🏆 Victory', '🫠 Defeat'). A dead heat is '🤝 Draw' either way.
+ *
  * @param {object} r
  *   outcome   'win' | 'loss' | 'draw' — from the local player's side
  *   place     1-based finishing position in a room match; null for bots
- *   of        players in the final standings; null for bots
- *   map       the map's display name, or null
  *   kills     final kills (the referee's figure, not the timeline's)
  *   deaths    final deaths
  *   events    the timeline's events, oldest first
- *   url       what the last line links to (default `SHARE_URL`)
+ *   url       what the first line links to (default `SHARE_URL`)
  * @returns {string} newline-joined, no trailing newline
  */
-export function shareText({
-  outcome = 'draw',
-  place = null,
-  of = null,
-  map = null,
-  kills = 0,
-  deaths = 0,
-  events = [],
-  url = SHARE_URL,
-} = {}) {
-  const room = place != null && of != null && of > 1;
-  let badge;
-  let title;
-  if (outcome === 'win') {
-    badge = BADGES.win;
-    title = 'Victory';
-  } else if (outcome === 'draw') {
-    badge = BADGES.draw;
-    title = 'Draw';
-  } else if (room) {
-    badge = BADGES[place] ?? BADGES.loss;
-    title = '';
-  } else {
-    badge = BADGES.loss;
-    title = 'Defeat';
-  }
-  // A room result always carries the placing — "Victory" alone does not say
-  // whether it was over one friend or seven. A loss is ONLY the placing.
-  const placing = room ? `${ordinal(place)} of ${of}` : '';
-  const head = [title, placing].filter(Boolean).join(' · ');
-
-  const detail = [map, room ? 'FFA' : 'vs bots', `${kills | 0}K/${deaths | 0}D`]
-    .filter(Boolean)
-    .join(' · ');
-
-  return [`WORKMELT ${badge} ${head}`, detail, ...timelineRows(events), url].join('\n');
+export function shareText({ outcome = 'draw', place = null, kills = 0, deaths = 0, events = [], url = SHARE_URL } = {}) {
+  let result;
+  if (outcome === 'draw') result = `${BADGES.draw} Draw`;
+  else if (place != null) result = `${outcome === 'win' ? BADGES.win : BADGES[place] ?? BADGES.loss} ${ordinal(place)}`;
+  else result = outcome === 'win' ? `${BADGES.win} Victory` : `${BADGES.loss} Defeat`;
+  return [url, `${result} · K/D ${kills | 0}-${deaths | 0}`, ...timelineRows(events)].join('\n');
 }
