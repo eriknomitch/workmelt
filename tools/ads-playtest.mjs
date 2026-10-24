@@ -9,20 +9,23 @@
  *
  *   node tools/ads-playtest.mjs [screenshot.png]
  *
- * Boot is slow on a software rasteriser (minutes, not seconds); the ready wait
- * is sized for that.
+ * Boots with `?draw=0` (see `stateQuery` in tools/lib/harness.mjs) — nothing
+ * here is judged on pixels — unless a screenshot is asked for, in which case
+ * it draws and boot under a software rasteriser is minutes, not seconds.
  */
 
 import { chromium } from 'playwright';
-import { ensureServer } from './lib/harness.mjs';
+import { ensureServer, stateQuery, waitFrames } from './lib/harness.mjs';
 import { launchOpts } from './lib/chromium.mjs';
 
 // Falls back to OW_PORT (5273) so this can share an already-running dev server
 // with the rest of the playtest/capture suite instead of always booting its
 // own — ADS_PLAYTEST_PORT still wins when set explicitly.
 const PORT = Number(process.env.ADS_PLAYTEST_PORT ?? process.env.OW_PORT ?? 5181);
-const URL = `http://127.0.0.1:${PORT}/?match=0&mp=0&q=performance`;
 const SHOT = process.argv[2] ?? null;
+// Nothing here is judged on pixels, so the engine runs without drawing unless
+// the run was asked for a screenshot — see `stateQuery` in tools/lib/harness.mjs.
+const URL = `http://127.0.0.1:${PORT}/?match=0&mp=0&q=performance&${stateQuery({ draw: !!SHOT })}`;
 
 const vite = await ensureServer(PORT);
 
@@ -46,7 +49,7 @@ try {
   // gate is `__READY__` below.
   await page.goto(URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
   await page.waitForFunction('window.__READY__ === true', null, { timeout: 600000 });
-  await page.waitForTimeout(1500);
+  await waitFrames(page, 30);
 
   // This boot garrisons the level, and a respawn deliberately drops a toggle
   // latch — so a bot landing a kill mid-run would read as a latch bug. Take
@@ -64,8 +67,8 @@ try {
   });
   const clears = () => page.evaluate('window.__ADS_CLEARS__.length');
 
-  // Frames are slow under a software rasteriser; give beginFrame room to run.
-  const settle = () => page.waitForTimeout(400);
+  // An input lands on the next `beginFrame`; a couple of frames is the settle.
+  const settle = () => waitFrames(page, 3);
   const key = (type, code) =>
     page.evaluate(
       ([t, c]) => dispatchEvent(new KeyboardEvent(t, { code: c, bubbles: true })),

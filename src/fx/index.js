@@ -887,7 +887,8 @@ export class FxSystem {
     // permutation the frame loop never asks for and the real one still compiles
     // later, on whichever frame first draws a spark or a bullet hole. One frame
     // in, the light set is the one gameplay will use.
-    if (!this._warmed && ++this._warmTicks > 1) this.prewarmMaterials();
+    // Under `?draw=0` nothing will ever draw these, so there is nothing to warm.
+    if (!this._warmed && ctx.config.draw !== false && ++this._warmTicks > 1) this.prewarmMaterials();
   }
 
   _syncLighting(ctx) {

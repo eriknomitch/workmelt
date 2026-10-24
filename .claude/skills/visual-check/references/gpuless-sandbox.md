@@ -39,7 +39,7 @@ OW_PORT=5273 node tools/capture.mjs --shot=hero \
 
 **`?prewarm=0`** — shader prewarm alone costs **52 s** here (`[ai]
 prewarmMaterials` ~52.5 s), and it is pure warm-up: it changes nothing about the
-resulting image. It is a supported engine flag (`src/main.js`, the `params.get('prewarm')`
+resulting image. It is a supported engine flag (`src/boot.js`, the `prewarmOn`
 check around the `prewarm(engine)` call) and is already what `harness.mjs`
 passes. Always set it.
 
@@ -52,6 +52,33 @@ wasted run, not a slow one.
 enough to see whether geometry, materials and exposure are sane. TAA will not
 have fully converged, so do not read fine temporal detail off such a frame, and
 never compare it against a baseline captured at different `--w/--h/--settle`.
+
+## When you do not need the picture: `?draw=0`
+
+The levers above shrink a frame. For a harness that judges DOM and engine
+state rather than pixels, skip drawing altogether: `?draw=0` runs every system
+and the HUD but issues no GPU passes (`ARCHITECTURE.md`, *Running without
+drawing*). Where a SwiftShader boot goes, measured at 320×180 with
+`q=performance&prewarm=0`:
+
+| | drawing | `draw=0` |
+|---|---|---|
+| real init (textures, world, weapons, nav) | ~4 s | ~4 s |
+| `ai` character compile | ~15 s | skipped |
+| first frames (shader compiles on first draw) | ~15 s | — |
+| waiting on queued texture/sky GPU work | (inside the above) | ~5 s |
+| **to `__READY__`** | **~35 s** | **~10 s** |
+| frame rate after boot | 2–6 fps | 60 fps |
+
+Boot time barely moves with window size (320×180 and 1280×720 both ~37 s
+drawing); frame rate after boot does. A persistent Chromium profile does not
+help — SwiftShader does not keep program binaries across launches — and the
+production build saves ~1 s over dev mode.
+
+The browser playtests use it via `stateQuery()` in `tools/lib/harness.mjs`.
+Pass a screenshot path, or set `OW_DRAW=1`, to draw again. Several harnesses
+also parallelise reasonably on the 4 cores: three boots at once finish in
+~57 s against ~105 s back to back.
 
 ## Share one dev server
 

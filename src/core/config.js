@@ -231,6 +231,14 @@ export const DEFAULTS = {
    * Set by src/boot.js whenever the Match Start view is in play.
    */
   deferGarrison: false,
+  /**
+   * Draw frames at all. `?draw=0` keeps the whole simulation, input and DOM
+   * HUD running but makes `render.render()` stop before its first GPU pass, so
+   * nothing compiles a shader and a frame costs only its CPU. For harnesses
+   * that judge engine and DOM state rather than pixels — under SwiftShader the
+   * shader compiles alone are ~30 s of every boot. Ignored for capture runs.
+   */
+  draw: true,
 };
 
 export function createConfig(overrides = {}) {

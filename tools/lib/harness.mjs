@@ -164,6 +164,43 @@ export async function openGame({
   };
 }
 
+/**
+ * The query a harness that judges DOM and engine state — not pixels — should
+ * boot with. `draw=0` keeps the whole simulation and HUD running but issues no
+ * GPU passes and compiles no shaders (see `draw` in src/core/config.js).
+ * Measured under SwiftShader at 320x180: ~35 s to `__READY__` and 2-6 fps
+ * drawing, ~10 s and a steady 60 fps with `draw=0`.
+ *
+ * Pass `draw: true` when the run will take a screenshot worth looking at;
+ * `OW_DRAW=1` forces it for every harness, e.g. to watch one in a headed
+ * browser. Pre-warm stays off either way: it is pixel-neutral and costs a
+ * SwiftShader boot ~13 s.
+ */
+export function stateQuery({ draw = false } = {}) {
+  return draw || process.env.OW_DRAW === '1' ? 'prewarm=0' : 'draw=0';
+}
+
+/**
+ * Let the engine step at least `n` more frames. The settle a playtest needs
+ * between an input and its check is a frame count — `input.beginFrame()` has
+ * to run — and a wall-clock sleep sized for a slow rasteriser is either far
+ * too long when frames are fast or one frame too short when they are not.
+ */
+export async function waitFrames(page, n = 2, { timeout = 120000 } = {}) {
+  const target = (await page.evaluate(() => window.__ENGINE__.time.frame)) + n;
+  await page.waitForFunction((f) => window.__ENGINE__.time.frame >= f, target, { timeout });
+}
+
+/**
+ * Let `seconds` of GAME time pass — the clock a fuse, a cook or a blend runs
+ * on. Under a slow rasteriser the engine clamps each step to 0.1 s, so game
+ * time falls behind the wall clock and a wall-clock sleep under-waits.
+ */
+export async function waitGameTime(page, seconds, { timeout = 600000 } = {}) {
+  const target = (await page.evaluate(() => window.__ENGINE__.time.elapsed)) + seconds;
+  await page.waitForFunction((t) => window.__ENGINE__.time.elapsed >= t, target, { timeout });
+}
+
 /** Fixed-width table printer so reports diff cleanly between runs. */
 export function table(rows, columns) {
   if (!rows.length) return '';

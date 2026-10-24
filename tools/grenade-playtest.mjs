@@ -10,19 +10,23 @@
  *
  *   node tools/grenade-playtest.mjs [screenshot.png]
  *
- * Boot is slow on a software rasteriser (minutes, not seconds).
+ * Boots with `?draw=0` (see `stateQuery` in tools/lib/harness.mjs) — nothing
+ * here is judged on pixels — unless a screenshot is asked for, in which case
+ * it draws and boot under a software rasteriser is minutes, not seconds.
  */
 
 import { chromium } from 'playwright';
-import { ensureServer } from './lib/harness.mjs';
+import { ensureServer, stateQuery, waitFrames, waitGameTime } from './lib/harness.mjs';
 import { launchOpts } from './lib/chromium.mjs';
 
 // Falls back to OW_PORT (5273) so this can share an already-running dev server
 // with the rest of the playtest/capture suite instead of always booting its
 // own — NADE_PLAYTEST_PORT still wins when set explicitly.
 const PORT = Number(process.env.NADE_PLAYTEST_PORT ?? process.env.OW_PORT ?? 5183);
-const URL = `http://127.0.0.1:${PORT}/?match=0&mp=0&q=performance`;
 const SHOT = process.argv[2] ?? null;
+// Judged on engine and DOM state, so no drawing unless a screenshot was asked
+// for — see `stateQuery` in tools/lib/harness.mjs.
+const URL = `http://127.0.0.1:${PORT}/?match=0&mp=0&q=performance&${stateQuery({ draw: !!SHOT })}`;
 
 // `ensureServer` (tools/lib/harness.mjs) spawns vite's real binary directly
 // rather than through `node`, which is what the old inline spawn here worked
@@ -43,7 +47,7 @@ const check = (name, ok, extra = '') =>
 try {
   await page.goto(URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
   await page.waitForFunction('window.__READY__ === true', null, { timeout: 600000 });
-  await page.waitForTimeout(1500);
+  await waitFrames(page, 30);
 
   // Record every detonation event, and take bot damage out of the picture so a
   // stray round cannot end the run mid-throw.
@@ -88,7 +92,7 @@ try {
 
   /* ---------------------------------------------------------- cook a frag -- */
   await page.keyboard.down('g');
-  await page.waitForTimeout(350);
+  await waitGameTime(page, 0.35);
   const cooking = await state();
   check('G starts a cook', cooking.cooking);
   check('arc preview appears while cooking', cooking.arcVisible, `visible=${cooking.arcVisible}`);
@@ -97,7 +101,7 @@ try {
 
   /* ------------------------------------------------------------- throw it -- */
   await page.keyboard.up('g');
-  await page.waitForTimeout(250);
+  await waitGameTime(page, 0.25);
   const thrown = await state();
   check('releasing G throws', thrown.live === 1, `${thrown.live} live`);
   check('throw spends one frag', thrown.counts.lethal === 1, `${thrown.counts.lethal}`);
@@ -105,7 +109,7 @@ try {
   check('HUD pip decrements', thrown.hudLethal === 1, `${thrown.hudLethal}`);
 
   /* ------------------------------------------------------------ detonation -- */
-  await page.waitForTimeout(3600);
+  await waitGameTime(page, 3.6);
   const boom = await state();
   check('frag detonates and clears', boom.live === 0, `${boom.live} still live`);
   const evts = await page.evaluate(() => window.__EVT__);
@@ -115,17 +119,26 @@ try {
   /* ------------------------------------------------------------------ stun -- */
   // Throw the stun straight down so it lands on the player and definitely
   // flashes them — the point is to prove the ui/ai path, not the arc.
+  // The pitch goes on the PLAYER, which owns it: writing `camera.rotation.x`
+  // is overwritten by the player's next update, so the stun used to fly
+  // forward and only landed inside its radius because slow software frames
+  // shortened the throw.
   await page.evaluate(() => {
-    const cam = window.__ENGINE__.ctx.camera;
-    cam.rotation.x = -1.35;
-    cam.updateMatrixWorld(true);
+    window.__ENGINE__.ctx.get('player').movement.pitch = -1.35;
   });
+  await waitFrames(page, 2);
   await page.keyboard.down('h');
-  await page.waitForTimeout(120);
+  await waitGameTime(page, 0.12);
   const cookingStun = await state();
   check('H starts a tactical cook', cookingStun.cooking);
   await page.keyboard.up('h');
-  await page.waitForTimeout(2600);
+  // Sample just after the detonation, not after a fixed wait: the flash decays
+  // on the frame clock, so at a real frame rate a fixed 2.6 s outlives it —
+  // the old wall-clock sleep only caught it because software frames were slow.
+  await page
+    .waitForFunction(() => window.__EVT__.some((e) => e.type === 'equipment:flash'), null, { timeout: 60000 })
+    .catch(() => {});
+  await waitFrames(page, 2);
 
   const flashed = await state();
   const evts2 = await page.evaluate(() => window.__EVT__);
@@ -156,18 +169,18 @@ try {
   // the air. Measure against that baseline, not against zero.
   const base = (await state()).live;
   await page.keyboard.down('g');
-  await page.waitForTimeout(200);
+  await waitGameTime(page, 0.2);
   await page.keyboard.down('h');
-  await page.waitForTimeout(120);
+  await waitGameTime(page, 0.12);
   const bothDown = await state();
   check('tapping the other bind does not drop the cook', bothDown.cooking);
   await page.keyboard.up('h');
-  await page.waitForTimeout(120);
+  await waitGameTime(page, 0.12);
   const otherUp = await state();
   check('releasing the OTHER bind does not throw', otherUp.cooking && otherUp.live === base,
     `cooking=${otherUp.cooking} live=${otherUp.live} base=${base}`);
   await page.keyboard.up('g');
-  await page.waitForTimeout(150);
+  await waitGameTime(page, 0.15);
   const ownUp = await state();
   check('releasing the cook bind throws', !ownUp.cooking && ownUp.live === base + 1,
     `cooking=${ownUp.cooking} live=${ownUp.live} base=${base}`);
