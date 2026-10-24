@@ -728,7 +728,7 @@ const CSS = `
 }
 .ow-x {
   appearance:none; width:30px; height:30px; flex:none; border-radius: var(--wm-r-sm);
-  border:1px solid var(--wm-border); background:none; color: var(--wm-muted-fg);
+  border:1px solid var(--wm-border-ctl); background:none; color: var(--wm-muted-fg);
   display:grid; place-items:center; cursor:pointer;
   transition: color var(--wm-t), border-color var(--wm-t);
 }
@@ -747,7 +747,7 @@ const CSS = `
   padding: 12px 20px; border-bottom: 1px solid var(--wm-border);
 }
 .ow-tab {
-  appearance:none; border:1px solid var(--wm-border); border-radius: var(--wm-r-sm);
+  appearance:none; border:1px solid var(--wm-border-ctl); border-radius: var(--wm-r-sm);
   background: var(--wm-panel-2); color: var(--wm-muted-fg);
   font-family: var(--wm-body); font-weight:600; text-transform:uppercase;
   font-size: 10px; letter-spacing:.08em; padding: 6px 10px; cursor:pointer;
@@ -789,7 +789,7 @@ const CSS = `
 }
 .ow-seg { display:flex; gap:0; flex:none; }
 .ow-seg button {
-  appearance:none; border:1px solid var(--wm-border); border-right:0;
+  appearance:none; border:1px solid var(--wm-border-ctl); border-right:0;
   background: var(--wm-panel-2); color: var(--wm-muted-fg);
   font-family: var(--wm-body); font-weight:600; text-transform:uppercase;
   font-size: 10px; letter-spacing:.08em; padding: 7px 11px;
@@ -797,13 +797,13 @@ const CSS = `
   transition: color var(--wm-t), background var(--wm-t), border-color var(--wm-t);
 }
 .ow-seg button:first-child { border-radius: var(--wm-r-sm) 0 0 var(--wm-r-sm); }
-.ow-seg button:last-child { border-right:1px solid var(--wm-border); border-radius: 0 var(--wm-r-sm) var(--wm-r-sm) 0; }
+.ow-seg button:last-child { border-right:1px solid var(--wm-border-ctl); border-radius: 0 var(--wm-r-sm) var(--wm-r-sm) 0; }
 .ow-seg button:hover { color: var(--wm-fg); background: var(--wm-hover); }
 /* Ice White fill, Graphite text — 14.91:1, the primary pairing in DESIGN.md. */
 .ow-seg button.on { color: var(--wm-bg); background: var(--wm-fg); border-color: var(--wm-fg); }
 .ow-select {
   appearance:none; min-width: 168px; border-radius: var(--wm-r-sm);
-  border:1px solid var(--wm-border); background: var(--wm-panel-2);
+  border:1px solid var(--wm-border-ctl); background: var(--wm-panel-2);
   color: var(--wm-fg); font-family: var(--wm-body); font-size: 12px; font-weight:500;
   letter-spacing:.01em; padding: 7px 10px; cursor:pointer;
   transition: border-color var(--wm-t);
@@ -815,7 +815,7 @@ const CSS = `
    reflow the row. */
 .ow-bind {
   appearance:none; min-width: 168px; border-radius: var(--wm-r-sm);
-  border:1px solid var(--wm-border); background: var(--wm-panel-2);
+  border:1px solid var(--wm-border-ctl); background: var(--wm-panel-2);
   color: var(--wm-fg); font-family: var(--wm-body); font-size: 11px; font-weight:600;
   letter-spacing:.1em; text-transform:uppercase; text-align:center; padding: 8px 10px;
   cursor:pointer; transition: color var(--wm-t), background var(--wm-t), border-color var(--wm-t);
@@ -856,9 +856,10 @@ const CSS = `
 .ow-btn:hover { border-color: var(--wm-accent); }
 .ow-btn.primary { background: var(--wm-fg); border-color: var(--wm-fg); color: var(--wm-bg); }
 .ow-btn.primary:hover { background: var(--wm-fg-warm); }
-/* Danger is 3.57:1 on Dark Slate — large text and borders only, which at 17px
-   Bebas it is. It fills only on hover, so leaving a match is never a mis-click. */
-.ow-btn.danger { border-color: var(--wm-border); color: var(--wm-muted-fg); }
+/* Danger is 5.6:1 on the Void, so it can set the label at rest: a destructive
+   action should look like one before the cursor reaches it. It fills only on
+   hover (Void text on Danger, 5.6:1), so leaving a match is never a mis-click. */
+.ow-btn.danger { border-color: var(--wm-danger); color: var(--wm-danger); }
 .ow-btn.danger:hover { background: var(--wm-danger); border-color: var(--wm-danger); color: var(--wm-bg); }
 /* Only on screen while a RESTART-tagged graphics setting is waiting to apply.
    Warning, not Danger: reloading is the thing the player just asked for, it is

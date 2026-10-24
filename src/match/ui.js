@@ -145,7 +145,7 @@ const CSS = `
 }
 .wm-lobby .icon-btn {
   width: 32px; height: 32px; border-radius: var(--wm-r-sm); background: none;
-  border: 1px solid var(--wm-border); color: var(--wm-muted-fg); display: grid;
+  border: 1px solid var(--wm-border-ctl); color: var(--wm-muted-fg); display: grid;
   place-items: center; cursor: pointer; flex: none;
   transition: color var(--wm-t), border-color var(--wm-t);
 }
@@ -169,6 +169,10 @@ const CSS = `
   line-height: 1.9; letter-spacing: .14em; text-transform: uppercase; color: var(--wm-muted-fg);
 }
 .wm-lobby .status b { color: var(--wm-fg-dim); font-weight: 500; }
+/* A connection failure: the room is full, or a relay we had has dropped. Danger
+   is 5.6:1 on the Void, so it carries this 10px line; it is kept for real
+   errors so red still means something. */
+.wm-lobby .status.err { color: var(--wm-danger); }
 
 /* roster */
 .wm-lobby .roster { overflow-y: auto; min-height: 0; }
@@ -337,7 +341,7 @@ const CSS = `
    room will read, and it shares the dock with the primary, so it is sized to
    stand level with the button under it rather than read as a footnote. */
 .wm-lobby .ident input {
-  width: 100%; min-width: 0; background: var(--wm-panel-2); border: 1px solid var(--wm-border);
+  width: 100%; min-width: 0; background: var(--wm-panel-2); border: 1px solid var(--wm-border-ctl);
   border-radius: var(--wm-r-sm); padding: 13px 14px; font-size: 20px; font-weight: 500;
   line-height: 1.2; letter-spacing: .05em;
   transition: border-color var(--wm-t), color var(--wm-t);
@@ -366,7 +370,7 @@ const CSS = `
   font-family: var(--wm-mono); font-size: 9.5px; font-weight: 500; letter-spacing: .14em;
   text-transform: uppercase; padding: 8px 6px; min-width: 0; text-align: center;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  border-radius: var(--wm-r-sm); border: 1px solid var(--wm-border);
+  border-radius: var(--wm-r-sm); border: 1px solid var(--wm-border-ctl);
   background: transparent; color: var(--wm-muted-fg); cursor: pointer;
   transition: color var(--wm-t), border-color var(--wm-t), background var(--wm-t);
 }
@@ -378,7 +382,7 @@ const CSS = `
 .wm-lobby .btn {
   font-family: var(--wm-body); font-size: 12px; font-weight: 500; letter-spacing: .24em;
   text-transform: uppercase; cursor: pointer; border-radius: var(--wm-r);
-  border: 1px solid var(--wm-border); background: transparent; color: var(--wm-fg-dim);
+  border: 1px solid var(--wm-border-ctl); background: transparent; color: var(--wm-fg-dim);
   display: flex; align-items: center; justify-content: center; gap: 12px;
   padding: 15px 18px; width: 100%;
   transition: background var(--wm-t), border-color var(--wm-t), color var(--wm-t), transform 90ms linear;
@@ -1294,6 +1298,13 @@ export class MatchStartUI {
     this.stripNet.innerHTML = m.connected
       ? `Relay online — <b>${players.length}</b> in room`
       : `Relay ${m.everConnected ? 'reconnecting' : 'connecting'}...`;
+
+    // Red only for the two states that are actually wrong — a full room and a
+    // dropped relay. "Waiting on the relay" on a first load is not an error.
+    this.statusEl.classList.toggle(
+      'err',
+      !this.mapBusy && !m.live && !m.connected && !!(m.full || m.everConnected)
+    );
 
     // ---- what is the single best next move? -------------------------------
     if (this.mapBusy) {

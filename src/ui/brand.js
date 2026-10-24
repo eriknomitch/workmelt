@@ -43,7 +43,7 @@ export const BRAND = {
   border: '#23262e', // Hairline — Ice White @14% resolved over the void
   ok: '#49c873', // Success
   warn: '#f2b643', // Warning
-  danger: '#d95c5c', // Danger — large text and icons only
+  danger: '#d95c5c', // Danger — errors and destructive actions, 5.6:1
   info: '#5f7cf9', // Information — same signal as the accent
   // World palette (environment geometry, used here only for the void and paper)
   graphite: '#05060a',
@@ -107,6 +107,11 @@ const CSS = `
   /* color-mix(in srgb, Steel 55%, Ice White) — every string under 16px that
      wants to read as secondary uses this lift instead of Steel. 7.0:1. */
   --wm-muted-fg: #9ca0a8;
+  /* Steel, as the resting border of anything you can click: buttons, chips,
+     inputs, tabs. Hairline is 1.4:1 on the void and vanishes on a dim screen;
+     Steel is 3.6:1, over the 3:1 WCAG asks of a control's outline. Dividers
+     and panels stay Hairline. Hover still lifts to Steel Lift. */
+  --wm-border-ctl: ${BRAND.muted};
 
   /* Console Black is near-square: hairline rectangles, softened one step. */
   --wm-r: 2px;
