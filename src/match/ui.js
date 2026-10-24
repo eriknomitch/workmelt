@@ -553,6 +553,25 @@ const CSS = `
   font-weight: 500; letter-spacing: .18em; text-transform: uppercase; color: var(--wm-muted-fg);
 }
 .wm-lobby .cere .btn { max-width: 340px; margin-top: 8px; }
+/* The share card: the paste exactly as it will land in a chat, set in the mono
+   register on a well, with Copy (and Share where the platform has a sheet)
+   under it. Ghost buttons — the primary below is still the screen's one CTA. */
+.wm-lobby .share {
+  width: min(560px, 100%); margin-top: 6px; display: flex; flex-direction: column; gap: 10px;
+  text-align: left;
+}
+.wm-lobby .share .lbl {
+  font-family: var(--wm-mono); font-size: 10px; font-weight: 500; letter-spacing: .24em;
+  text-transform: uppercase; color: var(--wm-muted-fg);
+}
+.wm-lobby .share .txt {
+  margin: 0; padding: 14px 16px; border: 1px solid var(--wm-border);
+  background: rgb(var(--wm-surface-rgb) / .55); color: var(--wm-fg);
+  font-family: var(--wm-mono); font-size: 13px; line-height: 1.6; letter-spacing: .02em;
+  white-space: pre-wrap; overflow-wrap: anywhere; user-select: text;
+}
+.wm-lobby .share .acts { display: flex; gap: 8px; }
+.wm-lobby .share .acts .btn { flex: 1 1 0; max-width: none; margin-top: 0; }
 .wm-lobby .cere .auto {
   font-family: var(--wm-mono); font-size: 9.5px; font-weight: 400; letter-spacing: .18em;
   text-transform: uppercase; color: var(--wm-muted-fg);
@@ -627,7 +646,28 @@ const GEAR_SVG = `<svg width="15" height="15" viewBox="0 0 20 20" fill="none" st
 const COPY_SVG = `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="5" y="5" width="9" height="9"/><path d="M11 5V2H2v9h3"/></svg>`;
 const LINK_SVG = `<svg class="ic" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M6.5 9.5l3-3"/><path d="M7.5 4.5l1.2-1.2a2.5 2.5 0 013.5 3.5L11 8"/><path d="M8.5 11.5l-1.2 1.2a2.5 2.5 0 01-3.5-3.5L5 8"/></svg>`;
 const PLAY_SVG = `<svg class="ic" width="10" height="12" viewBox="0 0 10 12" aria-hidden="true"><path d="M0 0l10 6-10 6z" fill="currentColor"/></svg>`;
+const SHARE_SVG = `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="3.5" r="1.8"/><circle cx="4" cy="8" r="1.8"/><circle cx="12" cy="12.5" r="1.8"/><path d="M5.6 7.1l4.8-2.7M5.6 8.9l4.8 2.7"/></svg>`;
 const TARGET_SVG = `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 2v3M8 11v3M2 8h3M11 8h3"/></svg>`;
+
+/**
+ * The pre-Clipboard-API copy: a hidden textarea and `execCommand`. Kept for
+ * an insecure origin (a LAN playtest over plain http) where
+ * `navigator.clipboard` does not exist. True when the browser says it copied.
+ */
+function copyFallback(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  let ok = false;
+  try {
+    ok = document.execCommand('copy');
+  } catch {}
+  ta.remove();
+  return ok;
+}
 
 /**
  * Draw a `mapPlan` floorplan into a fresh canvas.
@@ -705,6 +745,7 @@ export class MatchStartUI {
     this.onName = null;
     this.onSettings = null;
     this.onCeremonyDone = null; // the ceremony's one action — back to the lobby
+    this.onShareUsed = null; // the share card was touched — hold the auto-return
 
     this.root.innerHTML = `
       <div class="shell" data-body>
@@ -798,6 +839,15 @@ export class MatchStartUI {
           <h2 class="verdict" data-cere-verdict></h2>
           <div class="how" data-cere-how></div>
           <div class="board" data-cere-board></div>
+          <div class="share hide" data-share>
+            <span class="lbl">Share your result</span>
+            <pre class="txt" data-share-txt></pre>
+            <div class="acts">
+              <button type="button" class="btn btn-ghost" data-share-copy
+                title="Copy result (C)">${COPY_SVG}<span data-share-copy-lbl>Copy</span></button>
+              <button type="button" class="btn btn-ghost hide" data-share-native>${SHARE_SVG}<span>Share</span></button>
+            </div>
+          </div>
           <button type="button" class="btn btn-primary" data-cere-btn>${PLAY_SVG}<span>Back to the lobby</span></button>
           <div class="auto" data-cere-auto></div>
         </div>
@@ -844,6 +894,12 @@ export class MatchStartUI {
     this.cereBoard = q('[data-cere-board]');
     this.cereBtn = q('[data-cere-btn]');
     this.cereAuto = q('[data-cere-auto]');
+    this.shareEl = q('[data-share]');
+    this.shareTxt = q('[data-share-txt]');
+    this.shareCopy = q('[data-share-copy]');
+    this.shareCopyLbl = q('[data-share-copy-lbl]');
+    this.shareNative = q('[data-share-native]');
+    this._share = '';
     this.stripNet = q('[data-strip-net]');
     this.stripPrimary = q('[data-strip-primary]');
     this.tuneEl = q('[data-tune]');
@@ -878,6 +934,11 @@ export class MatchStartUI {
 
     this.primaryBtn.addEventListener('click', () => this._act('primary'));
     this.cereBtn.addEventListener('click', () => this.onCeremonyDone?.());
+    this.shareCopy.addEventListener('click', () => this.copyShare());
+    this.shareNative.addEventListener('click', () => this._nativeShare());
+    // Selecting the text by hand, or tabbing into the card, is reaching for it.
+    this.shareEl.addEventListener('pointerdown', () => this.onShareUsed?.());
+    this.shareEl.addEventListener('focusin', () => this.onShareUsed?.());
     this.altBtn.addEventListener('click', () => this._act('alt'));
     this.copyBtn.addEventListener('click', () => this.onCopyInvite?.());
     this.copyBtn2.addEventListener('click', () => this.onCopyInvite?.());
@@ -914,6 +975,8 @@ export class MatchStartUI {
         }
         // The ceremony owns the screen when it is up, and it has one action.
         if (!this.cereEl.classList.contains('hide')) {
+          // Enter on a focused Copy / Share is that button's own click.
+          if (this.shareEl.contains(e.target)) return;
           e.preventDefault();
           this.onCeremonyDone?.();
           return;
@@ -927,7 +990,9 @@ export class MatchStartUI {
       if (typing) return;
       if (e.key === 'c' || e.key === 'C') {
         e.preventDefault();
-        this.onCopyInvite?.();
+        // On the ceremony, C copies the result — the invite is a lobby action.
+        if (!this.cereEl.classList.contains('hide')) this.copyShare();
+        else this.onCopyInvite?.();
       }
     });
 
@@ -1484,8 +1549,18 @@ export class MatchStartUI {
    *   rows      [{ name, kills, deaths, colour, me, win }] final standings,
    *             already sorted; null/empty hides the board (a bots match shows
    *             you against the garrison instead of a one-line table)
+   *   share     the pasteable result from ./share.js, or null to hide the card
    */
-  setCeremony({ eyebrow = 'Match complete', verdict = '', colour = null, how = '', rows = null } = {}) {
+  setCeremony({ eyebrow = 'Match complete', verdict = '', colour = null, how = '', rows = null, share = null } = {}) {
+    this._share = share ?? '';
+    this.shareTxt.textContent = this._share;
+    this.shareEl.classList.toggle('hide', !this._share);
+    this._resetShareCopy();
+    // The OS share sheet where there is one (phones, Safari, Edge); Copy alone
+    // everywhere else. A button that throws "not supported" is worse than none.
+    const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
+    this.shareNative.classList.toggle('hide', !canShare);
+
     this.cereEyebrow.textContent = eyebrow;
     this.cereVerdict.textContent = verdict;
     this.cereVerdict.style.color = colour ?? '';
@@ -1536,6 +1611,37 @@ export class MatchStartUI {
     }
   }
 
+  /** Copy the share card's text; the button confirms like the invite copy does. */
+  copyShare() {
+    const text = this._share;
+    if (!text) return;
+    this.onShareUsed?.();
+    const done = () => {
+      clearTimeout(this._shareT);
+      this.shareCopyLbl.textContent = 'Copied';
+      this.shareCopy.classList.add('done');
+      this._shareT = setTimeout(() => this._resetShareCopy(), 1600);
+    };
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(done, () => copyFallback(text) && done());
+    } else if (copyFallback(text)) {
+      done();
+    }
+  }
+
+  _resetShareCopy() {
+    clearTimeout(this._shareT);
+    this.shareCopyLbl.textContent = 'Copy';
+    this.shareCopy.classList.remove('done');
+  }
+
+  /** Hand the text to the OS share sheet. Dismissing the sheet is not an error. */
+  _nativeShare() {
+    if (!this._share || typeof navigator.share !== 'function') return;
+    this.onShareUsed?.();
+    navigator.share({ text: this._share }).catch(() => {});
+  }
+
   /** The auto-return line under the button. 0 or less clears it. */
   setCeremonyReturn(seconds) {
     this.cereAuto.textContent = seconds > 0 ? `Returning to the lobby in ${Math.ceil(seconds)}s` : '';
@@ -1584,6 +1690,7 @@ export class MatchStartUI {
 
   dispose() {
     clearTimeout(this._copyT);
+    clearTimeout(this._shareT);
     this.presenceEl.remove();
     this.root.remove();
   }
