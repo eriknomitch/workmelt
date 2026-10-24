@@ -28,6 +28,11 @@
  *   audio.setAmbienceWind(v)           wind bed level 0..1 (ships at 0)
  *   audio.report()                     diagnostics snapshot
  *
+ * The background layers themselves are switched per deploy in game.json:
+ * `features.ambienceBeds` (city hum, war rumble, wind) and
+ * `features.ambienceEvents` (distant gunfire, booms, one-shots, chatter).
+ * Both ship OFF; with a layer off the two ambience setters have nothing to act on.
+ *
  * All of it is a no-op — never a throw — before the graph exists, so callers
  * never have to check whether audio started.
  *
@@ -43,7 +48,7 @@ import { NoiseBank, SPEED_OF_SOUND, clamp, gain as mkGain } from './dsp.js';
 import { Mixer } from './mixer.js';
 import { SpatialField } from './spatial.js';
 import { Ambience, ambientOneShot, ONE_SHOTS } from './ambience.js';
-import { DEFAULT_GAME_CONFIG, loadGameConfig } from '../core/gameConfig.js';
+import { DEFAULT_GAME_CONFIG } from '../core/gameConfig.js';
 import { WEAPON_PROFILES, resolveProfile, weaponShot, bulletWhizz, whizzLevel, dryFire } from './weapons.js';
 import {
   surfaceImpact, footstep, shellCasing, reloadPhase, explosion, bodyFall, uiSound,
@@ -74,9 +79,6 @@ const GESTURES = ['pointerdown', 'mousedown', 'keydown', 'touchstart', 'wheel'];
 
 /** Where tools/encode-sfx.mjs puts its output, honouring a deployed subpath. */
 const SAMPLE_BASE = `${import.meta.env?.BASE_URL ?? '/'}sfx/`.replace(/\/{2,}/g, '/');
-
-/** Base the public-root `game.json` is fetched from, honouring a deployed subpath. */
-const CONFIG_BASE = `${import.meta.env?.BASE_URL ?? '/'}`.replace(/\/{2,}/g, '/');
 
 /**
  * Your own boots, played dry. Was an effective 0.72 through a 3D emitter parked
@@ -146,8 +148,10 @@ export class AudioSystem {
     this.bank = null;
     this.samples = null;
     this.deafness = 0;
-    /** `game.json`'s audio.ambience section; DEFAULT_GAME_CONFIG until init() resolves the fetch. */
+    /** `game.json`'s audio.ambience section, taken from `ctx.config.game` in init(). */
     this.ambienceCfg = DEFAULT_GAME_CONFIG.audio.ambience;
+    /** `game.json`'s feature switches; the ambience ones gate the background layers. */
+    this.features = DEFAULT_GAME_CONFIG.features;
 
     /* preallocated scratch — update() allocates nothing */
     this._probeDirs = [];
@@ -205,9 +209,11 @@ export class AudioSystem {
     this.rng = ctx.rng.fork();
     this._wireEvents(ctx);
 
-    // Not awaited: the graph must still come up on the first user gesture
-    // even if game.json is slow or missing, falling back to DEFAULT_GAME_CONFIG.
-    loadGameConfig(CONFIG_BASE).then((cfg) => { this.ambienceCfg = cfg.audio.ambience; });
+    // boot.js has already loaded game.json; an engine built without it (a
+    // harness, a preview) carries the built-in defaults instead.
+    const game = ctx.config?.game ?? DEFAULT_GAME_CONFIG;
+    this.ambienceCfg = game.audio?.ambience ?? DEFAULT_GAME_CONFIG.audio.ambience;
+    this.features = game.features ?? DEFAULT_GAME_CONFIG.features;
 
     // Web Audio needs a user gesture. Arm every plausible one; the first to
     // land builds the graph. Capture mode never gestures, so shots render in
@@ -246,7 +252,10 @@ export class AudioSystem {
       this.mixer = new Mixer(actx, this.rng.fork(), {});
       this.mixer.buildReverbs();
       this.field = new SpatialField(actx, this.mixer, this.ctx);
-      this.ambience = new Ambience(actx, this.bank, this.mixer, this.field, this.rng.fork(), this.ambienceCfg);
+      this.ambience = new Ambience(actx, this.bank, this.mixer, this.field, this.rng.fork(), this.ambienceCfg, {
+        beds: !!this.features.ambienceBeds,
+        events: !!this.features.ambienceEvents,
+      });
       this.ambience.start();
       this.mixer.setSpace(this._space, 0.001);
 
