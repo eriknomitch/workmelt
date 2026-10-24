@@ -52,17 +52,16 @@ export const BRAND = {
   storageOrange: '#c46d2e',
 };
 
+/* 'Geist Variable' is the bundled face (src/ui/fonts.js registers it under the
+   name its npm package uses); 'Geist' after it still picks up a local install. */
 export const FONT_DISPLAY_BRAND =
-  "'Geist','Inter',system-ui,-apple-system,'Segoe UI','Helvetica Neue',Arial,sans-serif";
+  "'Geist Variable','Geist','Inter',system-ui,-apple-system,'Segoe UI','Helvetica Neue',Arial,sans-serif";
 export const FONT_BODY_BRAND =
-  "'Geist','Inter',system-ui,-apple-system,'Segoe UI','Helvetica Neue',Arial,sans-serif";
+  "'Geist Variable','Geist','Inter',system-ui,-apple-system,'Segoe UI','Helvetica Neue',Arial,sans-serif";
 export const FONT_MONO_BRAND =
-  "'Geist Mono',ui-monospace,'SFMono-Regular',Menlo,Consolas,'Liberation Mono',monospace";
+  "'Geist Mono Variable','Geist Mono',ui-monospace,'SFMono-Regular',Menlo,Consolas,'Liberation Mono',monospace";
 
 const STYLE_ID = 'wm-brand-tokens';
-const FONT_ID = 'wm-brand-font';
-const FONT_HREF =
-  'https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap';
 
 const CSS = `
 :root {
@@ -166,45 +165,18 @@ const CSS = `
 /**
  * Inject the token sheet once. Safe to call from every surface's constructor —
  * whoever gets there first wins and the rest are no-ops.
+ *
+ * The faces themselves are not requested here: they are bundled, and
+ * src/ui/fonts.js loads them from src/main.js before any surface exists.
  */
-export function installBrand({ webfont = true } = {}) {
+export function installBrand() {
   if (typeof document === 'undefined') return;
-  if (webfont) installBrandFont();
   if (document.getElementById(STYLE_ID)) return;
   const s = document.createElement('style');
   s.id = STYLE_ID;
   s.textContent = CSS;
   // Prepended so a surface stylesheet loaded later always wins on ties.
   document.head.prepend(s);
-}
-
-/**
- * Request Geist + Geist Mono (Vercel's typeface pair, served from Google
- * Fonts), without ever blocking anything.
- *
- * `media="print"` keeps the stylesheet out of the render-blocking set; the
- * onload handler promotes it to `all` the moment it arrives. The whole UI is
- * legible in the fallback stacks before, during and after.
- *
- * NOT called on a deterministic run. A pending webfont leaves
- * `document.fonts.ready` unresolved, and Playwright's `page.screenshot()` waits
- * on exactly that promise — so on any machine that cannot reach
- * fonts.googleapis.com quickly, loading it would hang every capture in
- * `tools/`. A font that may or may not arrive has no business in a pixel gate
- * anyway.
- */
-export function installBrandFont() {
-  if (typeof document === 'undefined') return;
-  if (document.getElementById(FONT_ID)) return;
-  const link = document.createElement('link');
-  link.id = FONT_ID;
-  link.rel = 'stylesheet';
-  link.media = 'print';
-  link.href = FONT_HREF;
-  link.addEventListener('load', () => {
-    link.media = 'all';
-  });
-  document.head.appendChild(link);
 }
 
 /**

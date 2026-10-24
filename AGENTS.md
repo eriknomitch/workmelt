@@ -234,8 +234,9 @@ Menu surfaces — the lobby (`src/match/ui.js`), the pause/settings menu (`src/u
 
 ## Taking on a third-party dependency
 
-The door is open; it is not a revolving door. `three` is the only runtime
-dependency today, and the default answer stays no. A candidate — a library, a
+The door is open; it is not a revolving door. `three` is the only runtime code
+dependency today, beside two font packages that are pure assets (`LIBRARIES.md`
+§7.7), and the default answer stays no. A candidate — a library, a
 downloaded model, a texture or audio pack — is allowed when it clears all five
 of these, and the burden of showing that is on the change proposing it.
 

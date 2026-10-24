@@ -11,6 +11,10 @@
  * a static import here would make the browser fetch and parse the whole engine
  * even on a UI-only load, which is precisely the cost the flag exists to avoid.
  */
+// Static on purpose, unlike the boots below: the brand faces start downloading
+// alongside the boot chunk instead of after it. See src/ui/fonts.js.
+import './ui/fonts.js';
+
 const renderGame = !['false', '0'].includes(new URLSearchParams(location.search).get('renderGame'));
 
 if (renderGame) {

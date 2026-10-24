@@ -314,12 +314,15 @@ face.
 only; body copy is never tracked past `.06em` and never uppercase. A paragraph
 in the label register is a status readout, and it is kept to two sentences.
 
-**The Progressive Webfont Rule.** The webfont is a progressive enhancement,
-never a dependency. Geist is requested with `media="print"` so it can never
-render-block, and it is not requested at all on a deterministic capture run,
-because a pending webfont leaves `document.fonts.ready` unresolved and would
-hang every screenshot in `tools/`. The fallback stack is legible before,
-during and after.
+**The Bundled Face Rule.** Geist and Geist Mono ship in the build from npm
+(`@fontsource-variable/geist`, `@fontsource-variable/geist-mono`). They are
+served from our own origin, never a font CDN (ARCHITECTURE.md rule 3), and
+registered as `'Geist Variable'` / `'Geist Mono Variable'`, which is why the
+stacks lead with those names. `src/ui/fonts.js` starts the Latin subsets
+loading from `src/main.js`, alongside the boot chunk. Play never waits on
+them, but `window.__READY__` does, so a capture always renders in Geist rather
+than sometimes in the fallback. The fallback stack stays legible before,
+during and after. The OFL notice ships in `public/fonts/CREDITS.md`.
 
 **The Tabular Figure Rule.** Any number that changes in place — ammo, scores,
 countdowns, slider values — is set with `font-variant-numeric: tabular-nums` so
@@ -554,7 +557,8 @@ sign-off to whatever a title screen asks of it.
   scrollbar thumb is the only pill.
 - **Don't** track body copy like a label, or set a paragraph in the mono
   register beyond a two-sentence status readout.
-- **Don't** let a webfont block a render or a capture.
+- **Don't** load a face from a font CDN, or let one block a render. Faces come
+  from npm and ship in the bundle.
 - **Don't** use skulls, crosshairs, blood spatter, or bullet vectors as icons.
   Icons read as enterprise-software logic — folders, boxes, network nodes,
   clipboards, terminal prompts — at a uniform 1.5px stroke.

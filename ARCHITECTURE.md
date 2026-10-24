@@ -31,7 +31,8 @@ generated procedurally at load time; audio may be procedural or sample-based.
    invite. That clause is not negotiable and no third party gets an exception
    to it.
    **New third-party code, models or packs are allowed, but they are a
-   decision, not a default.** `three` is the only runtime dependency today, and
+   decision, not a default.** `three` is the only runtime code dependency today
+   (the Geist font packages are assets, recorded in `LIBRARIES.md` §7.7), and
    the answer stays "no" until a candidate clears the bar in *"Taking on a
    third-party dependency"* in `AGENTS.md` — offline, deterministic, measured,
    licensed, and not a re-implementation of something `src/` already does well.

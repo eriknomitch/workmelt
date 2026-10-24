@@ -10,36 +10,24 @@
       content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"
     />
     <title>WORKMELT — Tactical Shooter</title>
-    <meta name="theme-color" content="#28303d" />
+    <meta name="theme-color" content="#000000" />
     <meta
       name="description"
       content="WORKMELT — a browser-first tactical arena built out of the floor you already work on."
     />
     <!--
-      Brand type (DESIGN.md: Bebas Neue for display, Inter for every string) is
-      requested from src/ui/brand.js, NOT from a <link> here. Two reasons, both
-      of which bit before it moved:
-
-        • a font request in the head is render-blocking, and "browser-first and
-          instantly playable" cannot mean a blank screen while a corporate proxy
-          decides what it thinks of fonts.googleapis.com; and
-        • a pending webfont keeps `document.fonts.ready` unresolved, which hangs
-          every `page.screenshot()` the capture harnesses take.
-
-      brand.js therefore injects it non-blocking, and skips it entirely on a
-      deterministic run. Either way the documented fallback stacks carry the
-      whole UI, and brand.js measures whether Bebas actually rendered before it
-      places the metric-tuned half of the logo drip.
+      Brand type (DESIGN.md: Geist, with Geist Mono for labels) is bundled, not
+      linked: src/ui/fonts.js imports it from npm, so it is served from our own
+      origin and the game still runs offline (ARCHITECTURE.md rule 3). The
+      stacks below and in src/ui/brand.js carry the UI until it lands.
     -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <style>
       :root { color-scheme: dark; }
       * { margin: 0; padding: 0; box-sizing: border-box; }
-      /* Graphite — the void behind panels, never black. */
-      html, body { width: 100%; height: 100%; overflow: hidden; background: #181c28; }
+      /* Void (DESIGN.md) — the first paint is the same black the lobby is. */
+      html, body { width: 100%; height: 100%; overflow: hidden; background: #000000; }
       body {
-        font-family: "Inter", "Helvetica Neue", Arial, sans-serif;
+        font-family: "Geist Variable", "Geist", "Inter", system-ui, "Helvetica Neue", Arial, sans-serif;
         -webkit-font-smoothing: antialiased;
         /* Mobile: no rubber-banding, no pull-to-refresh, no long-press callout
            over the game — the canvas is not a document. */

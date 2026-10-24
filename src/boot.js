@@ -35,6 +35,7 @@ import { MatchSystem } from './match/index.js';
 
 import { installShotApi } from './dev/shots.js';
 import { prewarm } from './core/prewarm.js';
+import { fontsReady } from './ui/fonts.js';
 
 const params = new URLSearchParams(location.search);
 const capture = params.get('capture') === '1';
@@ -192,6 +193,9 @@ engine.start();
 // then raise __READY__; the shot is therefore always applied at engine frame 3, no
 // matter how long boot (or pre-warm) took in wall-clock terms.
 const BOOT_FRAMES = 3;
+// The brand faces land before the flag does, or a shot with any menu text in it
+// renders in the fallback on one run and in Geist on the next.
+await fontsReady;
 if (lockstep) {
   await shotApi.pump(BOOT_FRAMES);
   window.__READY__ = true;

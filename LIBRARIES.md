@@ -1073,3 +1073,32 @@ Sources for this addendum:
 [BatchedMesh multiDraw issue #31935](https://github.com/mrdoob/three.js/issues/31935),
 [Vite 8 / Rolldown / Oxc](https://www.alexcloudstar.com/blog/vite-8-rolldown-oxc-2026/),
 [Biome vs ESLint vs Oxlint 2026](https://www.pkgpulse.com/guides/biome-vs-eslint-vs-oxlint-2026).
+
+### 7.7 Geist and Geist Mono, bundled from npm (accepted 2026-10-24)
+
+The brand faces used to come from `fonts.googleapis.com` at runtime. That broke
+rule 3, and it kept captures in the fallback face, because a deterministic run
+skipped the request so a slow CDN could not hang `page.screenshot()`. They now
+come from `@fontsource-variable/geist` and `@fontsource-variable/geist-mono`
+(5.3.0, exact pins), imported by `src/ui/fonts.js`. How it clears the five bars
+in `AGENTS.md`:
+
+1. **Offline.** Vite emits the `.woff2` files into `dist/assets/` and links a
+   0.66 kB gzip `@font-face` sheet from `index.html`. A UI-only load requests
+   nothing from any other host (checked by logging every request in Chromium).
+2. **Deterministic.** The bytes are pinned by the lockfiles. `window.__READY__`
+   now waits for both Latin subsets, so a capture can no longer render in Geist
+   on one run and in the fallback on the next. A settings-menu capture with the
+   bundled face matched the Google-served one to within ±3 levels per channel.
+3. **Measured.** The boot chunk went from 519.11 to 519.12 kB gzip; the faces
+   are separate assets, not JS. `dist/` gains 147 kB of `.woff2` across all
+   subsets, but `unicode-range` means a browser fetches only what is on screen:
+   in practice the Latin pair, 29.4 kB + 23.1 kB.
+4. **Licensed.** SIL OFL 1.1. The notice and licence text ship in
+   `public/fonts/CREDITS.md`.
+5. **Not a re-implementation.** `src/` had no fonts of its own; this replaces a
+   CDN request with the same files.
+
+npm over vendoring, per `AGENTS.md`: the design-system export had the same two
+Latin files, but the packages give us a pinned version, an integrity hash and
+the licence in one place.

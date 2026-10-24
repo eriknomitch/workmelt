@@ -85,10 +85,8 @@ const rowHandle = (label) =>
 
 try {
   await seed();
-  // `domcontentloaded`, like every other harness here: waiting for `load` also
-  // waits on the brand webfont, which is deliberately non-blocking and may never
-  // resolve on a machine that cannot reach fonts.googleapis.com. The real gate
-  // is `__READY__`.
+  // `domcontentloaded`, like every other harness here. The real gate is
+  // `__READY__`, which also holds for the bundled brand faces (src/ui/fonts.js).
   await page.goto(URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
   await ready();
   await settle();
