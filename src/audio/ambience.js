@@ -12,8 +12,15 @@
  * closes a lowpass over the outdoor content, which is a huge part of why a
  * doorway feels like a doorway.
  *
- * The wind bed ships SILENT (`game.json`'s audio.ambience.wind.level) — it is
- * built and wired, but at zero gain until someone turns it up.
+ * Both halves are switched per deploy in `game.json` and both ship OFF:
+ * `features.ambienceBeds` builds the continuous beds (wind, city, war rumble)
+ * and `features.ambienceEvents` runs the scheduler (distant volleys, booms,
+ * one-shots, chatter). A layer that is off is never built or scheduled — it
+ * costs nothing, rather than playing at zero gain.
+ *
+ * Within the beds, the wind ships SILENT on top of that
+ * (`game.json`'s audio.ambience.wind.level) — built and wired, but at zero
+ * gain until someone turns it up.
  */
 
 import { ad, biquad, clamp, gain, lerp, osc, series, struckResonator, sweep } from './dsp.js';
@@ -32,9 +39,17 @@ import { DEFAULT_GAME_CONFIG } from '../core/gameConfig.js';
  * without a reload.
  */
 const DEFAULTS = DEFAULT_GAME_CONFIG.audio.ambience;
+const DEFAULT_LAYERS = {
+  beds: DEFAULT_GAME_CONFIG.features.ambienceBeds,
+  events: DEFAULT_GAME_CONFIG.features.ambienceEvents,
+};
 
 export class Ambience {
-  constructor(actx, bank, mixer, field, rng, cfg = DEFAULTS) {
+  /**
+   * @param {{beds: boolean, events: boolean}} layers  which halves run — the
+   *   `features.ambienceBeds` / `features.ambienceEvents` switches.
+   */
+  constructor(actx, bank, mixer, field, rng, cfg = DEFAULTS, layers = DEFAULT_LAYERS) {
     this.actx = actx;
     this.bank = bank;
     this.mixer = mixer;
@@ -46,13 +61,19 @@ export class Ambience {
     this.enclosure = 0;
     this.intensity = 1;    // scales the distant-battle scheduler
     this.windLevel = cfg.wind.level;
+    this.beds = !!layers.beds;
+    this.events = !!layers.events;
     this._timers = { gust: 2, volley: 4, boom: 18, oneshot: 6, chatter: 25 };
   }
 
-  /** Build the beds. Called once, after the graph is live. */
+  /**
+   * Build the outdoor chain and, when `beds` is on, the beds that feed it.
+   * Called once, after the graph is live. The chain is built either way: it
+   * is three nodes, and setEnclosure() drives it unconditionally.
+   */
   start() {
     if (this.started) return;
-    const { actx, bank, rng } = this;
+    const { actx } = this;
     this.started = true;
 
     const bus = this.mixer.bus('ambience');
@@ -69,6 +90,15 @@ export class Ambience {
     outdoorGain.connect(sendTap);
     sendTap.connect(this.mixer.reverbSend);
     this.nodes.push(sendTap);
+
+    if (this.beds) this._buildBeds();
+    this._reseedTimers();
+  }
+
+  /** The continuous layers, all feeding the outdoor filter. */
+  _buildBeds() {
+    const { actx, bank, rng } = this;
+    const outdoorLP = this._outdoorLP;
 
     /* ---- wind: two decorrelated brown-noise layers ---------------- */
     this._windGain = gain(actx, this.cfg.wind.bedGain * this.windLevel);
@@ -130,8 +160,6 @@ export class Ambience {
       this.nodes.push(src, lp, g);
       this._warGain = g;
     }
-
-    this._reseedTimers();
   }
 
   /** Attach a slow oscillator to an AudioParam. */
@@ -187,11 +215,15 @@ export class Ambience {
     const T = this._timers;
     const RT = this.cfg.repeatTimers;
 
-    T.gust -= dt;
-    if (T.gust <= 0) {
-      T.gust = r.range(...RT.gust);
-      this._gust();
+    if (this.beds) {
+      T.gust -= dt;
+      if (T.gust <= 0) {
+        T.gust = r.range(...RT.gust);
+        this._gust();
+      }
     }
+
+    if (!this.events) return;
 
     T.volley -= dt;
     if (T.volley <= 0) {

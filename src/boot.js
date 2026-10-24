@@ -5,6 +5,7 @@
  */
 import { Engine } from './core/engine.js';
 import { createConfig } from './core/config.js';
+import { gameConfigForRun, loadGameConfig } from './core/gameConfig.js';
 import {
   AdaptiveQualitySystem,
   detectDeviceSignature,
@@ -37,6 +38,10 @@ import { prewarm } from './core/prewarm.js';
 
 const params = new URLSearchParams(location.search);
 const capture = params.get('capture') === '1';
+// The deploy's game.json. Fetched now, in parallel with the graphics probing
+// below, and awaited before the config is built so every subsystem can read
+// `ctx.config.game` synchronously. Never rejects — a missing file is defaults.
+const gameConfigReady = loadGameConfig(`${import.meta.env?.BASE_URL ?? '/'}`.replace(/\/{2,}/g, '/'));
 // Deterministic shutter for the pixel gate: the engine does not schedule its own
 // frames, the driver advances exactly N of them through window.__PUMP__. Opt-in,
 // because tools that measure real frame pacing (tools/perf.mjs) need the loop to
@@ -84,6 +89,7 @@ const touchMode = !capture && detectTouchMode(params);
 // Menus (the lobby, the pause panel, the net overlay) read this class to grow
 // hit targets and drop keyboard hints; it is set before any UI exists.
 document.body.classList.toggle('wm-touch', touchMode);
+const game = gameConfigForRun(await gameConfigReady, { capture });
 const config = createConfig({
   quality: bootQuality,
   adsMode: controls.adsMode,
@@ -99,6 +105,7 @@ const config = createConfig({
   // `ai` skips its boot-time garrison; `match` spawns it when a match starts.
   deferGarrison: matchFlow,
   draw,
+  game,
 });
 if (adaptiveEnabled && graphics.mode === 'auto' && graphics.calibrated)
   config.q.renderScale = graphics.renderScale;

@@ -4,6 +4,8 @@
  * quality scaler and the capture harness can drive everything from one place.
  */
 
+import { DEFAULT_GAME_CONFIG } from './gameConfig.js';
+
 export const PHYSICS_HZ = 120;
 export const FIXED_DT = 1 / PHYSICS_HZ;
 /** Never simulate more than this many physics steps in one frame (spiral-of-death guard). */
@@ -239,6 +241,13 @@ export const DEFAULTS = {
    * shader compiles alone are ~30 s of every boot. Ignored for capture runs.
    */
   draw: true,
+  /**
+   * The deploy's `game.json` (feature switches + data-driven tuning), loaded
+   * once by src/boot.js before the engine exists. Read it as
+   * `ctx.config.game`; see src/core/gameConfig.js. Built-in defaults here so
+   * an engine created without boot (selftests, previews) still has one.
+   */
+  game: DEFAULT_GAME_CONFIG,
 };
 
 export function createConfig(overrides = {}) {

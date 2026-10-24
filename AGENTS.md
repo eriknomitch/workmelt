@@ -104,6 +104,12 @@ either works: `test:quality` = `src/core/selftest.mjs`, `test:graphics` =
   at 18 m — so the invariant is asserted arithmetically instead.
 - `node src/core/graphics.selftest.mjs` checks the advanced graphics option schema, including that an empty override set is a bit-exact no-op on every preset.
 - `node src/core/selftest.mjs` covers adaptive quality and the option persistence/live-apply contract.
+- `node src/core/gameConfig.selftest.mjs` checks the per-deploy switch file,
+  `public/game.json`: that it equals the built-in defaults (so a deploy that
+  fails to fetch it behaves the same), that a partial file merges over them,
+  that a capture run ignores its `features` (so flipping a switch on the live
+  site cannot move the pixel baselines), and that the ambience switches really
+  stop `Ambience` building its beds and scheduling its events. Mutation-checked.
 - `npm run playtest:{ads,graphics,grenade,lobby}` drive real browsers against real
   binds and menus. They judge DOM and engine state, not pixels, so they run
   anywhere — and they boot with `?draw=0`, which keeps the whole engine and HUD
@@ -207,6 +213,18 @@ either works: `test:quality` = `src/core/selftest.mjs`, `test:graphics` =
 - `npm run goal` scores the open goals in `goals/`; `npm run goal:quick` is the
   faster iteration pass. Both are expensive — the `visual-check` skill has the
   scoping flags.
+
+## Per-deploy switches
+
+`public/game.json` turns whole features on or off for a deploy without a
+rebuild — edit it, deploy, done. `src/boot.js` loads it once before the engine
+exists and every subsystem reads it as `ctx.config.game`; the defaults live in
+`src/core/gameConfig.js` and must stay equal to the shipped file. Adding a
+switch is a default under `features`, the same key in `game.json`, and one
+check in the subsystem that owns the feature. Capture runs ignore `features`.
+Today: `ambienceBeds` and `ambienceEvents` (the background audio), both off.
+Player preferences belong in the settings menu, and debugging flags in the URL
+— not here.
 
 ## Coding Style & Naming Conventions
 
@@ -332,12 +350,12 @@ Read on demand, not loaded at session start:
 ## Verifying a change
 
 **Default to not rendering.** The Node-only self-tests carry most of the real
-coverage and are effectively free — all thirty of them (`physics`, `ai`,
+coverage and are effectively free — all thirty-one of them (`physics`, `ai`,
 `ai/lod`, `ai/footstep`, `ai/roo`, `fx/tracers`, `weapons/balance`, `weapons/throwables`,
 `weapons/loadout`, `weapons/autoreload`, `weapons/melee`, `weapons/baked`,
 `audio/attenuation`,
 `audio/reload`,
-`core` × 4, `render/resolution`, `render/dof`, `ui/touch`, `ui/killicons`, `ui/nameplates`, `match/bounds`,
+`core` × 5, `render/resolution`, `render/dof`, `ui/touch`, `ui/killicons`, `ui/nameplates`, `match/bounds`,
 `match/streaks`, `world/maps`, `world/collision`, `world/power`, `world/spawns`,
 `world/stairs`)
 run in ~10 s
@@ -353,7 +371,7 @@ find src server \( -name 'selftest.*' -o -name '*.selftest.*' \) | sort
 
 Note both halves of that pattern — four suites are a bare `selftest.js`/`.mjs`
 (`physics`, `ai`, `core`, `audio`) and `-name '*.selftest.*'` alone silently
-misses them. It returns 35 files; the thirty above are the free ones. The
+misses them. It returns 36 files; the thirty-one above are the free ones. The
 other five are not: `server/{bounds,lobby,map,skin}.selftest.mjs` each stand up
 a real relay on a real socket, and `src/audio/selftest.js` is a library the audio
 probe drives from a page — run directly it exits 0 having asserted nothing.

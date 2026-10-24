@@ -1,4 +1,8 @@
 {
+  "features": {
+    "ambienceBeds": false,
+    "ambienceEvents": false
+  },
   "audio": {
     "ambience": {
       "wind": {
