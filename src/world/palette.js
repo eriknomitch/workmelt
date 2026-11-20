@@ -1019,4 +1019,52 @@ export const PALETTE = {
     };
   })(),
 
+  /* ──────────────────────────────────────────────────────── clifton hill ── */
+  /**
+   * `ch_*` — the Clifton Hill neon. One key per tube colour, because a key is a
+   * merged batch and a colour is a material: every letter of every sign on the
+   * strip that shares a colour is ONE draw call, however many strokes it took.
+   *
+   * Same stance as Site Work's fittings: EMISSIVE ONLY, no punctual light per
+   * sign. The map is set ten minutes after sunset, with the sky still carrying
+   * a lot of the frame, so these run a little hotter than `sw_neon` — at night
+   * exposure a tube at 9 blooms, at dusk exposure it has to beat a bright west
+   * sky to read as lit at all. The tints are the tube glass seen unlit, kept
+   * inside the 0.02–0.9 reflectance band like every other key here.
+   */
+  ...(() => {
+    const NEON = {
+      vertexMasks: false,
+      weather: [0, 0, 0, 0],
+      macro: [0.05, 0, 0, 0],
+      macroBig: [1, 0, 0, 0],
+      patch: [0, 0, 0, 0],
+      detail: [8, 0, 0, 0],
+      parallax: 0,
+      detile: 0,
+      normalStrength: 0,
+      aoStrength: 0,
+      roughness: [0, 0.6, 0.85],
+    };
+    const tube = (tint, emissive, emissiveIntensity) => ({
+      name: 'flat_matte',
+      surface: 'glass',
+      opts: { ...NEON, tint, three: { emissive, emissiveIntensity, toneMapped: true } },
+    });
+    return {
+      /** The haunted castle, the steakhouse box sign, the burger bar. */
+      ch_neon_red: tube(0xe0857a, 0xff2a1c, 11),
+      /** The movie marquee, the casino, the star toppers — warm sodium yellow. */
+      ch_neon_amber: tube(0xe8c890, 0xffa31a, 10),
+      /** The wheel's spokes and the hotel's box sign: the one cold note. */
+      ch_neon_cyan: tube(0x9cd8e0, 0x26c8ff, 10),
+      /** The wax museum and the midway's odd letters. */
+      ch_neon_pink: tube(0xe0a0c8, 0xff2a9a, 10),
+      /** The fun-zone gate and the speedway. */
+      ch_neon_green: tube(0x9ee0a8, 0x2bff5a, 9),
+      /** Marquee bulbs and the wheel's rim — a white that is still warm. */
+      ch_neon_white: tube(0xf0e8dc, 0xfff0d6, 8),
+    };
+  })(),
+
 };

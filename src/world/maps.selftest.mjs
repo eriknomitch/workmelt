@@ -164,6 +164,24 @@ import {
   inSolidGraving,
   groundYGraving,
 } from './graving.js';
+import {
+  CLIFTON,
+  STRUCTURES as CH_STRUCTURES,
+  COVER as CH_COVER,
+  STAIRS as CH_STAIRS,
+  LANDINGS as CH_LANDINGS,
+  PERIMETER as CH_PERIMETER,
+  HALL,
+  WHEEL,
+  MISSING_GLYPHS,
+  coverRect,
+  stairRect,
+  stairSteps,
+  topOf,
+  wheelHubY,
+  inSolidClifton,
+  groundYClifton,
+} from './clifton.js';
 import { NavGrid } from '../ai/nav.js';
 import { MOVE, STANCE, JUMP_APEX } from '../player/tuning.js';
 
@@ -2366,6 +2384,154 @@ ok(SHIP.bottomY - DOCK.floorY >= STANCE.stand.height + 0.15,
 {
   const env = graving.environment;
   ok(env && env.hour >= 16 && env.hour <= 19.5, 'graving is a late-afternoon map, lit by the sun', `hour ${env?.hour}`);
+}
+
+/* ───────────────────────────────────────────────────── clifton — the hill ── */
+console.log(B('\nclifton — the hill'));
+{
+  const clifton = mapById('clifton');
+  const overlap = (a, b) => a[0] < b[2] && a[2] > b[0] && a[1] < b[3] && a[3] > b[1];
+
+  /**
+   * Nothing solid stands inside anything else: blocks, parked cars, the
+   * median, booths and the stairs' footprints. A car parked half inside the
+   * movie museum builds, renders as a car-shaped bite out of a wall, and is
+   * exactly the kind of thing nobody looks for.
+   */
+  const solids = [
+    ...CH_STRUCTURES.map((s) => [s.id, s.x - s.w / 2, s.z - s.d / 2, s.x + s.w / 2, s.z + s.d / 2]),
+    ...CH_COVER.map((c) => [`${c[2]}(${c[0]},${c[1]})`, ...coverRect(c)]),
+    ...CH_STAIRS.map((st) => [st.id, ...stairRect(st)]),
+  ];
+  const clashes = [];
+  for (let i = 0; i < solids.length; i++)
+    for (let j = i + 1; j < solids.length; j++)
+      if (overlap(solids[i].slice(1), solids[j].slice(1))) clashes.push(`${solids[i][0]}/${solids[j][0]}`);
+  ok(clashes.length === 0, 'no two solids intersect', clashes.slice(0, 4).join(' ') || `${solids.length} solids`);
+  // The one exemption is deliberate: the trolley across the top of the hill
+  // closes the street and is allowed to stand ON the perimeter line.
+  const stray = solids.filter(([id, x0, z0, x1, z1]) =>
+    !id.startsWith('trolley(-48.5') && (x0 < CLIFTON.x0 || x1 > CLIFTON.x1 || z0 < CLIFTON.z0 || z1 > CLIFTON.z1));
+  ok(stray.length === 0, 'everything solid stands inside the perimeter', stray.map((s) => s[0]).join(' '));
+
+  /**
+   * THE WHEEL is the landmark: taller than everything on the strip by a
+   * distance, and its bottom gondola really does stop at the boarding deck.
+   */
+  const tallest = Math.max(...CH_STRUCTURES.map(topOf));
+  ok(wheelHubY() + WHEEL.r > tallest * 1.8, 'the wheel towers over the strip',
+    `top ${(wheelHubY() + WHEEL.r).toFixed(1)} m vs roofs ${tallest.toFixed(1)} m`);
+  const gondolaFloor = wheelHubY() - WHEEL.r - 2.5;
+  ok(gondolaFloor > groundYClifton(WHEEL.x, WHEEL.z) + 0.4 && gondolaFloor < groundYClifton(WHEEL.x, WHEEL.z) + 1.0,
+    'the bottom gondola stops at deck height', `${(gondolaFloor - groundYClifton(WHEEL.x, 0)).toFixed(2)} m up`);
+
+  /**
+   * THE HILL. It has to be a hill — the map is named for it — and it has to
+   * stay a slope a bot can walk: `ai/nav.js` steps 0.45 m per cell at most,
+   * and the grade must never fold at the knee.
+   */
+  const rise = groundYClifton(CLIFTON.x0, 0) - groundYClifton(CLIFTON.x1, 0);
+  ok(rise > 3 && rise < 5, 'Clifton Hill climbs west by a few metres', `${rise.toFixed(2)} m`);
+  let steepest = 0;
+  let monotone = true;
+  for (let x = CLIFTON.x0; x < CLIFTON.x1; x += 0.2) {
+    const d = groundYClifton(x, 0) - groundYClifton(x + 0.2, 0);
+    if (d < -1e-9) monotone = false;
+    steepest = Math.max(steepest, d / 0.2);
+  }
+  ok(monotone && steepest <= CLIFTON.grade + 1e-9, 'the grade never steepens or folds',
+    `max ${(steepest * 100).toFixed(2)}%`);
+  ok(groundYClifton(CLIFTON.fallsRoad0 + 1, 0) === groundYClifton(CLIFTON.x1 - 1, 0), 'Falls Avenue is level');
+
+  /**
+   * THE HIGH GROUND: the speedway and the brew patio. Every stair reaches the
+   * deck it claims (within a step), its landing touches that deck's edge, and
+   * its foot starts from open ground with a run-up — a cart parked across the
+   * run-up is how a whole level loses its vertical half silently.
+   */
+  for (let i = 0; i < CH_STAIRS.length; i++) {
+    const st = CH_STAIRS[i];
+    const g = groundYClifton(st.x, st.z);
+    const rise = (st.top - g) / stairSteps(st);
+    ok(rise > 0.2 && rise < 0.3, `${st.id}: a walkable rise`, `${stairSteps(st)} x ${rise.toFixed(3)} m`);
+    const [lx0, lz0, lx1, lz1, ly] = CH_LANDINGS[i];
+    const deckOf = st.id.startsWith('speedway') ? 'midway' : 'brew';
+    const s = CH_STRUCTURES.find((q) => q.id === deckOf);
+    const touches =
+      Math.abs(lx1 - (s.x - s.w / 2)) < 0.05 || Math.abs(lx0 - (s.x + s.w / 2)) < 0.05 ||
+      Math.abs(lz1 - (s.z - s.d / 2)) < 0.05 || Math.abs(lz0 - (s.z + s.d / 2)) < 0.05;
+    ok(touches && ly === s.roof, `${st.id}: lands at the ${deckOf} roof's edge`, `deck ${ly}`);
+    const dx = Math.sin(st.ry);
+    const dz = Math.cos(st.ry);
+    const runUp = [0.6, 1.2, 1.8].every((d) => clifton.isOpen(st.x - dx * d, st.z - dz * d, 0.3));
+    ok(runUp, `${st.id}: its foot has an open run-up`);
+  }
+
+  // The midway is a hall: its doors are open and its floor is floor.
+  const m = CH_STRUCTURES.find((s) => s.id === 'midway');
+  const doorsOpen =
+    HALL.north.every(([a, b]) => clifton.isOpen((a + b) / 2, m.z - m.d / 2 + HALL.t / 2, 0.3)) &&
+    HALL.south.every(([a, b]) => clifton.isOpen((a + b) / 2, m.z + m.d / 2 - HALL.t / 2, 0.3)) &&
+    HALL.east.every(([a, b]) => clifton.isOpen(m.x + m.w / 2 - HALL.t / 2, (a + b) / 2, 0.3));
+  ok(doorsOpen, 'every midway door is a real opening');
+  ok(clifton.isOpen(-36, 16.5) && clifton.isOpen(-30, 16.5), 'the midway floor is playable ground');
+
+  /**
+   * EVERY MOUTH IS SEALED. Three openings in the perimeter: the street at the
+   * top of the hill, and Falls Avenue's two ends. Probe the first 2.5 m of
+   * each, every 0.2 m across it — shallow on purpose, so the probe cannot
+   * reach past the mouth and find unrelated cover.
+   */
+  const sealed = (along0, along1, fixed, from, to, axis) => {
+    const leaks = [];
+    for (let u = along0 + 0.1; u < along1 - 0.05; u += 0.2) {
+      let hit = false;
+      for (let d = from; Math.abs(d - from) <= Math.abs(to - from) && !hit; d += Math.sign(to - from) * 0.2) {
+        if (axis === 'x' ? inSolidClifton(d, u, 0) : inSolidClifton(u, d, 0)) hit = true;
+      }
+      if (!hit) leaks.push(u.toFixed(1));
+    }
+    return leaks;
+  };
+  const top = sealed(-CLIFTON.line, CLIFTON.line, 0, CLIFTON.x0 + 0.1, CLIFTON.x0 + 2.5, 'x');
+  ok(top.length === 0, 'the top of the hill is closed', top.length ? `leaks at z=${top.slice(0, 4).join(',')}` : 'trolley and hoardings');
+  const fn = sealed(CLIFTON.fallsWest, CLIFTON.x1, 0, CLIFTON.z0 + 0.1, CLIFTON.z0 + 2.5, 'z');
+  ok(fn.length === 0, 'Falls Avenue north is closed', fn.length ? `leaks at x=${fn.slice(0, 4).join(',')}` : 'hoarding');
+  const fs = sealed(CLIFTON.fallsWest, CLIFTON.x1, 0, CLIFTON.z1 - 0.1, CLIFTON.z1 - 2.5, 'z');
+  ok(fs.length === 0, 'Falls Avenue south is closed', fs.length ? `leaks at x=${fs.slice(0, 4).join(',')}` : 'hoarding');
+  ok(CH_PERIMETER.length >= 6 && !clifton.isOpen(CLIFTON.x0 - 3, 0) && !clifton.isOpen(CLIFTON.x1 + 2, 0) &&
+    !clifton.isOpen(0, CLIFTON.z0 - 2) && !clifton.isOpen(0, CLIFTON.z1 + 2),
+    'the world outside the perimeter is not playable ground');
+
+  /**
+   * The street must not be one 80 m lane. Walk the centre of each lane of
+   * Clifton Hill and require something solid at least every 16 m — the
+   * cars, the trolley and the median are the cover rhythm.
+   */
+  for (const z of [-2.6, 0, 2.6]) {
+    let gap = 0;
+    let worst = 0;
+    for (let x = CLIFTON.x0 + 3; x < CLIFTON.fallsWest; x += 0.5) {
+      if (inSolidClifton(x, z, 0.2)) gap = 0;
+      else worst = Math.max(worst, (gap += 0.5));
+    }
+    ok(worst <= 16, `the z=${z} lane is broken up`, `longest clear run ${worst} m`);
+  }
+
+  // Sample the strip: dense frontage either side of open lanes and lots.
+  let open = 0;
+  let total = 0;
+  for (let x = CLIFTON.x0; x <= CLIFTON.x1; x += 1)
+    for (let z = CLIFTON.z0; z <= CLIFTON.z1; z += 1) {
+      total++;
+      if (clifton.isOpen(x, z)) open++;
+    }
+  const frac = open / total;
+  ok(frac > 0.55 && frac < 0.8, 'walkable fraction sits in the street-and-lots band', frac.toFixed(2));
+
+  ok(MISSING_GLYPHS.size === 0, 'every letter on every sign is in the neon font', [...MISSING_GLYPHS].join(''));
+  const env = clifton.environment;
+  ok(env && env.hour > 19.3 && env.hour < 19.75, 'clifton is set at sunset, the sun on the horizon', `hour ${env?.hour}`);
 }
 
 console.log(
