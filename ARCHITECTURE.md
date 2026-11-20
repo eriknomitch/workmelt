@@ -186,9 +186,9 @@ says otherwise.
 const world = ctx.get('world');
 world.mapId                 // 'market' | 'rust' | 'wilmot' | 'loop' | 'fishers'
                             // | 'nuketown' | 'bloodgulch' | 'dome' | 'shivam'
-                            // | 'sitework' | 'graving' — see the REGISTRY in
-                            // world/maps.js, which is also where a map is
-                            // enabled or parked
+                            // | 'sitework' | 'graving' | 'clifton' — see the
+                            // REGISTRY in world/maps.js, which is also where
+                            // a map is enabled or parked
 world.power                 // PowerGrid | null — the destructible grid, for a
                             // map whose descriptor carries a `power` block.
                             // `.out`, `.level` (0..1 mains), `.remaining`,

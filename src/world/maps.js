@@ -9,6 +9,7 @@ import { DOME_MAP } from './dome.js';
 import { SHIVAM_MAP } from './shivam.js';
 import { SITEWORK_MAP } from './sitework.js';
 import { GRAVING_MAP } from './graving.js';
+import { CLIFTON_MAP } from './clifton.js';
 
 /**
  * WORLD — the map list.
@@ -141,6 +142,13 @@ const REGISTRY = [
     enabled: true,
     name: 'Graving Dock',
     description: 'A ship in a drained dry dock, at dusk',
+  },
+  {
+    map: CLIFTON_MAP,
+    order: 39.8,
+    enabled: true,
+    name: 'Clifton Hill',
+    description: 'Niagara Falls neon strip, at sunset',
   },
   {
     map: MARKET_MAP,
@@ -315,4 +323,4 @@ export function saveMapPreference(id) {
   }
 }
 
-export { MARKET_MAP, RUST_MAP, WILMOT_MAP, LOOP_MAP, FISHERS_MAP, NUKETOWN_MAP, BLOODGULCH_MAP, DOME_MAP, SHIVAM_MAP, SITEWORK_MAP, GRAVING_MAP };
+export { MARKET_MAP, RUST_MAP, WILMOT_MAP, LOOP_MAP, FISHERS_MAP, NUKETOWN_MAP, BLOODGULCH_MAP, DOME_MAP, SHIVAM_MAP, SITEWORK_MAP, GRAVING_MAP, CLIFTON_MAP };
