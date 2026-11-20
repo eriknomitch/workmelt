@@ -56,6 +56,8 @@
  *   p.suppression  p.damageIndicators
  *   p.applyDamage(amount, fromVector3, opts)   p.heal(a)   p.addSuppression(a)
  *   p.onNearMiss(missMetres)      a round passed close without connecting
+ *   p.payHealth(a)                spend health on purpose; restarts regen, never kills
+ *   p.setInvulnerable(s)  p.invulnerableLeft   ignore all damage for s seconds
  *
  * CONTROL
  *   p.setControlEnabled(bool)     shot harness / cutscenes
@@ -671,6 +673,17 @@ export class PlayerSystem {
   }
   heal(a) {
     this.health.heal(a);
+  }
+  /** Spend health deliberately (a slot pull): restarts regen, never kills. */
+  payHealth(a) {
+    return this.health.pay(a);
+  }
+  /** Ignore all damage for `seconds` (a slot jackpot). Cleared on respawn. */
+  setInvulnerable(seconds) {
+    this.health.setInvulnerable(seconds);
+  }
+  get invulnerableLeft() {
+    return this.health.invulnerableLeft;
   }
   addSuppression(a) {
     this.health.addSuppression(a);

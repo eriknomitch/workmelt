@@ -149,6 +149,43 @@ function arcadeScreen() {
   return p.build();
 }
 
+/**
+ * A slot machine, front facing +X: a red cabinet with a topper, three lit reel
+ * windows, an amber neon trim, and the lever on its right-hand (+Z) side. The
+ * midway's one usable bank — `slots.js` owns what pulling it does.
+ */
+export const SLOT = { w: 0.7, d: 0.66, h: 2.08 };
+
+function slotBody() {
+  const p = new PB();
+  p.box(SLOT.w, 1.05, SLOT.d, 0, 0.525, 0, { bevel: 0.03, grime: 0.12 });
+  p.box(0.5, 0.82, SLOT.d, -0.1, 1.46, 0, { bevel: 0.03 });
+  p.box(0.24, 0.05, SLOT.d - 0.04, 0.28, 1.08, 0, { bevel: 0.01, rz: -0.2 }); // button deck
+  p.box(0.44, 0.2, SLOT.d - 0.02, -0.1, 1.97, 0, { bevel: 0.03 }); // topper housing
+  return p.build();
+}
+
+function slotReels() {
+  const p = new PB();
+  for (const z of [-0.17, 0, 0.17]) p.box(0.04, 0.26, 0.14, 0.16, 1.44, z, { bevel: 0.005 });
+  return p.build();
+}
+
+/** A thin neon line along the topper's face — a trim, not a panel. */
+function slotLights() {
+  const p = new PB();
+  p.box(0.03, 0.05, SLOT.d - 0.08, 0.125, 2.02, 0, { bevel: 0.005 });
+  return p.build();
+}
+
+function slotLever() {
+  const p = new PB();
+  p.box(0.12, 0.12, 0.06, 0, 1.25, SLOT.d / 2 + 0.03, { bevel: 0.02 }); // pivot boss
+  p.cyl(0.022, 0.48, 0, 1.49, SLOT.d / 2 + 0.07, { radial: 8 });
+  p.cyl(0.06, 0.1, 0, 1.76, SLOT.d / 2 + 0.07, { radial: 10 });
+  return p.build();
+}
+
 function gondolaFrame() {
   const p = new PB();
   const { w, h } = GONDOLA;
@@ -221,6 +258,13 @@ export function registerCliftonProps(A) {
 
   P('ch_arcade', 'el_steel', arcadeBody());
   P('ch_arcade_screen', 'ch_neon_cyan', arcadeScreen(), { castShadow: false });
+
+  P('ch_slot', 'sign_red', slotBody());
+  // A lit sign face, not a tube: a panel this size on a neon key clips to
+  // white in the dim hall and swallows the cabinet around it.
+  P('ch_slot_reels', 'sign_glow', slotReels(), { castShadow: false });
+  P('ch_slot_lights', 'ch_neon_amber', slotLights(), { castShadow: false });
+  P('ch_slot_lever', 'el_steel', slotLever());
 
   P('ch_gondola', 'frame_white', gondolaFrame(), { chunk: false });
   P('ch_gondola_glass', 'window_glass', gondolaGlass(), { chunk: false, castShadow: false });

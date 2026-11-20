@@ -399,6 +399,28 @@ export const ARCADE_ROWS = [
   [-48.6, -41.8, 13.0, 1], [-38.0, -31.8, 13.0, 1],
   [-48.6, -44.2, 20.0, -1], [-40.5, -33.0, 20.0, -1],
 ];
+/** Cabinet pitch along a row, and where cabinet `i` of a row stands. */
+const CAB_PITCH = 0.82;
+const cabX = (x0, i) => x0 + CAB_PITCH / 2 + i * CAB_PITCH;
+const cabCount = (x0, x1) => Math.floor((x1 - x0) / CAB_PITCH);
+
+/**
+ * The row in from the middle door is the SLOT BANK: the same footprint and
+ * collision as the cabinets it replaces, but every machine in it can be used
+ * (see `slots.js`). Facing into the aisle, so a player uses one from the
+ * aisle side with the rest of the hall behind them.
+ */
+export const SLOT_ROW = 1;
+/** The bank as `slots.js` wants it: a floor point in front of each machine and its facing. */
+export const SLOT_MACHINES = (() => {
+  const [x0, x1, z, f] = ARCADE_ROWS[SLOT_ROW];
+  const out = [];
+  for (let i = 0; i < cabCount(x0, x1); i++) {
+    const x = cabX(x0, i);
+    out.push({ x, y: gy(x), z: z + f * 0.75, fx: 0, fz: f });
+  }
+  return out;
+})();
 
 /** Solid footprints `[x0, z0, x1, z1]`, built once from the tables. */
 const BLOCKERS = (() => {
@@ -1050,16 +1072,18 @@ function buildMidway(A, rng, s) {
   neonText(A, 'ch_neon_green', pp, 'SPEEDWAY', 4.5, top + 0.12, 0.55, { out: 0.2 });
 
   // ---- inside: rows of cabinets and a prize counter ----
-  for (const [ax0, ax1, z, f] of ARCADE_ROWS) {
-    const n = Math.floor((ax1 - ax0) / 0.82);
+  ARCADE_ROWS.forEach(([ax0, ax1, z, f], row) => {
+    const n = cabCount(ax0, ax1);
+    const ids = row === SLOT_ROW
+      ? ['ch_slot', 'ch_slot_reels', 'ch_slot_lights', 'ch_slot_lever']
+      : ['ch_arcade', 'ch_arcade_screen'];
     for (let i = 0; i < n; i++) {
-      const x = ax0 + 0.41 + i * 0.82;
+      const x = cabX(ax0, i);
       const ry = f > 0 ? H : -H; // screens face across the aisle
-      A.put('ch_arcade', x, gy(x) + 0.03, z, -ry, 1);
-      A.put('ch_arcade_screen', x, gy(x) + 0.03, z, -ry, 1);
+      for (const id of ids) A.put(id, x, gy(x) + 0.03, z, -ry, 1);
     }
     A.box('metal', (ax0 + ax1) / 2, gy(ax0) + 1.0, z, ax1 - ax0, 2.2, 0.75);
-  }
+  });
   solid(A, 'wood_dark', -28.5, gy(-28.5) + 0.55, 21.9, 4, 1.1, 1.0);
   deco(A, 'ch_neon_amber', -28.5, gy(-28.5) + 1.13, 21.35, 4, 0.06, 0.06);
   for (let i = 0; i < 5; i++) A.put(i % 2 ? 'box_card_a' : 'box_card_b', -30 + i * 0.8, gy(-29) + 1.1, 22.0, rng.float(), 0.8);
@@ -1615,6 +1639,12 @@ export const CLIFTON_MAP = {
   groundY: groundYClifton,
   isOpen: isOpenClifton,
   build: buildClifton,
+  /**
+   * The midway's slot bank. A pull costs health and can pay out
+   * invincibility; `slots.js` has the odds and the reasoning, and
+   * `slots.selftest.mjs` states the balance.
+   */
+  slots: { machines: SLOT_MACHINES },
   /**
    * TEN MINUTES PAST SUNSET-ISH, at the solstice and 45 degrees north (the
    * sky's fixed site — Niagara is 43). The sun is ~1.4 degrees up: still a

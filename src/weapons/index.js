@@ -428,6 +428,18 @@ export class WeaponSystem {
    * reload animation must not begin with the tail of it, and the recoil walk has
    * to start at the top of the pattern.
    */
+  /**
+   * Top up every reserve and the equipment, leaving magazines and the firing
+   * state alone — a slot payout mid-fight must not cut a reload or a burst.
+   * A respawn uses `resetLoadout()` instead.
+   */
+  restock() {
+    for (const s of this.states.values()) s.reserve = s.def.reserve;
+    // A grenade in hand has already been paid for; refilling under it would
+    // refund the pulled pin. Leave the equipment for the next payout.
+    if (!this.throwables.cook) this.throwables.refill();
+  }
+
   resetLoadout() {
     for (const s of this.states.values()) {
       s.mag = s.def.magSize;

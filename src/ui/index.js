@@ -11,7 +11,7 @@ import { Compass, MatchBar } from './compass.js';
 import { Minimap } from './minimap.js';
 import { WorldMarkers } from './markers.js';
 import { Nameplates } from './nameplates.js';
-import { Prompt, Banner } from './prompts.js';
+import { Prompt, Banner, StatusChip } from './prompts.js';
 import { StreakMeter } from './streaks.js';
 import { PauseMenu } from './menu.js';
 import { CombatDemo } from './demo.js';
@@ -41,6 +41,7 @@ const MAX_BLIPS = 48;
  *   ui.killfeed.push({attacker,attackerSide,victim,victimSide,weapon,headshot})
  *   ui.banner.show(title, sub, life)    kill / objective confirmation
  *   ui.setPrompt({key,text,sub,progress}) / ui.clearPrompt()
+ *   ui.setStatus({text,value}|null)     timed status chip (invincibility)
  *   ui.setObjectives([{position,label,name}])
  *   ui.setBlips([{x,z,kind:'enemy'|'friend',heading}])
  *   ui.spawnGrenade(worldPos, fuse)
@@ -106,6 +107,7 @@ export class UiSystem {
     this.ammo = new AmmoPanel(this.chromeLayer);
     this.prompt = new Prompt(this.chromeLayer);
     this.banner = new Banner(this.chromeLayer);
+    this.status = new StatusChip(this.chromeLayer);
 
 
     // Performance readout gets its own layer above the game chrome and outside
@@ -524,6 +526,11 @@ export class UiSystem {
     this.prompt.clear();
   }
 
+  /** @param {{ text, value }|null} p  the timed status chip; null hides it */
+  setStatus(p) {
+    this.status.set(p);
+  }
+
   setObjectives(list) {
     this._objectives = list ?? [];
   }
@@ -895,6 +902,7 @@ export class UiSystem {
     this.nameplates.dispose();
     this.prompt.dispose();
     this.banner.dispose();
+    this.status.dispose();
     this.perf?.dispose();
     this.touch?.dispose();
     this.rotateHint?.remove();

@@ -11,7 +11,7 @@ either works: `test:quality` = `src/core/selftest.mjs`, `test:graphics` =
 `src/core/graphics.selftest.mjs`, `test:input` = `src/core/input.selftest.mjs`,
 `test:viewport` = `src/core/viewport.selftest.mjs` + `src/render/resolution.selftest.mjs`,
 `test:metrics` = `tools/lib/selftest.mjs`, `test:audio` = `src/audio/probe.mjs`,
-`shot` = `tools/capture.mjs`, `playtest:lobby` = `tools/lobby-playtest.mjs`,
+`shot` = `tools/capture.mjs`, `playtest:lobby` = `tools/lobby-playtest.mjs`, `playtest:slots` = `tools/slots-playtest.mjs`,
 `playtest:lobby-ui` = `tools/lobby-ui-playtest.mjs`.
 
 - `./scripts/setup.sh` bootstraps a fresh machine or cloud sandbox: dependencies, the Chromium build playwright expects, and a headless WebGL2 check.
@@ -119,6 +119,12 @@ either works: `test:quality` = `src/core/selftest.mjs`, `test:graphics` =
   `stateQuery()` / `waitFrames()` / `waitGameTime()` from `tools/lib/harness.mjs`
   rather than a wall-clock sleep sized for a slow rasteriser. See the
   `visual-check` skill for what each one covers.
+- `npm run playtest:slots` stands the player at a slot machine in Clifton
+  Hill's real (yawed) level and pulls the lever with a real F: the prompt,
+  the health charge, the reels rolling in the HUD, a loss, a payout, a
+  jackpot that makes real damage land on nothing and then wears off, the
+  lockout, the refusal at 20 health, and no prompt from the roof above. The
+  bank's random source is swapped per pull so no check depends on luck.
 - `npm run playtest:lobby-ui` checks the lobby surface alone — map cards,
   garrison chips, keyboard shortcuts — over
   `?renderGame=false`, so no engine boots and it runs in seconds even without
@@ -177,6 +183,15 @@ either works: `test:quality` = `src/core/selftest.mjs`, `test:graphics` =
   dark forever with every other check green. The arithmetic is kept free of
   lights, materials and `THREE` precisely so this can drive a whole outage in
   Node in a millisecond. Mutation-checked.
+- `node src/world/slots.selftest.mjs` checks the slot bank in Clifton Hill's
+  midway: the outcome table (jackpot 1 in 12, payout 1 in 6, the rest lose)
+  and that the reels shown always read as the outcome paid, the price (20
+  health a pull, never the last point), that a jackpot's invincibility is
+  short against what it costs to win and cannot be chained (the bank locks
+  the winner out for 30 s), the reel clock, and the reach test — facing the
+  machine, in front of it, and on its floor rather than on the speedway roof
+  overhead. Every one of those is a rate or a timing and none of them throws.
+  Mutation-checked.
 - `node src/world/maps.selftest.mjs` builds every map headlessly and checks the map-descriptor contract, spawn tables and layout invariants.
 - `node src/world/collision.selftest.mjs` checks every map, parked ones included,
   for invisible walls: collision proxies with nothing drawn inside them that a
@@ -357,13 +372,13 @@ Read on demand, not loaded at session start:
 ## Verifying a change
 
 **Default to not rendering.** The Node-only self-tests carry most of the real
-coverage and are effectively free — all thirty-two of them (`physics`, `ai`,
+coverage and are effectively free — all thirty-three of them (`physics`, `ai`,
 `ai/lod`, `ai/footstep`, `ai/roo`, `fx/tracers`, `weapons/balance`, `weapons/throwables`,
 `weapons/loadout`, `weapons/autoreload`, `weapons/melee`, `weapons/baked`,
 `audio/attenuation`,
 `audio/reload`,
 `core` × 5, `render/resolution`, `render/dof`, `ui/touch`, `ui/killicons`, `ui/nameplates`, `match/bounds`,
-`match/share`, `match/streaks`, `world/maps`, `world/collision`, `world/power`, `world/spawns`,
+`match/share`, `match/streaks`, `world/maps`, `world/collision`, `world/power`, `world/slots`, `world/spawns`,
 `world/stairs`)
 run in ~10 s
 combined, and `world/maps.selftest.mjs` builds every map headlessly without a
@@ -378,7 +393,7 @@ find src server \( -name 'selftest.*' -o -name '*.selftest.*' \) | sort
 
 Note both halves of that pattern — four suites are a bare `selftest.js`/`.mjs`
 (`physics`, `ai`, `core`, `audio`) and `-name '*.selftest.*'` alone silently
-misses them. It returns 37 files; the thirty-two above are the free ones. The
+misses them. It returns 38 files; the thirty-three above are the free ones. The
 other five are not: `server/{bounds,lobby,map,skin}.selftest.mjs` each stand up
 a real relay on a real socket, and `src/audio/selftest.js` is a library the audio
 probe drives from a page — run directly it exits 0 having asserted nothing.
