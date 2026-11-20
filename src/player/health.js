@@ -27,6 +27,8 @@ export class Health {
     this.lastDamageTime = -100;
     this.suppression = 0;
     this.hitFlash = 0;
+    /** `ctx.time.elapsed` until which damage is ignored (a slot jackpot). */
+    this.invulnUntil = -1;
 
     /** Direction indicators, oldest first. angle is radians, 0 = straight ahead. */
     this.indicators = [];
@@ -64,8 +66,33 @@ export class Health {
     return this.fraction < HEALTH.criticalThreshold;
   }
 
+  /** Seconds of invincibility left; 0 when there is none. */
+  get invulnerableLeft() {
+    return Math.max(0, this.invulnUntil - this.ctx.time.elapsed);
+  }
+
+  setInvulnerable(seconds) {
+    this.invulnUntil = this.ctx.time.elapsed + Math.max(0, seconds);
+  }
+
+  /**
+   * Spend health on purpose (a slot pull). Not damage: no indicator, no
+   * flinch, no `damage:taken` — but the regen delay restarts, because the
+   * delay is the price. Never takes the last point: a payment cannot kill.
+   */
+  pay(amount) {
+    if (this.dead || amount <= 0) return 0;
+    const before = this.value;
+    this.value = Math.max(1, this.value - amount);
+    this.lastDamageTime = this.ctx.time.elapsed;
+    this.regenerating = false;
+    this._emitState(true);
+    return before - this.value;
+  }
+
   reset(full = true) {
     if (full) this.value = this.max;
+    this.invulnUntil = -1;
     this.dead = false;
     this.suppression = 0;
     this.hitFlash = 0;
@@ -83,6 +110,8 @@ export class Health {
    */
   damage(amount, from, opts = {}) {
     if (this.dead || amount <= 0) return 0;
+    // Invincible: the hit lands on nothing — no flinch, no indicator, no event.
+    if (this.ctx.time.elapsed < this.invulnUntil) return 0;
     const before = this.value;
     this.value = Math.max(0, this.value - amount);
     this.lastDamageTime = this.ctx.time.elapsed;

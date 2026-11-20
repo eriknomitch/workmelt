@@ -481,6 +481,7 @@ export class NetSystem {
       p.dead = !!s.dead;
       if (typeof s.v === 'number') p.variant = s.v;
       if (typeof s.sk === 'number') p.livery = s.sk;
+      p.inv = !!s.iv;
       p.buf.push({
         t: now,
         x: s.p[0], y: s.p[1], z: s.p[2],
@@ -628,8 +629,9 @@ export class NetSystem {
       // connecting shot; the receiver only ever wanted a name for the killfeed.
       w: typeof e.weapon === 'string' ? e.weapon : e.weapon?.id ?? 'rifle',
     });
-    // Immediate local feedback (server confirms the kill).
-    this.uiSys?.hitmarker?.(headshot ? 'head' : 'hit');
+    // Immediate local feedback (server confirms the kill). An invincible
+    // target takes nothing, and the armour tick says so.
+    this.uiSys?.hitmarker?.(best.p.inv ? 'armour' : headshot ? 'head' : 'hit');
   }
 
   /**
@@ -701,7 +703,7 @@ export class NetSystem {
       w: 'melee',
     });
     // Immediate local feedback (server confirms the kill).
-    this.uiSys?.hitmarker?.('hit');
+    this.uiSys?.hitmarker?.(best.inv ? 'armour' : 'hit');
   }
 
   /* ==================================================================== */
@@ -823,6 +825,10 @@ export class NetSystem {
         // the roster, but a peer whose roster message we raced learns it here.
         // It is one small integer at 20 Hz.
         sk: this.livery,
+        // A slot jackpot's invincibility. The victim already ignores the hit
+        // (damage is applied on the receiving end); this only lets the
+        // shooter's hitmarker say so instead of reading as a normal hit.
+        iv: (pl.invulnerableLeft ?? 0) > 0 ? 1 : 0,
       },
     });
   }

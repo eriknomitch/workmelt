@@ -53,6 +53,38 @@ export class Prompt {
   }
 }
 
+/**
+ * A timed status chip above the reticle — "INVINCIBLE 4.2". One at a time;
+ * `set(null)` hides it. Written only when the text changes, so a countdown
+ * driven every frame costs one string compare.
+ */
+export class StatusChip {
+  constructor(parent) {
+    this.root = el('div', 'ow-status', parent);
+    this.txt = el('span', 'ow-status-t', this.root, '');
+    this.val = el('span', 'ow-status-v', this.root, '');
+    this._on = false;
+    setStyle(this.root, 'display', 'none');
+  }
+
+  /** @param {{ text: string, value?: string }|null} p */
+  set(p) {
+    if (!p) {
+      if (this._on) setStyle(this.root, 'display', 'none');
+      this._on = false;
+      return;
+    }
+    if (!this._on) setStyle(this.root, 'display', '');
+    this._on = true;
+    setText(this.txt, p.text ?? '');
+    setText(this.val, p.value ?? '');
+  }
+
+  dispose() {
+    this.root.remove();
+  }
+}
+
 /** Kill confirmation / objective banner. One at a time, newest wins. */
 export class Banner {
   constructor(parent) {

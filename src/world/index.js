@@ -4,6 +4,7 @@ import { BUILDINGS, STREET, SET_PIECES, GATE } from './layout.js';
 import { Rng } from '../core/rng.js';
 import { SpawnDirector, buildSpawnPoints } from './spawns.js';
 import { PowerGrid, cityLevel } from './power.js';
+import { SlotFloor } from './slotfloor.js';
 import { MAPS, DEFAULT_MAP_ID, getMap, isMapId, mapSummaries, resolveBootMap, saveMapPreference } from './maps.js';
 
 /**
@@ -265,6 +266,8 @@ export class WorldSystem {
     this._mains = null;
     this._emergency = null;
     this._city = null;
+    this.slots?.dispose();
+    this.slots = null;
 
     // The ballast pool survives (it belongs to the system, not to the level),
     // but the scan of everybody else's point lights is stale and the adopted
@@ -482,6 +485,10 @@ export class WorldSystem {
      * The cost is one matrix multiply per impact on one map, against a hit
      * test that already runs per impact.
      */
+    // The slot bank, on a map that declares one (Clifton's midway).
+    this.slots?.dispose();
+    this.slots = this.map.slots ? new SlotFloor(this.ctx, this, this.map.slots, this._seed) : null;
+
     const spec = this.map.power;
     if (spec) {
       const boxes = spec.generators.map((g) => (
@@ -650,6 +657,8 @@ export class WorldSystem {
     // Spawn memory (recent deaths, spawn cooldowns, remote claims) decays on
     // wall time, not on when somebody next asks for a spawn.
     this.spawns?.update(dt);
+
+    this.slots?.update(dt);
 
     // Street lamps come on as the sun goes down, driven by the sky's real solar
     // altitude rather than a timer, so it is right at any time of day.
