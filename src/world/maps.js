@@ -10,6 +10,7 @@ import { SHIVAM_MAP } from './shivam.js';
 import { SITEWORK_MAP } from './sitework.js';
 import { GRAVING_MAP } from './graving.js';
 import { CLIFTON_MAP } from './clifton.js';
+import { LOUVRE_MAP } from './louvre.js';
 
 /**
  * WORLD — the map list.
@@ -149,6 +150,13 @@ const REGISTRY = [
     enabled: true,
     name: 'Clifton Hill',
     description: 'Niagara Falls neon strip, at sunset',
+  },
+  {
+    map: LOUVRE_MAP,
+    order: 39.9,
+    enabled: true,
+    name: 'The Louvre',
+    description: 'Cour Napoléon, round the glass pyramid',
   },
   {
     map: MARKET_MAP,
@@ -323,4 +331,4 @@ export function saveMapPreference(id) {
   }
 }
 
-export { MARKET_MAP, RUST_MAP, WILMOT_MAP, LOOP_MAP, FISHERS_MAP, NUKETOWN_MAP, BLOODGULCH_MAP, DOME_MAP, SHIVAM_MAP, SITEWORK_MAP, GRAVING_MAP, CLIFTON_MAP };
+export { MARKET_MAP, RUST_MAP, WILMOT_MAP, LOOP_MAP, FISHERS_MAP, NUKETOWN_MAP, BLOODGULCH_MAP, DOME_MAP, SHIVAM_MAP, SITEWORK_MAP, GRAVING_MAP, CLIFTON_MAP, LOUVRE_MAP };
