@@ -182,6 +182,7 @@ import {
   inSolidClifton,
   groundYClifton,
 } from './clifton.js';
+import * as LV from './louvre.js';
 import { NavGrid } from '../ai/nav.js';
 import { MOVE, STANCE, JUMP_APEX } from '../player/tuning.js';
 
@@ -2532,6 +2533,153 @@ console.log(B('\nclifton — the hill'));
   ok(MISSING_GLYPHS.size === 0, 'every letter on every sign is in the neon font', [...MISSING_GLYPHS].join(''));
   const env = clifton.environment;
   ok(env && env.hour > 19.3 && env.hour < 19.75, 'clifton is set at sunset, the sun on the horizon', `hour ${env?.hour}`);
+}
+
+/* ──────────────────────────────────────────────────── louvre: the court ── */
+{
+  const {
+  LOUVRE,
+  PYRAMID,
+  POOLS,
+  PYRAMIDION,
+  PYRAMIDIONS,
+  BASINS,
+  ARCADE,
+  STAIRS,
+  STAIR,
+  stairRect,
+  stairLen,
+  MASSES,
+  PIERS,
+  COVER,
+  coverRect,
+  FURNITURE,
+  ARC,
+  ARC_PIERS,
+  LOUIS,
+  PASSAGE,
+  inSolidLouvre,
+  inBasin,
+  } = LV;
+  console.log(B('\nlouvre — the Cour Napoléon'));
+  const louvre = mapById('louvre');
+  const P = PYRAMID.half;
+
+  // Everything that stands on the court floor, as rects. The palace masses
+  // are the frame, not the court: they are checked separately, below.
+  const lr = [];
+  lr.push(['pyramid', -P, -P, P, P]);
+  for (const [x, z] of PYRAMIDIONS) lr.push([`pyramidion(${x},${z})`, x - PYRAMIDION.half - 0.2, z - PYRAMIDION.half - 0.2, x + PYRAMIDION.half + 0.2, z + PYRAMIDION.half + 0.2]);
+  for (const t of BASINS) {
+    const xs = t.map((p) => p[0]);
+    const zs = t.map((p) => p[1]);
+    // a triangle's box is coarser than the triangle: a pass here is honest
+    lr.push([`basin(${xs[0]},${zs[0]})`, Math.min(...xs), Math.min(...zs), Math.max(...xs), Math.max(...zs)]);
+  }
+  for (const p of PIERS) lr.push([`pier(${p[0].toFixed(1)},${p[1]})`, ...p]);
+  for (const st of STAIRS) lr.push([`stair(${st[0].toFixed(1)},${st[1]})`, ...stairRect(st)]);
+  for (const c of COVER) lr.push([`${c[2]}(${c[0]},${c[1]})`, ...coverRect(c)]);
+  for (const f of FURNITURE) lr.push([`furniture(${f[0].toFixed(1)},${f[1].toFixed(1)})`, ...f]);
+  for (const [z0, z1] of ARC_PIERS) lr.push([`arc-pier(${z0})`, ARC.x - ARC.d / 2 - ARC.pedestal, z0, ARC.x + ARC.d / 2 + ARC.pedestal, z1]);
+  lr.push(['louis', LOUIS.x - LOUIS.l / 2, LOUIS.z - LOUIS.w / 2, LOUIS.x + LOUIS.l / 2, LOUIS.z + LOUIS.w / 2]);
+  const hit = (a, b) => a[1] < b[3] && a[3] > b[1] && a[2] < b[4] && a[4] > b[2];
+  const lOver = [];
+  for (let i = 0; i < lr.length; i++) for (let j = i + 1; j < lr.length; j++) if (hit(lr[i], lr[j])) lOver.push(`${lr[i][0]} ∩ ${lr[j][0]}`);
+  ok(lOver.length === 0, 'nothing in the court stands inside anything else', lOver.slice(0, 3).join(', ') || `${lr.length} pieces`);
+  const court = MASSES.filter((m) => !m.bg).map((m) => [m.id, m.x0, m.z0, m.x1, m.z1]);
+  const inPalace = [];
+  for (const r of lr) for (const m of court) if (hit(r, m)) inPalace.push(`${r[0]} ∩ ${m[0]}`);
+  ok(inPalace.length === 0, 'and nothing in the court is inside the palace', inPalace.slice(0, 3).join(', '));
+  const lOut = lr.filter((r) => r[1] < LOUVRE.x0 - 0.2 || r[3] > LOUVRE.x1 || r[2] < -LOUVRE.zWall || r[4] > LOUVRE.zWall);
+  ok(lOut.length === 0, 'everything in the court is inside the court', lOut.map((r) => r[0]).join(' '));
+
+  // The pyramid is the landmark, at the size it really is.
+  ok(Math.abs(P * 2 - 35.4) < 0.1 && Math.abs(PYRAMID.h - 21.6) < 0.1, 'the pyramid is the real pyramid', `${P * 2} m base, ${PYRAMID.h} m tall`);
+  ok(MASSES.filter((m) => !m.bg).every((m) => m.h < PYRAMID.h + 3), 'and nothing round it out-tops it by much',
+    `tallest cornice ${Math.max(...MASSES.map((m) => m.h))} m`);
+  // The basins are water you can see over: lower than a crouch, higher than a kerb.
+  ok(POOLS.rimH > 0.4 && POOLS.rimH < 0.9 && POOLS.waterY < POOLS.rimH, 'the pool rims are crouch cover and the water is below them');
+  ok(BASINS.every((t) => {
+    const cx = (t[0][0] + t[1][0] + t[2][0]) / 3;
+    const cz = (t[0][1] + t[1][1] + t[2][1]) / 3;
+    return inBasin(cx, cz, 0) && !louvre.isOpen(cx, cz);
+  }), 'every basin is water on the minimap, not floor');
+  ok(louvre.isOpen(-P - 1, 0) && louvre.isOpen(0, -P - 1) && louvre.isOpen(P + 1, 0) && louvre.isOpen(0, P + 1),
+    'a walkway runs right round the pyramid between the glass and the pools');
+
+  // The terraces are the high ground: every stair lands on a terrace end and
+  // starts from open court.
+  for (const st of STAIRS) {
+    const [fx, fz, dir] = st;
+    const top = fx + dir * stairLen();
+    const lands = Math.abs(top - (dir > 0 ? ARCADE.x0 : ARCADE.x1)) < 0.05;
+    const runUp = [1, 2, 3].every((k) => louvre.isOpen(fx - dir * (k * 0.9), fz));
+    ok(lands && runUp, `the terrace stair at (${fx.toFixed(1)}, ${fz}) lands on the terrace and has a run-up`,
+      lands ? (runUp ? `${stairLen().toFixed(1)} m flight` : 'run-up blocked') : `tops out at x=${top.toFixed(2)}`);
+    ok(Math.abs(fz) + STAIR.w / 2 <= LOUVRE.zWall && Math.abs(fz) - STAIR.w / 2 >= LOUVRE.zArcade + ARCADE.pierD,
+      `and runs behind the arcade line, against the wing`);
+  }
+  ok(LOUVRE.terraceY > 5 && LOUVRE.terraceY < 8, 'the terraces are a storey and a half up', `${LOUVRE.terraceY} m`);
+
+  // THE EDGES ARE SEALED. The west railing must be too tall to mantle, and
+  // the Sully passage must have its gate inside the mouth. Probes are shallow
+  // on purpose (see the rust gates): deep ones find unrelated cover.
+  ok(LOUVRE.fenceH > MOVE.mantle.maxHeight + JUMP_APEX, 'the Carrousel railing is taller than anything mantles',
+    `${LOUVRE.fenceH} m against ${(MOVE.mantle.maxHeight + JUMP_APEX).toFixed(2)} m`);
+  const westLeaks = [];
+  for (let z = -LOUVRE.zArcade + 0.1; z < LOUVRE.zArcade; z += 0.2) {
+    let solid = false;
+    for (let d = 0; d <= 2 && !solid; d += 0.1) if (inSolidLouvre(LOUVRE.x0 + 0.3 - d, z, 0)) solid = true;
+    if (!solid) westLeaks.push(z.toFixed(1));
+  }
+  ok(westLeaks.length === 0, 'the Carrousel railing closes the west end', westLeaks.length ? `open at z=${westLeaks.slice(0, 4).join(',')}` : `${LOUVRE.zArcade * 2} m of railing`);
+  const gateLeaks = [];
+  for (let z = -PASSAGE.z + 0.1; z < PASSAGE.z; z += 0.2) {
+    let solid = false;
+    for (let d = 0; d <= 3 && !solid; d += 0.1) if (inSolidLouvre(LOUVRE.x1 + d, z, 0)) solid = true;
+    if (!solid) gateLeaks.push(z.toFixed(1));
+  }
+  ok(gateLeaks.length === 0, 'the passage to the Cour Carrée is gated', gateLeaks.length ? `open at z=${gateLeaks.join(',')}` : `gate ${PASSAGE.gateX - LOUVRE.x1} m in`);
+  // The corners where the railing meets the corner pavilions: no slot to squeeze out of.
+  ok(inSolidLouvre(LOUVRE.x0, -LOUVRE.zArcade - 0.3, 0) && inSolidLouvre(LOUVRE.x0, LOUVRE.zArcade + 0.3, 0),
+    'the railing runs into the corner pavilions');
+  ok(!louvre.isOpen(LOUVRE.x0 - 4, 0) && !louvre.isOpen(LOUVRE.x1 + 4, 0) && !louvre.isOpen(0, LOUVRE.zWall + 2) && !louvre.isOpen(0, -LOUVRE.zWall - 2),
+    'beyond the railing and the palace walls is not playable ground');
+
+  /**
+   * No lane is one sightline. Walk each lane's centre line and require
+   * something solid every 16 m — the planters, blocks, fountains and the
+   * statue are the cover rhythm. Mutation-checked by deleting the north lane's
+   * Wallace fountain: the 26 m gap it leaves fails the first line.
+   */
+  const lanes = [
+    ['north lane', (t) => [t, -30], LOUVRE.x0 + 0.5, LOUVRE.x1 - 0.5],
+    ['south lane', (t) => [t, 30], LOUVRE.x0 + 0.5, LOUVRE.x1 - 0.5],
+    ['east lane', (t) => [36, t], -LOUVRE.zArcade, LOUVRE.zArcade],
+    ['west lane', (t) => [-34, t], -LOUVRE.zArcade, LOUVRE.zArcade],
+  ];
+  for (const [name, at, a, b] of lanes) {
+    let gap = 0;
+    let worst = 0;
+    for (let t = a; t <= b; t += 0.5) {
+      const [x, z] = at(t);
+      if (inSolidLouvre(x, z, 0.2)) gap = 0;
+      else worst = Math.max(worst, (gap += 0.5));
+    }
+    ok(worst <= 16, `the ${name} is broken up`, `longest clear run ${worst} m`);
+  }
+
+  // Sample the court: a big open square with a big solid middle.
+  let open = 0;
+  let total = 0;
+  for (let x = LOUVRE.x0; x <= LOUVRE.x1; x += 1)
+    for (let z = -LOUVRE.zWall; z <= LOUVRE.zWall; z += 1) {
+      total++;
+      if (louvre.isOpen(x, z)) open++;
+    }
+  const lFrac = open / total;
+  ok(lFrac > 0.55 && lFrac < 0.85, 'walkable fraction sits in the open-square band', lFrac.toFixed(2));
+  ok(!louvre.environment, 'the Louvre is a daylight map');
 }
 
 console.log(
